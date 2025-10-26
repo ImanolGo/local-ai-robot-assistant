@@ -15,7 +15,7 @@
 - [x] Set up branch protection rules (main/develop)
 - [x] Create GitHub Issues templates (bug, feature, hardware)
 - [x] Set up GitHub Projects board with kanban workflow
-- [ ] Create initial repository structure
+- [x] Create initial repository structure
 
 ### 0.2 Development Environment
 - [x] Flash Jetson Orin Nano with JetPack SDK
@@ -26,6 +26,7 @@
 - [x] Configure NVMe SSD and create large swap file (16GB)
 - [x] Install Docker and set up containerization
 - [x] Set up VS Code remote development or similar
+- [ ] See `docs/guides/jetson_orin_setup.md` for detailed setup instructions
 
 ### 0.3 Hardware Inventory & Testing
 - [ ] Verify all hardware components received
