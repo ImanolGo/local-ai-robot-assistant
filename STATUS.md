@@ -16,7 +16,7 @@
 
 ### 0.1 Repository Setup
 - ✅ Create GitHub repository
-- ⏳ Initialize with README, LICENSE, CONTRIBUTING
+- ✅  Initialize with README, LICENSE
 - ⏳ Set up branch protection rules
 - ⏳ Create Issues templates
 - ⏳ Set up GitHub Projects board
