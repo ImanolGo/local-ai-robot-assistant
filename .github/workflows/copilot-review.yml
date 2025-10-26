@@ -1,0 +1,42 @@
+name: Copilot Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  copilot-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+      
+      - name: Install dependencies
+        run: |
+          pip install pylint flake8 black mypy
+      
+      - name: Run linters
+        run: |
+          black --check src/
+          flake8 src/ --max-line-length=100
+          pylint src/ --max-line-length=100
+      
+      - name: Type checking
+        run: |
+          mypy src/ --ignore-missing-imports
+      
+      - name: Comment PR
+        uses: actions/github-script@v6
+        if: failure()
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ Code quality checks failed. Please review linting and type errors.'
+            })

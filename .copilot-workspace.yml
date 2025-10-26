@@ -1,0 +1,47 @@
+name: Local AI Robot Assistant
+description: Autonomous AI robot running on NVIDIA Jetson Orin Nano
+
+context:
+  - file: docs/architecture.md
+    description: System architecture and design patterns
+  - file: docs/prd.md
+    description: Product requirements and specifications
+  - file: STATUS.md
+    description: Current implementation status
+  - file: .github/copilot-instructions.md
+    description: Project-specific coding guidelines
+
+key_concepts:
+  - ROS2 Humble middleware
+  - TensorRT optimization for Jetson
+  - Differential drive kinematics
+  - UART JSON protocol for Wave Rover
+  - Fisheye camera undistortion
+  - Voice activity detection
+  - Behavior tree architecture
+  - SLAM with RTAB-Map
+
+common_patterns:
+  node_structure: "ROS2 nodes with parameters, error handling, and graceful shutdown"
+  hardware_interface: "Serial/UART with retry logic and validation"
+  ai_inference: "TensorRT engines with proper memory management"
+  testing: "Mock hardware dependencies, test edge cases"
+
+constraints:
+  memory: "8GB RAM total (7.5GB usable)"
+  processing: "Real-time requirements (10+ FPS vision, <2s voice)"
+  hardware: "Single Jetson device, no cloud connectivity"
+  
+workspace_structure:
+  source_code: "src/"
+  tests: "tests/ in each package, plus hardware_tests/, manual_tests/, integration_tests/"
+  configs: "config/"
+  documentation: "docs/"
+  models: "models/ (git-ignored, downloaded separately)"
+
+commands:
+  build: "colcon build --symlink-install"
+  test: "colcon test && colcon test-result --verbose"
+  launch: "ros2 launch launch/full_system_launch.py"
+  format: "black src/ && isort src/"
+  lint: "flake8 src/ && pylint src/"
