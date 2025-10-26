@@ -9,6 +9,7 @@ dependencies = [
     "torch",
     "transformers",
     "pyaudio",
+    "pyserial",
 ]
 
 [project.optional-dependencies]

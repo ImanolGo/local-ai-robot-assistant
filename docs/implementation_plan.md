@@ -26,21 +26,21 @@
 - [x] Configure NVMe SSD and create large swap file (16GB)
 - [x] Install Docker and set up containerization
 - [x] Set up VS Code remote development or similar
-- [ ] See `docs/guides/jetson_orin_setup.md` for detailed setup instructions
+- [x] See `docs/guides/jetson_orin_setup.md` for detailed setup instructions
 
 ### 0.3 Hardware Inventory & Testing
-- [ ] Verify all hardware components received
-- [ ] Label and document all cables and connections
-- [ ] Create hardware connection diagram
-- [ ] Set up proper workspace with ESD protection
-- [ ] Organize storage for components
+- [x] Verify all hardware components received
+- [x] Label and document all cables and connections
+- [x] Create hardware connection diagram
+- [x] Set up proper workspace with ESD protection
+- [x] Organize storage for components
 
 ### 0.4 Documentation Setup
-- [ ] Create `/docs` directory structure
-- [ ] Initialize Sphinx or MkDocs for documentation
-- [ ] Set up automated doc generation pipeline
-- [ ] Create hardware setup guide
-- [ ] Create development workflow guide
+- [x] Create `/docs` directory structure
+- [x] Initialize Sphinx or MkDocs for documentation
+- [x] Set up automated doc generation pipeline
+- [x] Create hardware setup guide
+- [x] Create development workflow guide
 
 **Deliverables**:
 - GitHub repo initialized
@@ -52,15 +52,15 @@
 ## Phase 1: Hardware Validation (Week 2)
 
 ### 1.1 Wave Rover UART Communication
-- [ ] Connect Wave Rover to Jetson via UART
-- [ ] Identify correct serial port (`/dev/ttyTHS0` or `/dev/ttyUSB0`)
-- [ ] Write test script to send/receive JSON commands
-- [ ] Test motor control commands (forward, backward, turn)
-- [ ] Test IMU data retrieval (`{"T":126}`)
-- [ ] Test continuous feedback mode (`{"T":131,"cmd":1}`)
-- [ ] Test OLED display commands
-- [ ] Document baud rate and communication protocol
-- [ ] Create `hardware_tests/test_waveroever_uart.py`
+- [x] Connect Wave Rover to Jetson via UART
+- [x] Identify correct serial port (`/dev/ttyTHS0` or `/dev/ttyUSB0`)
+- [x] Write test script to send/receive JSON commands
+- [x] Test motor control commands (forward, backward, turn)
+- [x] Test IMU data retrieval (`{"T":126}`)
+- [x] Test continuous feedback mode (`{"T":131,"cmd":1}`)
+- [x] Test OLED display commands
+- [x] Document baud rate and communication protocol
+- [x] Create `hardware_tests/test_waveroever_uart.py`
 
 **Test Script Requirements**:
 ```python

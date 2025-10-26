@@ -71,6 +71,9 @@ ENV/
 pip-wheel-metadata/
 __pypackages__/
 
+# lockfiles
+uv.lock
+
 # TensorRT engines
 *.engine
 *.trt

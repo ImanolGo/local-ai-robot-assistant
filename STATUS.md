@@ -2,7 +2,7 @@
 
 **Last Updated**: 26 Oct 2025
 **Current Phase**: Phase 1
-**Overall Progress**: 6%
+**Overall Progress**: 18%
 
 ## Legend
 - ✅ Complete
@@ -46,18 +46,18 @@
 
 ---
 
-## Phase 1: Hardware Validation (0% Complete ⏳)
+## Phase 1: Hardware Validation (20% Complete 🚧)
 
 ### 1.1 Wave Rover UART Communication
-- ⏳ Connect Wave Rover to Jetson
-- ⏳ Identify serial port
-- ⏳ Write test script
-- ⏳ Test motor control commands
-- ⏳ Test IMU data retrieval
-- ⏳ Test continuous feedback mode
-- ⏳ Test OLED display commands
-- ⏳ Document communication protocol
-- ⏳ Create test_waveroever_uart.py
+- ✅ Connect Wave Rover to Jetson
+- ✅ Identify serial port (e.g. `/dev/ttyTHS1`)
+- ✅ Write test script
+- ✅ Test motor control commands (CMD_SPEED_CTRL / CMD_PWM_INPUT / CMD_ROS_CTRL / PID)
+- ✅ Test IMU data retrieval (test implemented; run when device functional)
+- ✅ Test continuous feedback mode (test implemented; can be enabled with {"T":131,"cmd":1})
+- ✅ Test OLED display commands
+- ✅ Document communication protocol
+- ✅ Create `hardware_tests/test_waveroever_uart.py`
 
 ### 1.2 Camera Validation
 - ⏳ Connect IMX219 camera
