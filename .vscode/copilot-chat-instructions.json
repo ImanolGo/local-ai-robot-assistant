@@ -29,14 +29,14 @@
       "Check for resource cleanup in tests"
     ]
   },
-  
+
   "context_files": [
     "docs/architecture.md",
     ".github/copilot-instructions.md",
     "STATUS.md",
     "docs/prd.md"
   ],
-  
+
   "ignore_patterns": [
     "build/**",
     "install/**",

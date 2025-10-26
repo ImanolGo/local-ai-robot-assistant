@@ -9,29 +9,32 @@ repos:
         args: ['--maxkb=1000']  # Prevent large model files
       - id: check-json
       - id: check-merge-conflict
-      
+
   - repo: https://github.com/psf/black
     rev: 23.3.0
     hooks:
       - id: black
         language_version: python3
         args: ['--line-length=100']
-        
+
   - repo: https://github.com/PyCQA/flake8
     rev: 6.0.0
     hooks:
       - id: flake8
         args: ['--max-line-length=100', '--ignore=E203,W503']
-        
+
   - repo: https://github.com/PyCQA/isort
     rev: 5.12.0
     hooks:
       - id: isort
         args: ['--profile', 'black', '--line-length', '100']
-        
+
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.3.0
     hooks:
       - id: mypy
-        additional_dependencies: [types-all]
+        # Removed `types-all` - it pulls an unavailable `types-pkg-resources`
+        # which causes pre-commit's venv creation to fail. If you need
+        # specific type stub packages, add them individually under
+        # `additional_dependencies`, e.g. ['types-requests'].
         args: ['--ignore-missing-imports']

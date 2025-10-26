@@ -50,7 +50,7 @@ Behavior Tree → Twist Command → Diff Drive → UART JSON → Wave Rover
   - Semantic map (objects with 3D coordinates)
   - Current mission
   - Audio state (listening/processing/speaking)
-  
+
 - **World Model**: Text representation for LLM
   ```
   Robot at (1.2, 0.5, 0°)

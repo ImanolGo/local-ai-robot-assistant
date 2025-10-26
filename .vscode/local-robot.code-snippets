@@ -60,7 +60,7 @@
     ],
     "description": "Create a ROS2 node following project conventions"
   },
-  
+
   "UART Command Sender": {
     "prefix": "uartcmd",
     "body": [
@@ -83,7 +83,7 @@
     ],
     "description": "Create UART command sender method"
   },
-  
+
   "TensorRT Inference": {
     "prefix": "trtinfer",
     "body": [
@@ -127,7 +127,7 @@
     ],
     "description": "TensorRT inference method template"
   },
-  
+
   "Unit Test Method": {
     "prefix": "testmethod",
     "body": [
@@ -147,7 +147,7 @@
     ],
     "description": "Unit test method template"
   },
-  
+
   "Error Handler": {
     "prefix": "errorhandler",
     "body": [
@@ -161,7 +161,7 @@
     ],
     "description": "Try-except block with ROS2 logging"
   },
-  
+
   "Hardware Test Script": {
     "prefix": "hwtest",
     "body": [

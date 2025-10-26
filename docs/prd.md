@@ -1,9 +1,9 @@
 # Product Requirements Document (PRD)
 ## Local Real-Time Autonomous AI Robot Assistant
 
-**Version**: 1.0  
-**Date**: 26 October 2025  
-**Platform**: NVIDIA Jetson Orin Nano Developer Kit (8GB)  
+**Version**: 1.0
+**Date**: 26 October 2025
+**Platform**: NVIDIA Jetson Orin Nano Developer Kit (8GB)
 **Project Type**: Autonomous Mobile Robot with Local AI
 
 ---

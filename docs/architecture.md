@@ -155,9 +155,9 @@ This layer handles all voice interaction using local models and USB audio hardwa
 
 #### Auditory Layer State Machine
 ```
-[Listening for Wake Word] 
+[Listening for Wake Word]
     ↓ (wake word detected)
-[Recording Command] 
+[Recording Command]
     ↓ (silence detected / timeout)
 [Processing Speech → Text]
     ↓
@@ -346,13 +346,13 @@ A lightweight web server for real-time monitoring and debugging.
 - **Language Model**: **NVIDIA NanoLLM** with quantized **LLaMA-2/Gemma** (~2-7B)
 
 #### Audio Models & Libraries
-- **Wake Word Detection**: 
+- **Wake Word Detection**:
   - **openWakeWord** (recommended) - open-source, lightweight
   - Alternative: **Porcupine** (free tier available)
-- **Speech-to-Text**: 
+- **Speech-to-Text**:
   - **Whisper Tiny/Base** (OpenAI) - TensorRT optimized
   - Alternative: **Vosk** - lightweight offline ASR
-- **Text-to-Speech**: 
+- **Text-to-Speech**:
   - **Piper** (recommended) - fast neural TTS for edge
   - Alternative: **Coqui TTS** (lightweight models)
 - **Audio I/O**: **PyAudio** or **python-sounddevice**
@@ -419,7 +419,7 @@ A lightweight web server for real-time monitoring and debugging.
 #### Model Deployment
 - **Vision**: PyTorch/ONNX → TensorRT Engine
 - **Language**: HuggingFace → Quantized Model via NanoLLM
-- **Audio**: 
+- **Audio**:
   - Wake Word: Pre-trained model (openWakeWord/Porcupine)
   - ASR: Whisper → TensorRT/ONNX optimization
   - TTS: Piper (pre-optimized) or Coqui → ONNX
@@ -517,7 +517,7 @@ robot_assistant_project/
 
 ### 7.1. USB Audio vs. Integrated Module
 **Decision**: Use USB microphone/speakers with local models instead of Yahboom module.
-**Rationale**: 
+**Rationale**:
 - Greater flexibility in model selection
 - Better quality audio models available
 - More control over the pipeline

@@ -31,7 +31,7 @@ constraints:
   memory: "8GB RAM total (7.5GB usable)"
   processing: "Real-time requirements (10+ FPS vision, <2s voice)"
   hardware: "Single Jetson device, no cloud connectivity"
-  
+
 workspace_structure:
   source_code: "src/"
   tests: "tests/ in each package, plus hardware_tests/, manual_tests/, integration_tests/"

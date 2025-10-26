@@ -63,7 +63,7 @@ import json
 class WaveRoverController:
     def __init__(self, port='/dev/ttyTHS0', baudrate=115200):
         self.serial = serial.Serial(port, baudrate, timeout=1)
-    
+
     def send_command(self, cmd_dict):
         """Send JSON command with error handling."""
         try:
@@ -96,10 +96,10 @@ class TensorRTInference:
     def __init__(self, engine_path):
         self.logger = trt.Logger(trt.Logger.WARNING)
         self.runtime = trt.Runtime(self.logger)
-        
+
         with open(engine_path, 'rb') as f:
             self.engine = self.runtime.deserialize_cuda_engine(f.read())
-        
+
         self.context = self.engine.create_execution_context()
 ```
 
@@ -113,28 +113,28 @@ from rclpy.node import Node
 class MyNode(Node):
     def __init__(self):
         super().__init__('my_node')
-        
+
         # Declare parameters
         self.declare_parameter('param_name', default_value)
-        
+
         # Initialize publishers/subscribers
         self.publisher = self.create_publisher(MsgType, 'topic', 10)
         self.subscription = self.create_subscription(
             MsgType, 'topic', self.callback, 10)
-        
+
         # Initialize timers
         self.timer = self.create_timer(0.1, self.timer_callback)
-        
+
         self.get_logger().info('Node initialized')
-    
+
     def callback(self, msg):
         """Handle incoming messages."""
         pass
-    
+
     def timer_callback(self):
         """Periodic processing."""
         pass
-    
+
     def destroy_node(self):
         """Cleanup on shutdown."""
         super().destroy_node()
@@ -167,7 +167,7 @@ async def process_audio_stream():
             print(f'Audio status: {status}')
         # Process audio
         await process_audio_chunk(indata.copy())
-    
+
     with sd.InputStream(callback=audio_callback):
         await asyncio.sleep(float('inf'))
 ```
@@ -204,19 +204,19 @@ Every function should have:
 ```python
 def function_name(param1: Type1, param2: Type2) -> ReturnType:
     """Brief description.
-    
+
     Detailed description if needed.
-    
+
     Args:
         param1: Description of param1
         param2: Description of param2
-        
+
     Returns:
         Description of return value
-        
+
     Raises:
         ExceptionType: When this exception is raised
-        
+
     Example:
         >>> result = function_name(val1, val2)
         >>> print(result)
@@ -235,23 +235,23 @@ class TestMyNode(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.node = MyNode()
-    
+
     def tearDown(self):
         """Clean up after test."""
         self.node.destroy_node()
-    
+
     def test_functionality(self):
         """Test specific functionality."""
         # Arrange
         input_data = ...
         expected = ...
-        
+
         # Act
         result = self.node.process(input_data)
-        
+
         # Assert
         self.assertEqual(result, expected)
-    
+
     @patch('module.external_dependency')
     def test_with_mock(self, mock_dep):
         """Test with mocked dependencies."""
@@ -267,14 +267,14 @@ from rclpy.executors import MultiThreadedExecutor
 def test_node_integration():
     """Test multiple nodes together."""
     rclpy.init()
-    
+
     node1 = Node1()
     node2 = Node2()
-    
+
     executor = MultiThreadedExecutor()
     executor.add_node(node1)
     executor.add_node(node2)
-    
+
     try:
         # Run test scenario
         pass

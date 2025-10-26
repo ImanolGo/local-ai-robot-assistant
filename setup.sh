@@ -52,9 +52,13 @@ fi
 
 # --- Create venv using uv ---
 echo "🐍 Setting up Python virtual environment (via uv)..."
-uv venv .venv
+if [ -d ".venv" ]; then
+    echo "ℹ️  Virtual environment .venv already exists — skipping creation."
+else
+    uv venv .venv
+fi
 echo "layout python .venv/bin/python" > .envrc
-direnv allow .
+direnv allow || true
 
 # --- Install Python project deps ---
 if [ -f pyproject.toml ]; then
