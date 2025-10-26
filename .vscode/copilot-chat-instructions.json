@@ -1,0 +1,47 @@
+{
+  "instructions": {
+    "general": [
+      "Always follow the coding standards in .github/copilot-instructions.md",
+      "Consider the 8GB RAM constraint in all suggestions",
+      "Prioritize local processing - never suggest cloud APIs",
+      "Include proper error handling for hardware interactions",
+      "Add ROS2 logging for important events"
+    ],
+    "code_review": [
+      "Check for hardware resource leaks (serial ports, GPU memory)",
+      "Verify proper ROS2 node shutdown handling",
+      "Ensure all image processing uses undistorted images",
+      "Validate UART command formats match Wave Rover spec",
+      "Check for proper type hints and docstrings"
+    ],
+    "debugging": [
+      "Consider hardware connection issues first",
+      "Check if model files are loaded correctly",
+      "Verify ROS2 topics are publishing/subscribing correctly",
+      "Look for memory leaks in long-running nodes",
+      "Check thermal throttling if performance degrades"
+    ],
+    "testing": [
+      "Mock all hardware dependencies in unit tests",
+      "Include edge cases and error conditions",
+      "Test with realistic data (distorted images, noisy audio)",
+      "Verify graceful degradation on failures",
+      "Check for resource cleanup in tests"
+    ]
+  },
+  
+  "context_files": [
+    "docs/architecture.md",
+    ".github/copilot-instructions.md",
+    "STATUS.md",
+    "docs/prd.md"
+  ],
+  
+  "ignore_patterns": [
+    "build/**",
+    "install/**",
+    "log/**",
+    "models/**/*.engine",
+    "*.pyc"
+  ]
+}

@@ -38,7 +38,6 @@ config/camera_calibration.yaml
 calibration_images/
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo

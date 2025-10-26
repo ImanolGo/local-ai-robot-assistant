@@ -1,0 +1,67 @@
+{
+  "github.copilot.enable": {
+    "*": true,
+    "yaml": true,
+    "plaintext": true,
+    "markdown": true,
+    "python": true,
+    "cpp": true
+  },
+  
+  "github.copilot.advanced": {
+    "debug.overrideEngine": "copilot",
+    "debug.testOverrideProxyUrl": "",
+    "debug.overrideProxyUrl": ""
+  },
+  
+  "github.copilot.editor.enableCodeActions": true,
+  
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    },
+    "editor.rulers": [100]
+  },
+  
+  "[cpp]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.formatOnSave": true,
+    "editor.rulers": [100]
+  },
+  
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true,
+  "python.linting.flake8Enabled": true,
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/build": true,
+    "**/install": true,
+    "**/log": true
+  },
+  
+  "files.associations": {
+    "*.launch": "xml",
+    "*.urdf": "xml",
+    "*.xacro": "xml",
+    "*.msg": "plaintext",
+    "*.srv": "plaintext",
+    "*.action": "plaintext"
+  },
+  
+  "editor.inlineSuggest.enabled": true,
+  "editor.suggestSelection": "first",
+  
+  "ros.distro": "humble",
+  
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/ros2/ros2/master/ros2.schema.json": "*.yaml"
+  }
+}
