@@ -33,8 +33,8 @@ repos:
     rev: v1.3.0
     hooks:
       - id: mypy
-        # Removed `types-all` - it pulls an unavailable `types-pkg-resources`
-        # which causes pre-commit's venv creation to fail. If you need
-        # specific type stub packages, add them individually under
-        # `additional_dependencies`, e.g. ['types-requests'].
+        # Minimal mypy hook: run only on repository python files and
+        # ignore missing imports to avoid noisy errors for third-party
+        # libs and binary packages. Repo-level mypy.ini has been removed.
+        files: '\\.py$'
         args: ['--ignore-missing-imports']

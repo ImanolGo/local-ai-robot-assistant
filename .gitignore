@@ -60,6 +60,17 @@ temp/
 *.pyc
 *.pyo
 
+# direnv / virtualenv
+.direnv/
+venv/
+.venv/
+env/
+ENV/
+
+# pip cache
+pip-wheel-metadata/
+__pypackages__/
+
 # TensorRT engines
 *.engine
 *.trt

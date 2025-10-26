@@ -10,22 +10,22 @@
 ## Phase 0: Project Setup & Environment (Week 1)
 
 ### 0.1 Repository Setup
-- [ ] Create GitHub repository with proper .gitignore
-- [ ] Initialize with README.md, LICENSE, and CONTRIBUTING.md
-- [ ] Set up branch protection rules (main/develop)
-- [ ] Create GitHub Issues templates (bug, feature, hardware)
-- [ ] Set up GitHub Projects board with kanban workflow
+- [x] Create GitHub repository with proper .gitignore
+- [x] Initialize with README.md, LICENSE
+- [x] Set up branch protection rules (main/develop)
+- [x] Create GitHub Issues templates (bug, feature, hardware)
+- [x] Set up GitHub Projects board with kanban workflow
 - [ ] Create initial repository structure
 
 ### 0.2 Development Environment
-- [ ] Flash Jetson Orin Nano with JetPack SDK
-- [ ] Install Ubuntu and configure headless mode
-- [ ] Install ROS2 Humble and verify installation
-- [ ] Set up SSH access and configure networking
-- [ ] Install development tools (git, vim/nano, tmux)
-- [ ] Configure NVMe SSD and create large swap file (16GB)
-- [ ] Install Docker and set up containerization
-- [ ] Set up VS Code remote development or similar
+- [x] Flash Jetson Orin Nano with JetPack SDK
+- [x] Install Ubuntu and configure headless mode
+- [x] Install ROS2 Humble and verify installation
+- [x] Set up SSH access and configure networking
+- [x] Install development tools (git, vim/nano, tmux)
+- [x] Configure NVMe SSD and create large swap file (16GB)
+- [x] Install Docker and set up containerization
+- [x] Set up VS Code remote development or similar
 
 ### 0.3 Hardware Inventory & Testing
 - [ ] Verify all hardware components received

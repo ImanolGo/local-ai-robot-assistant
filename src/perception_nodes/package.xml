@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>perception_nodes</name>
+  <version>0.0.0</version>
+  <description>Perception ROS2 nodes (placeholder)</description>
+  <maintainer email="you@example.com">You</maintainer>
+  <license>Apache-2.0</license>
+</package>
