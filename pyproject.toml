@@ -1,0 +1,15 @@
+[project]
+name = "local-ai-robot-assistant"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "rclpy",
+    "opencv-python",
+    "pyaudio",
+    "numpy",
+    "torch",
+    "transformers",
+]
+
+[tool.uv]
+dev-dependencies = ["pytest", "black", "ruff"]
