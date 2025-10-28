@@ -175,6 +175,32 @@ On NVIDIA Jetson Orin Nano with optimized settings:
 - Verify camera permissions: `sudo usermod -a -G video $USER`
 - Test with different resolutions
 
+**Red tint issues (IMX219 specific):**
+
+The red tint issue on the IMX219 camera when used with NVIDIA Jetson platforms is a known problem often related to improper ISP (Image Signal Processor) tuning and lens shading correction.
+
+*Common Causes:*
+- ISP tuning parameters incompatible or missing
+- Incorrect white balance
+- Lens shading or vignetting effect not calibrated
+- IR sensitivity or filter mismatches
+
+*Recommended Fixes:*
+
+Apply ISP tuning override file - Download and install the official ISP tuning parameter file for IMX219 to adjust color correction and lens shading automatically:
+
+```bash
+wget https://www.arducam.com/downloads/Jetson/Camera_overrides.tar.gz
+tar zxvf Camera_overrides.tar.gz
+sudo cp camera_overrides.isp /var/nvidia/nvcam/settings/
+sudo chmod 664 /var/nvidia/nvcam/settings/camera_overrides.isp
+sudo chown root:root /var/nvidia/nvcam/settings/camera_overrides.isp
+```
+
+After applying the ISP override file, restart your camera application or reboot the system for changes to take effect.
+
+Alternative software-based color correction is available using the `correct_color_balance.py` tool included in this directory.
+
 ## Performance Monitoring
 
 During tests, monitor system resources:

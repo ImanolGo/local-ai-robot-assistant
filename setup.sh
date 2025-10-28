@@ -50,6 +50,32 @@ sudo apt-get install -y \
 echo "🔍 Installing DeepStream SDK..."
 sudo apt-get install -y deepstream-7.1
 
+# --- Fix IMX219 red tint issue ---
+echo "🎨 Applying IMX219 camera ISP tuning fix for red tint..."
+if [ ! -f /var/nvidia/nvcam/settings/camera_overrides.isp ]; then
+    echo "   Downloading ArduCam ISP tuning parameters..."
+    cd /tmp
+    wget -q https://www.arducam.com/downloads/Jetson/Camera_overrides.tar.gz
+    if [ $? -eq 0 ]; then
+        tar zxvf Camera_overrides.tar.gz
+        if [ -f camera_overrides.isp ]; then
+            sudo mkdir -p /var/nvidia/nvcam/settings/
+            sudo cp camera_overrides.isp /var/nvidia/nvcam/settings/
+            sudo chmod 664 /var/nvidia/nvcam/settings/camera_overrides.isp
+            sudo chown root:root /var/nvidia/nvcam/settings/camera_overrides.isp
+            echo "   ✅ ISP tuning file installed successfully"
+        else
+            echo "   ⚠️  ISP tuning file not found in archive"
+        fi
+        rm -f Camera_overrides.tar.gz camera_overrides.isp
+    else
+        echo "   ⚠️  Failed to download ISP tuning file - will use software color correction"
+    fi
+    cd - > /dev/null
+else
+    echo "   ✅ ISP tuning file already exists"
+fi
+
 # --- Setup direnv ---
 echo "⚙️  Configuring direnv..."
 if ! grep -q 'direnv hook bash' ~/.bashrc; then
