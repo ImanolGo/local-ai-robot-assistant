@@ -37,6 +37,19 @@ echo "🎧 Installing audio + vision dependencies..."
 sudo apt-get install -y \
     portaudio19-dev alsa-utils libopencv-dev python3-opencv
 
+# --- Install GStreamer and PyGObject for DeepStream ---
+echo "🎬 Installing GStreamer and PyGObject dependencies..."
+sudo apt-get install -y \
+    python3-gi python3-gi-cairo \
+    gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 \
+    gstreamer1.0-tools gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav
+
+# --- Install DeepStream ---
+echo "🔍 Installing DeepStream SDK..."
+sudo apt-get install -y deepstream-7.1
+
 # --- Setup direnv ---
 echo "⚙️  Configuring direnv..."
 if ! grep -q 'direnv hook bash' ~/.bashrc; then
@@ -53,10 +66,10 @@ fi
 # --- Create venv using uv ---
 echo "🐍 Setting up Python virtual environment (via uv)..."
 if [ -d ".venv" ]; then
-    echo "ℹ️  Virtual environment .venv already exists — skipping creation."
-else
-    uv venv .venv
+    echo "ℹ️  Virtual environment .venv already exists — removing and recreating with system site packages..."
+    rm -rf .venv
 fi
+uv venv .venv --system-site-packages
 
 # --- Setup .envrc correctly ---
 echo "⚙️  Setting up .envrc..."
@@ -64,6 +77,10 @@ cat > .envrc << 'EOF'
 #!/usr/bin/env bash
 # Activate the virtual environment
 source .venv/bin/activate
+
+# Ensure GStreamer and GObject introspection work properly
+export GI_TYPELIB_PATH=/usr/lib/aarch64-linux-gnu/girepository-1.0:/usr/lib/girepository-1.0
+export GST_PLUGIN_PATH=/usr/lib/aarch64-linux-gnu/gstreamer-1.0
 EOF
 direnv allow || true
 

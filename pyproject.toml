@@ -10,6 +10,7 @@ dependencies = [
     "transformers",
     "pyaudio",
     "pyserial",
+    "pyds",
 ]
 
 [project.optional-dependencies]

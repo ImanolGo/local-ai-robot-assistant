@@ -74,22 +74,24 @@
 ```
 
 ### 1.2 Camera Validation
-- [ ] Connect IMX219 camera to MIPI CSI-2 port
-- [ ] Verify camera detection (`ls /dev/video*`)
-- [ ] Test camera capture with `nvgstcapture-1.0`
-- [ ] Capture test images and verify resolution
-- [ ] Test different resolutions and frame rates
-- [ ] Document optimal camera settings
-- [ ] Create `hardware_tests/test_camera_capture.py`
+- [x] Connect IMX219 camera to MIPI CSI-2 port
+- [x] Verify camera detection (`ls /dev/video*`)
+- [x] Test camera capture with `nvgstcapture-1.0`
+- [x] Capture test images and verify resolution using DeepStream
+- [x] Test different resolutions and frame rates with hardware acceleration
+- [x] Document optimal camera settings for DeepStream pipeline
+- [x] Create `hardware_tests/test_camera_capture.py` (DeepStream-based)
 
 **Test Script Requirements**:
 ```python
 # hardware_tests/test_camera_capture.py
-- Test camera initialization
-- Test frame capture at various resolutions
-- Test frame rate measurement
+- Test DeepStream pipeline initialization
+- Test hardware-accelerated frame capture at various resolutions
+- Test frame rate measurement with NVMM memory
 - Save sample images for validation
 - Test continuous capture for 5 minutes
+- Benchmark GPU memory usage and performance
+- Test CSI camera with nvarguscamerasrc element
 ```
 
 ### 1.3 Camera Calibration (Critical)
@@ -206,35 +208,37 @@
 - Test error handling
 ```
 
-### 2.3 Camera Pipeline
+### 2.3 Camera Pipeline (DeepStream-Accelerated)
 - [ ] Implement `camera_driver.py`
-  - [ ] GStreamer pipeline setup
+  - [ ] DeepStream pipeline setup with nvarguscamerasrc
   - [ ] ROS2 node structure
-  - [ ] Publish raw images to `/camera/raw`
-  - [ ] Implement frame rate control
+  - [ ] Publish raw images to `/camera/raw` (using NVMM buffers)
+  - [ ] Implement hardware-accelerated frame rate control
   - [ ] Add camera info publisher
+  - [ ] Utilize GPU memory for zero-copy operations
 - [ ] Implement `image_undistort_node.py`
   - [ ] Load calibration from YAML
   - [ ] Subscribe to `/camera/raw`
-  - [ ] Apply undistortion transform
+  - [ ] Apply GPU-accelerated undistortion with DeepStream
   - [ ] Publish to `/camera/undistorted`
-  - [ ] Add performance monitoring
+  - [ ] Add performance monitoring for GPU usage
 - [ ] Create unit tests
 - [ ] Create integration test
-- [ ] Benchmark processing latency
+- [ ] Benchmark processing latency and GPU memory usage
 
 **Tests Required**:
 ```python
 # tests/test_camera_driver.py
-- Test camera initialization
-- Test frame publishing
-- Test frame rate consistency
+- Test DeepStream pipeline initialization
+- Test hardware-accelerated frame publishing
+- Test frame rate consistency with NVMM memory
+- Test GPU memory usage optimization
 
 # tests/test_image_undistort.py
 - Test calibration loading
-- Test undistortion algorithm
-- Test output image quality
-- Benchmark performance
+- Test GPU-accelerated undistortion algorithm
+- Test output image quality with DeepStream
+- Benchmark performance vs CPU implementation
 ```
 
 ### 2.4 Configuration Management
