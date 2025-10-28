@@ -57,7 +57,14 @@ if [ -d ".venv" ]; then
 else
     uv venv .venv
 fi
-echo "layout python .venv/bin/python" > .envrc
+
+# --- Setup .envrc correctly ---
+echo "⚙️  Setting up .envrc..."
+cat > .envrc << 'EOF'
+#!/usr/bin/env bash
+# Activate the virtual environment
+source .venv/bin/activate
+EOF
 direnv allow || true
 
 # --- Install Python project deps ---
