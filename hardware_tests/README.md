@@ -135,14 +135,14 @@ The calibration pattern is included in the repository at `hardware_tests/pattern
 **2. Run Camera Calibration:**
 
 ```bash
-# Basic calibration with default settings (9x6 checkerboard, 25 images)
+# Basic calibration with default settings (9x6 checkerboard, 30 images)
 python3 hardware_tests/calibrate_camera.py
 
 # Custom checkerboard configuration (if using different pattern)
 python3 hardware_tests/calibrate_camera.py --cols 7 --rows 5 --square-size 30.0
 
 # Capture more images for better accuracy
-python3 hardware_tests/calibrate_camera.py --num-images 30
+python3 hardware_tests/calibrate_camera.py --num-images 40
 
 # Use different camera device
 python3 hardware_tests/calibrate_camera.py --device 1
@@ -165,6 +165,7 @@ The script will guide you through capturing calibration images. For best results
 - **Ensure good lighting**: avoid shadows on checkerboard
 - **Keep checkerboard flat**: no bending or warping
 - **Wait for "DETECTED ✓"** before pressing ENTER
+- **⚠️ NEW: Quality checking**: Script will warn if checkerboard is too small/far - move closer for better coverage
 
 **Audio feedback** (if USB speakers connected):
 
@@ -188,8 +189,14 @@ Test and validate camera calibration by comparing original vs. undistorted image
 **Usage:**
 
 ```bash
-# Test with live camera (recommended first test)
+# Test with live camera (recommended first test) - balanced cropping
 python3 hardware_tests/test_undistortion.py
+
+# Test with minimal cropping (keeps more image area, may have black borders)
+python3 hardware_tests/test_undistortion.py --alpha 1.0
+
+# Test with maximum cropping (best quality, less image area)
+python3 hardware_tests/test_undistortion.py --alpha 0.0
 
 # Test on existing calibration images
 python3 hardware_tests/test_undistortion.py --mode existing
@@ -208,13 +215,21 @@ python3 hardware_tests/test_undistortion.py --input-dir my_images/ --output-dir 
 
 After running undistortion tests, review the generated images:
 
-- **`*_comparison.jpg`**: Side-by-side original vs. corrected
+- **`*_comparison.jpg`**: Side-by-side original vs. corrected (default alpha=0.5)
 - **`*_grid_comparison.jpg`**: Grid overlays showing line straightness
+- **`*_alpha_0_0.jpg`**: Maximum cropping version (best quality, smallest area)
+- **`*_alpha_1_0.jpg`**: Minimal cropping version (largest area, may have borders)
 - **Look for**:
   - ✅ Straight lines appear straighter in undistorted images
   - ✅ Reduced barrel/pincushion distortion at edges
   - ✅ Grid lines more parallel and perpendicular
   - ✅ Better geometric accuracy overall
+
+**Alpha Parameter Guide:**
+
+- **α = 0.0**: Maximum crop, best quality, smallest output image
+- **α = 0.5**: Balanced (default), good compromise
+- **α = 1.0**: Minimal crop, largest output, may have black borders
 
 **Quality Assessment:**
 
