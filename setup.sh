@@ -37,6 +37,9 @@ echo "🎧 Installing audio + vision dependencies..."
 sudo apt-get install -y \
     portaudio19-dev alsa-utils libopencv-dev python3-opencv
 
+# Optional: Install audio feedback tools
+sudo apt-get install -y espeak beep
+
 # --- Install GStreamer and PyGObject for DeepStream ---
 echo "🎬 Installing GStreamer and PyGObject dependencies..."
 sudo apt-get install -y \

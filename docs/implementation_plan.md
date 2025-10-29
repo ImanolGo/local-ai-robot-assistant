@@ -95,15 +95,15 @@
 ```
 
 ### 1.3 Camera Calibration (Critical)
-- [ ] Print checkerboard calibration pattern
-- [ ] Capture 20-30 calibration images
-- [ ] Run OpenCV calibration script
-- [ ] Generate camera intrinsics matrix
-- [ ] Generate distortion coefficients
-- [ ] Validate calibration with test images
-- [ ] Save calibration to `config/camera_calibration.yaml`
-- [ ] Create `hardware_tests/calibrate_camera.py`
-- [ ] Create `hardware_tests/test_undistortion.py`
+- [x] Print checkerboard calibration pattern
+- [x] Capture 20-30 calibration images
+- [x] Run OpenCV calibration script
+- [x] Generate camera intrinsics matrix
+- [x] Generate distortion coefficients
+- [x] Validate calibration with test images
+- [x] Save calibration to `config/camera_calibration.yaml`
+- [x] Create `hardware_tests/calibrate_camera.py`
+- [x] Create `hardware_tests/test_undistortion.py`
 
 **Test Script Requirements**:
 ```python

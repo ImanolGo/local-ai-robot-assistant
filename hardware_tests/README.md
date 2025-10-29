@@ -103,18 +103,146 @@ python3 hardware_tests/test_waveroever_uart.py --port /dev/ttyUSB0 --baud 9600
 - Python serial library (`pyserial`)
 - Proper UART permissions
 
+## Camera Calibration (Critical for Fisheye Camera)
+
+### calibrate_camera.py
+
+**CRITICAL for fisheye camera setup** - DeepStream-based camera calibration for IMX219 fisheye distortion correction.
+
+**Features:**
+
+- Hardware-accelerated capture using NVIDIA DeepStream
+- Interactive calibration with audio guidance for headless operation
+- Automatic USB speaker detection for audio feedback
+- Checkerboard detection with subpixel accuracy
+- Real-time preview and capture guidance
+- Comprehensive calibration quality validation
+- Saves calibration parameters to `config/camera_calibration.yaml`
+
+**Step-by-Step Calibration Process:**
+
+**1. Download and Print Checkerboard Pattern:**
+
+```bash
+# Download official OpenCV calibration pattern
+mkdir -p hardware_tests/calibration_pattern
+cd hardware_tests/calibration_pattern
+wget https://github.com/opencv/opencv/raw/master/doc/pattern.png
+```
+
+**Print the pattern:**
+
+- Print `pattern.png` on A4 paper at **actual size** (100% scale, no fit-to-page)
+- Use high-quality laser printer for sharp edges
+- Mount on rigid surface (cardboard/clipboard) to prevent bending
+- Measure actual square size with ruler (should be ~25mm for default settings)
+
+**2. Run Camera Calibration:**
+
+```bash
+# Basic calibration with default settings (9x6 checkerboard, 25 images)
+python3 hardware_tests/calibrate_camera.py
+
+# Custom checkerboard configuration (if using different pattern)
+python3 hardware_tests/calibrate_camera.py --cols 7 --rows 5 --square-size 30.0
+
+# Capture more images for better accuracy
+python3 hardware_tests/calibrate_camera.py --num-images 30
+
+# Use different camera device
+python3 hardware_tests/calibrate_camera.py --device 1
+
+# Verbose output for debugging
+python3 hardware_tests/calibrate_camera.py --verbose
+```
+
+**3. Calibration Capture Guidelines:**
+
+The script will guide you through capturing calibration images. For best results:
+
+- **Cover all image areas**: center, corners, edges
+- **Vary distances**: close (30cm), medium (60cm), far (100cm+)
+- **Try different angles**:
+  - Straight on (perpendicular)
+  - Tilted left/right (±30°)
+  - Tilted up/down (±30°)
+  - Rotated views (±45°)
+- **Ensure good lighting**: avoid shadows on checkerboard
+- **Keep checkerboard flat**: no bending or warping
+- **Wait for "DETECTED ✓"** before pressing ENTER
+
+**Audio feedback** (if USB speakers connected):
+
+- Beep when checkerboard detected
+- Voice prompts for capture progress
+- Quality notifications
+
+### test_undistortion.py
+
+Test and validate camera calibration by comparing original vs. undistorted images.
+
+**Features:**
+
+- Hardware-accelerated undistortion using DeepStream
+- Live camera testing mode
+- Batch processing of calibration images
+- Side-by-side visual comparisons
+- Grid overlay for distortion assessment
+- Comprehensive quality analysis and reporting
+
+**Usage:**
+
+```bash
+# Test with live camera (recommended first test)
+python3 hardware_tests/test_undistortion.py
+
+# Test on existing calibration images
+python3 hardware_tests/test_undistortion.py --mode existing
+
+# Test both existing and live images
+python3 hardware_tests/test_undistortion.py --mode both
+
+# Use custom calibration file
+python3 hardware_tests/test_undistortion.py --calibration config/custom_calibration.yaml
+
+# Custom input/output directories
+python3 hardware_tests/test_undistortion.py --input-dir my_images/ --output-dir results/
+```
+
+**Validation Guidelines:**
+
+After running undistortion tests, review the generated images:
+
+- **`*_comparison.jpg`**: Side-by-side original vs. corrected
+- **`*_grid_comparison.jpg`**: Grid overlays showing line straightness
+- **Look for**:
+  - ✅ Straight lines appear straighter in undistorted images
+  - ✅ Reduced barrel/pincushion distortion at edges
+  - ✅ Grid lines more parallel and perpendicular
+  - ✅ Better geometric accuracy overall
+
+**Quality Assessment:**
+
+- **Good calibration**: Reprojection error < 0.5 pixels
+- **Acceptable**: Reprojection error < 1.0 pixels
+- **Poor**: Reprojection error > 1.0 pixels (recalibrate recommended)
+
 ### analyze_camera_images.py
+
 Analysis tool for captured camera images to compare quality and settings.
 
 **Usage:**
+
 ```bash
 python3 hardware_tests/analyze_camera_images.py --dir test_images
 ```
 
 ### correct_color_balance.py
+
 Post-processing tool to correct color balance and reduce red tint in camera images.
 
 **Usage:**
+
 ```bash
 # Process single image
 python3 hardware_tests/correct_color_balance.py image.jpg
@@ -131,21 +259,25 @@ python3 hardware_tests/correct_color_balance.py image.jpg --red-gain 0.8 --blue-
 Before running camera tests, ensure:
 
 1. DeepStream SDK is installed:
+
    ```bash
    sudo apt-get install deepstream-7.1
    ```
 
 2. Python dependencies are installed:
+
    ```bash
    pip install pyds opencv-python numpy
    ```
 
 3. Camera is connected and detected:
+
    ```bash
    ls /dev/video*
    ```
 
 4. Test with GStreamer directly:
+
    ```bash
    nvgstcapture-1.0 --camsrc=0 --cap-dev-node=0
    ```
@@ -154,7 +286,7 @@ Before running camera tests, ensure:
 
 Test results and sample images are saved to the specified output directory (default: `test_images/`).
 
-### Expected Performance
+## Camera Performance Benchmarks
 
 ### Expected Performance
 
@@ -172,22 +304,26 @@ On NVIDIA Jetson Orin Nano with DeepStream SDK 7.1:
 ### Troubleshooting
 
 **Camera not detected:**
+
 - Check physical connections
 - Verify with `dmesg | grep imx219`
 - Test with `nvgstcapture-1.0`
 
 **DeepStream import errors:**
+
 - Ensure DeepStream SDK is installed
 - Check that pyds is available: `python3 -c "import pyds"`
 - Verify GStreamer installation: `gst-inspect-1.0 nvarguscamerasrc`
 
 **Low FPS or dropped frames:**
+
 - Check system load: `htop`
 - Monitor GPU usage: `tegrastats`
 - Ensure adequate cooling
 - Check memory usage: `free -h`
 
 **Pipeline errors:**
+
 - Check GStreamer logs for detailed error messages
 - Verify camera permissions: `sudo usermod -a -G video $USER`
 - Test with different resolutions
@@ -197,6 +333,7 @@ On NVIDIA Jetson Orin Nano with DeepStream SDK 7.1:
 The red tint issue on the IMX219 camera when used with NVIDIA Jetson platforms is a known problem often related to improper ISP (Image Signal Processor) tuning and lens shading correction.
 
 *Common Causes:*
+
 - ISP tuning parameters incompatible or missing
 - Incorrect white balance
 - Lens shading or vignetting effect not calibrated
