@@ -121,18 +121,13 @@ python3 hardware_tests/test_waveroever_uart.py --port /dev/ttyUSB0 --baud 9600
 
 **Step-by-Step Calibration Process:**
 
-**1. Download and Print Checkerboard Pattern:**
+**1. Print Checkerboard Pattern:**
 
-```bash
-# Download official OpenCV calibration pattern
-mkdir -p hardware_tests/calibration_pattern
-cd hardware_tests/calibration_pattern
-wget https://github.com/opencv/opencv/raw/master/doc/pattern.png
-```
+The calibration pattern is included in the repository at `hardware_tests/pattern.png`. This is a 9x6 checkerboard with 25mm square size (OpenCV standard pattern).
 
 **Print the pattern:**
 
-- Print `pattern.png` on A4 paper at **actual size** (100% scale, no fit-to-page)
+- Print `hardware_tests/pattern.png` on A4 paper at **actual size** (100% scale, no fit-to-page)
 - Use high-quality laser printer for sharp edges
 - Mount on rigid surface (cardboard/clipboard) to prevent bending
 - Measure actual square size with ruler (should be ~25mm for default settings)
