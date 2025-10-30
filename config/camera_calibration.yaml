@@ -1,0 +1,27 @@
+calibration_date: '2025-10-30T21:20:43.195898'
+camera_matrix:
+- - 786.2448213997819
+  - 0.0
+  - 791.7630547023819
+- - 0.0
+  - 787.6676777532842
+  - 591.9786927680145
+- - 0.0
+  - 0.0
+  - 1.0
+capture_resolution: 1640x1232
+checkerboard_size:
+- 9
+- 6
+device_id: 0
+distortion_coefficients:
+- - -0.3128451050076575
+  - 0.10052163076212811
+  - 0.0003494436258257701
+  - 0.00011202984126890973
+  - -0.014456351018409981
+image_height: 1232
+image_width: 1640
+num_images: 30
+pipeline_type: DeepStream_nvarguscamerasrc
+square_size_mm: 25.0

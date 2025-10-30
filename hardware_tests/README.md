@@ -11,10 +11,49 @@ Quick verification that DeepStream SDK and pyds are properly installed.
 python3 hardware_tests/test_deepstream_install.py
 ```
 
+### test_audio_devices.py
+
+Comprehensive USB audio device testing for microphones and speakers.
+
+**Features:**
+
+- USB microphone and speaker detection via ALSA
+- Audio recording functionality testing
+- Noise floor measurement (typically -70 to -75 dB)
+- Sample rate compatibility testing (16kHz, 22kHz, 44.1kHz, 48kHz)
+- Stereo playback capability validation
+- Simultaneous record/playback testing
+- Automatic temporary file cleanup
+
+**Usage:**
+
+```bash
+# Run complete audio device test suite
+python3 hardware_tests/test_audio_devices.py
+
+# Run with verbose debugging
+python3 hardware_tests/test_audio_devices.py --verbose
+
+# Run tests and auto-cleanup temp files
+python3 hardware_tests/test_audio_devices.py --cleanup
+```
+
+**Optimal Audio Settings Discovered:**
+
+- **Microphone**: `plughw:1,0` (USB PnP Sound Device)
+  - Best for Speech Recognition: 16 kHz, Mono, 16-bit PCM
+  - Best for General Audio: 44.1 kHz, Mono, 16-bit PCM
+  - Measured Noise Floor: ~-73 dB
+- **Speaker**: `hw:0,0` (UACDemoV1.0)
+  - Native Format: 48 kHz, Stereo, 16-bit PCM
+  - Use `plughw:0,0` for automatic sample rate conversion
+
 ### test_camera_capture.py
+
 Comprehensive camera testing using NVIDIA DeepStream SDK for hardware-accelerated processing.
 
 **Features:**
+
 - Tests all 6 sensor modes (0-5) with different resolutions and FOV settings
 - Hardware-accelerated capture using nvarguscamerasrc and NVMM buffers
 - Performance measurement with latency and FPS analysis

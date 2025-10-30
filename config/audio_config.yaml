@@ -1,0 +1,88 @@
+# Audio Configuration for Local AI Robot Assistant
+# Optimal settings discovered through hardware validation testing
+
+# USB Microphone Configuration (USB PnP Sound Device)
+microphone:
+  device: "plughw:1,0"  # Use plug plugin for sample rate conversion
+  card_id: 1
+  device_id: 0
+  name: "USB PnP Sound Device"
+
+  # Optimal formats
+  speech_recognition:
+    sample_rate: 16000
+    channels: 1
+    format: "S16_LE"
+
+  general_recording:
+    sample_rate: 44100
+    channels: 1
+    format: "S16_LE"
+
+  # Performance characteristics
+  measured_noise_floor_db: -73.5  # Very good noise performance
+  supported_sample_rates: [16000, 22050, 44100, 48000]
+
+  # Recording parameters for low latency
+  chunk_size: 1024
+  buffer_size: 4096
+
+# USB Speaker Configuration (UACDemoV1.0)
+speaker:
+  device: "hw:0,0"  # Direct hardware access for best performance
+  device_plug: "plughw:0,0"  # Use for sample rate conversion if needed
+  card_id: 0
+  device_id: 0
+  name: "UACDemoV1.0"
+
+  # Native format (best performance)
+  native_format:
+    sample_rate: 48000
+    channels: 2  # Stereo required
+    format: "S16_LE"
+
+  # Playback parameters
+  chunk_size: 1024
+  buffer_size: 4096
+
+  # Volume control
+  volume_control_available: false  # System-wide volume control only
+
+# Audio Pipeline Settings
+pipeline:
+  # Wake word detection
+  wake_word:
+    sample_rate: 16000
+    channels: 1
+    chunk_duration_ms: 30  # 30ms chunks for real-time processing
+
+  # Speech-to-text (Whisper)
+  speech_to_text:
+    sample_rate: 16000
+    channels: 1
+    max_recording_duration: 10  # seconds
+    silence_threshold_db: -50
+
+  # Text-to-speech (Piper)
+  text_to_speech:
+    sample_rate: 48000  # Match speaker native rate
+    channels: 2  # Stereo output
+
+  # Simultaneous record/playback capability
+  full_duplex_supported: true
+  estimated_latency_ms: 50  # Typical USB audio latency
+
+# Hardware Requirements
+requirements:
+  - "USB microphone with ALSA compatibility"
+  - "USB speakers/headphones with stereo support"
+  - "ALSA utilities (arecord, aplay) installed"
+  - "PyAudio library for Python audio processing"
+
+# Notes
+notes:
+  - "Use 'plughw' devices for automatic sample rate conversion"
+  - "Use 'hw' devices for direct hardware access and best performance"
+  - "Microphone supports mono recording at various sample rates"
+  - "Speaker requires stereo input and works best at 48kHz"
+  - "Measured noise floor of -73.5dB is excellent for voice applications"

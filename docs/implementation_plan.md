@@ -121,17 +121,17 @@
 ```
 
 ### 1.4 USB Audio Validation
-- [ ] Connect USB microphone
-- [ ] Verify microphone detection (`arecord -l`)
-- [ ] Test audio recording with `arecord`
-- [ ] Measure microphone noise floor
-- [ ] Test various sample rates (16kHz, 44.1kHz)
-- [ ] Connect USB speakers
-- [ ] Verify speaker detection (`aplay -l`)
-- [ ] Test audio playback with `aplay`
-- [ ] Test speaker volume range
-- [ ] Document optimal audio device settings
-- [ ] Create `hardware_tests/test_audio_devices.py`
+- [x] Connect USB microphone
+- [x] Verify microphone detection (`arecord -l`)
+- [x] Test audio recording with `arecord`
+- [x] Measure microphone noise floor
+- [x] Test various sample rates (16kHz, 44.1kHz)
+- [x] Connect USB speakers
+- [x] Verify speaker detection (`aplay -l`)
+- [x] Test audio playback with `aplay`
+- [x] Test speaker volume range
+- [x] Document optimal audio device settings
+- [x] Create `hardware_tests/test_audio_devices.py`
 
 **Test Script Requirements**:
 ```python
