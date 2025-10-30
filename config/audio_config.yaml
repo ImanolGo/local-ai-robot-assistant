@@ -23,6 +23,15 @@ microphone:
   measured_noise_floor_db: -73.5  # Very good noise performance
   supported_sample_rates: [16000, 22050, 44100, 48000]
 
+  # Volume control
+  volume_control:
+    available: true
+    control_name: "Mic"
+    card_command: "amixer -c 1"
+    current_level: "0%"  # Default capture level
+    range: "0-16"  # Hardware range
+    description: "Microphone gain control"
+
   # Recording parameters for low latency
   chunk_size: 1024
   buffer_size: 4096
@@ -46,7 +55,15 @@ speaker:
   buffer_size: 4096
 
   # Volume control
-  volume_control_available: false  # System-wide volume control only
+  volume_control:
+    available: true
+    control_name: "PCM"
+    card_command: "amixer -c 0"
+    current_level: "30%"  # Default playback level
+    range: "0-147"  # Hardware range
+    db_range: "-infinity to 0dB"
+    channels: "Front Left/Right (stereo)"
+    description: "Speaker volume control"
 
 # Audio Pipeline Settings
 pipeline:
@@ -79,6 +96,28 @@ requirements:
   - "ALSA utilities (arecord, aplay) installed"
   - "PyAudio library for Python audio processing"
 
+# Volume Control Commands
+volume_control_commands:
+  speaker:
+    get_volume: "amixer -c 0 get PCM"
+    set_volume: "amixer -c 0 set PCM <percentage>%"
+    mute: "amixer -c 0 set PCM mute"
+    unmute: "amixer -c 0 set PCM unmute"
+    examples:
+      - "amixer -c 0 set PCM 75%  # Set to 75% volume"
+      - "amixer -c 0 set PCM 50%  # Set to 50% volume"
+      - "amixer -c 0 set PCM 25%  # Set to 25% volume"
+
+  microphone:
+    get_volume: "amixer -c 1 get Mic"
+    set_volume: "amixer -c 1 set Mic <percentage>%"
+    mute: "amixer -c 1 set Mic mute"
+    unmute: "amixer -c 1 set Mic unmute"
+    examples:
+      - "amixer -c 1 set Mic 50%  # Set microphone gain to 50%"
+      - "amixer -c 1 set Mic 25%  # Set microphone gain to 25%"
+      - "amixer -c 1 set Mic 0%   # Minimum gain (no amplification)"
+
 # Notes
 notes:
   - "Use 'plughw' devices for automatic sample rate conversion"
@@ -86,3 +125,8 @@ notes:
   - "Microphone supports mono recording at various sample rates"
   - "Speaker requires stereo input and works best at 48kHz"
   - "Measured noise floor of -73.5dB is excellent for voice applications"
+  - "Volume controls are device-specific, not system-wide Master controls"
+  - "Speaker volume: 'amixer -c 0 set PCM <percentage>' (e.g., 50%)"
+  - "Microphone gain: 'amixer -c 1 set Mic <percentage>' (e.g., 25%)"
+  - "Both devices support simultaneous record/playback (full duplex)"
+  - "Estimated audio latency: ~50ms for typical USB audio operation"
