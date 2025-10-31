@@ -1,0 +1,76 @@
+# Colcon build configuration for Local AI Robot Assistant
+# Optimized for NVIDIA Jetson Orin Nano (8GB RAM, 6-core ARM CPU)
+
+build:
+  # Use parallel jobs but limit to avoid memory issues on Jetson
+  parallel-workers: 4
+
+  # Enable compiler optimizations for better performance
+  cmake-args:
+    - "-DCMAKE_BUILD_TYPE=Release"
+    - "-DCMAKE_CXX_FLAGS=-O2 -march=native"
+    - "-DCMAKE_C_FLAGS=-O2 -march=native"
+
+  # Python optimization flags
+  ament-cmake-args:
+    - "-DPYTHON_EXECUTABLE=/usr/bin/python3"
+
+  # Reduce memory usage during compilation
+  cmake-target: "all"
+
+  # Install packages to src/install for easier access
+  install-base: "src/install"
+
+  # Build logs location
+  log-base: "src/log"
+
+  # Build artifacts location
+  build-base: "src/build"
+
+test:
+  # Parallel test execution (conservative for Jetson)
+  parallel-workers: 2
+
+  # Test timeout (some AI model tests may take longer)
+  timeout: 300
+
+  # Continue testing even if some tests fail
+  abort-on-error: false
+
+# Package-specific configurations
+packages-select: []
+packages-skip: []
+
+# Symlink install for faster development iteration
+symlink-install: true
+
+# Event handlers for build feedback
+event-handlers:
+  - "console_direct+"
+  - "console_cohesion+"
+
+# Mixins for common build configurations
+mixins:
+  # Debug build configuration
+  debug:
+    build:
+      cmake-args:
+        - "-DCMAKE_BUILD_TYPE=Debug"
+        - "-DCMAKE_CXX_FLAGS=-g -O0"
+        - "-DCMAKE_C_FLAGS=-g -O0"
+
+  # Performance profiling build
+  profile:
+    build:
+      cmake-args:
+        - "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+        - "-DCMAKE_CXX_FLAGS=-O2 -g -march=native"
+        - "-DCMAKE_C_FLAGS=-O2 -g -march=native"
+
+  # Memory-constrained build (for low memory situations)
+  low-memory:
+    build:
+      parallel-workers: 2
+      cmake-args:
+        - "-DCMAKE_BUILD_TYPE=Release"
+        - "-DCMAKE_CXX_FLAGS=-O1 -march=native"

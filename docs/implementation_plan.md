@@ -169,7 +169,7 @@
 - [x] Set up CMakeLists.txt or setup.py files
 - [x] Create custom message definitions
 - [x] Build workspace and verify
-- [ ] Set up colcon build configuration
+- [x] Set up colcon build configuration
 - [x] Create launch file directory structure
 
 ### 2.2 UART Communication Node
