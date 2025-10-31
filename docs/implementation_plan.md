@@ -145,12 +145,12 @@
 ```
 
 ### 1.5 Power & Thermal Testing
-- [ ] Test Jetson power consumption under idle
-- [ ] Test power consumption under full load
-- [ ] Monitor temperature during extended operation
-- [ ] Test thermal throttling behavior
-- [ ] Verify cooling solution adequacy
-- [ ] Create `hardware_tests/test_thermal_power.py`
+- [x] Test Jetson power consumption under idle
+- [x] Test power consumption under full load
+- [x] Monitor temperature during extended operation
+- [x] Test thermal throttling behavior
+- [x] Verify cooling solution adequacy
+- [x] Create `hardware_tests/test_thermal_power.py`
 
 **Deliverables**:
 - All hardware validated
