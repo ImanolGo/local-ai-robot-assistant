@@ -1,0 +1,15 @@
+# Set operational mode for various subsystems
+
+string MODE_MANUAL = "manual"
+string MODE_AUTONOMOUS = "autonomous"
+string MODE_IDLE = "idle"
+string MODE_CALIBRATION = "calibration"
+string MODE_EMERGENCY = "emergency"
+
+string subsystem              # Subsystem to configure (e.g., "navigation", "perception", "audio")
+string mode                   # Mode to set (one of above constants)
+string[] parameters           # Additional mode parameters
+---
+bool success                  # Whether mode change was successful
+string current_mode          # Current mode after change attempt
+string message               # Status message

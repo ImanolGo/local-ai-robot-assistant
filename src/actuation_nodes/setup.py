@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = "perception_nodes"
+package_name = "actuation_nodes"
 
 setup(
     name=package_name,
@@ -14,16 +14,12 @@ setup(
     zip_safe=True,
     maintainer="Local AI Robot Team",
     maintainer_email="developer@local-ai-robot.com",
-    description="Computer vision and perception nodes for object detection, depth estimation, and\
-          camera processing",
+    description="Motor control and actuation nodes for UART communication with Wave Rover chassis",
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "camera_driver = perception_nodes.camera_driver:main",
-            "image_undistort_node = perception_nodes.image_undistort_node:main",
-            "object_detector = perception_nodes.object_detector:main",
-            "depth_estimator = perception_nodes.depth_estimator:main",
+            "uart_motor_controller = actuation_nodes.uart_motor_controller:main",
         ],
     },
 )

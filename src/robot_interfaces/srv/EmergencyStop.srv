@@ -1,0 +1,7 @@
+# Emergency stop service for immediate motor shutdown
+
+bool enable_stop              # True to activate emergency stop, False to deactivate
+string reason                 # Reason for emergency stop (optional)
+---
+bool success                  # Whether operation was successful
+string message                # Status message

@@ -1,0 +1,13 @@
+# Query service for cognitive reasoning
+
+string query_text            # User's text query/command
+string[] context_objects     # List of visible objects for context
+geometry_msgs/Pose robot_pose # Current robot pose
+string[] available_actions   # List of actions robot can currently perform
+string mission_state         # Current mission/task state
+---
+bool requires_llm            # Whether LLM processing is needed
+CognitiveCommand command     # Generated command (if any)
+string response_text         # Text response for user
+float32 confidence          # Confidence in the interpretation (0.0-1.0)
+string reasoning            # Explanation of reasoning (for debugging)

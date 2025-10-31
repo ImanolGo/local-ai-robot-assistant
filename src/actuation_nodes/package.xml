@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>perception_nodes</name>
+  <name>actuation_nodes</name>
   <version>0.1.0</version>
-  <description>Computer vision and perception nodes for object detection, depth estimation, and camera processing</description>
+  <description>Motor control and actuation nodes for UART communication with Wave Rover chassis</description>
 
   <maintainer email="developer@local-ai-robot.com">Local AI Robot Team</maintainer>
   <license>Apache-2.0</license>
@@ -12,23 +12,19 @@
   <!-- Core ROS dependencies -->
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
-  <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>cv_bridge</depend>
-  <depend>image_transport</depend>
+  <depend>nav_msgs</depend>
 
   <!-- Custom interfaces -->
   <depend>robot_interfaces</depend>
 
-  <!-- Computer Vision dependencies -->
-  <build_depend>python3-opencv</build_depend>
-  <build_depend>python3-numpy</build_depend>
-  <exec_depend>python3-opencv</exec_depend>
-  <exec_depend>python3-numpy</exec_depend>
+  <!-- Serial communication -->
+  <build_depend>python3-serial</build_depend>
+  <exec_depend>python3-serial</exec_depend>
 
-  <!-- For TensorRT and CUDA -->
-  <build_depend>python3-pycuda</build_depend>
-  <exec_depend>python3-pycuda</exec_depend>
+  <!-- Math and utilities -->
+  <build_depend>python3-numpy</build_depend>
+  <exec_depend>python3-numpy</exec_depend>
 
   <!-- Testing -->
   <test_depend>ament_copyright</test_depend>
