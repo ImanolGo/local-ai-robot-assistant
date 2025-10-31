@@ -9,8 +9,9 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
-        ("share/" + package_name + "/static", ["web_interface_nodes/static/*"]),
-        ("share/" + package_name + "/templates", ["web_interface_nodes/templates/*"]),
+        # Static files and templates will be added when web interface is implemented
+        # ("share/" + package_name + "/static", ["web_interface_nodes/static/*"]),
+        # ("share/" + package_name + "/templates", ["web_interface_nodes/templates/*"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
