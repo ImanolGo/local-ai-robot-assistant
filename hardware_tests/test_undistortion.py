@@ -784,7 +784,7 @@ def main() -> None:
     parser.add_argument(
         "--alpha",
         type=float,
-        default=0.5,
+        default=1.0,
         help="Alpha parameter for undistortion (0.0=max crop, 1.0=min crop, default: 0.5)",
     )
     parser.add_argument(

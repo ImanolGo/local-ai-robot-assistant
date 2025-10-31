@@ -209,22 +209,22 @@
 ```
 
 ### 2.3 Camera Pipeline (DeepStream-Accelerated)
-- [ ] Implement `camera_driver.py`
-  - [ ] DeepStream pipeline setup with nvarguscamerasrc
-  - [ ] ROS2 node structure
-  - [ ] Publish raw images to `/camera/raw` (using NVMM buffers)
-  - [ ] Implement hardware-accelerated frame rate control
-  - [ ] Add camera info publisher
-  - [ ] Utilize GPU memory for zero-copy operations
-- [ ] Implement `image_undistort_node.py`
-  - [ ] Load calibration from YAML
-  - [ ] Subscribe to `/camera/raw`
-  - [ ] Apply GPU-accelerated undistortion with DeepStream
-  - [ ] Publish to `/camera/undistorted`
-  - [ ] Add performance monitoring for GPU usage
-- [ ] Create unit tests
-- [ ] Create integration test
-- [ ] Benchmark processing latency and GPU memory usage
+- [x] Implement `camera_driver.py`
+  - [x] DeepStream pipeline setup with nvarguscamerasrc
+  - [x] ROS2 node structure
+  - [x] Publish raw images to `/camera/raw` (using NVMM buffers)
+  - [x] Implement hardware-accelerated frame rate control
+  - [x] Add camera info publisher
+  - [x] Utilize GPU memory for zero-copy operations
+- [x] Implement `image_undistort_node.py`
+  - [x] Load calibration from YAML
+  - [x] Subscribe to `/camera/raw`
+  - [x] Apply GPU-accelerated undistortion with DeepStream
+  - [x] Publish to `/camera/undistorted`
+  - [x] Add performance monitoring for GPU usage
+- [x] Create unit tests
+- [x] Create integration test
+- [x] Benchmark processing latency and GPU memory usage
 
 **Tests Required**:
 ```python
