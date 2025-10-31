@@ -2,7 +2,7 @@
 
 A fully autonomous, privacy-preserving AI robot assistant running entirely on NVIDIA Jetson Orin Nano.
 
-![Robot Demo](docs/images/robot_demo.gif)
+![Robot Demo](docs/images/jetson-rover-ai-assistant.png)
 
 ## 🚀 Features
 
