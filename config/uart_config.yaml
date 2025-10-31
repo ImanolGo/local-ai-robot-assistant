@@ -1,0 +1,97 @@
+# UART Configuration for Wave Rover Communication
+# Used by actuation_nodes and localization_nodes
+
+uart_config:
+  # Serial port configuration
+  port: "/dev/ttyTHS1"           # UART port (confirmed working from hardware tests)
+  baudrate: 115200               # Baud rate (Wave Rover standard)
+  timeout: 1.0                   # Read timeout in seconds
+  write_timeout: 1.0             # Write timeout in seconds
+
+  # Motor controller settings
+  motor_controller:
+    command_rate: 20.0           # Hz - Rate for sending motor commands
+    watchdog_timeout: 0.5        # Seconds - Stop motors if no command received
+    max_speed: 0.5               # Maximum wheel speed (0.0 to 0.5)
+    wheelbase: 0.16              # Meters - Distance between wheels (Wave Rover spec)
+    max_linear_velocity: 0.3     # m/s - Maximum linear velocity
+    max_angular_velocity: 1.0    # rad/s - Maximum angular velocity
+
+    # Safety settings
+    emergency_stop_enabled: true
+    acceleration_limit: 0.5      # m/s² - Maximum acceleration
+    deceleration_limit: 1.0      # m/s² - Maximum deceleration
+
+    # Command types (Wave Rover protocol)
+    commands:
+      speed_control: 1           # {"T":1, "L":speed, "R":speed}
+      pwm_input: 11              # {"T":11, "L":pwm, "R":pwm}
+      ros_control: 13            # {"T":13, "X":linear, "Z":angular} (UGV01 only)
+      continuous_feedback: 131   # {"T":131, "cmd":1} - Enable feedback
+
+  # IMU node settings
+  imu_node:
+    query_rate: 20.0             # Hz - Rate for IMU queries
+    query_command: 126           # {"T":126} - IMU data request
+    data_timeout: 0.1            # Seconds - Timeout for IMU response
+
+    # IMU data validation
+    validate_data: true
+    angle_range: [-180, 180]     # Valid angle range in degrees
+    acceleration_limit: 50.0     # m/s² - Maximum valid acceleration
+
+  # Continuous feedback settings
+  feedback:
+    enable_on_startup: true      # Enable continuous feedback mode on node startup
+    enable_command: 131          # Command to enable feedback
+    parse_chassis_data: true     # Parse and publish chassis state information
+
+  # Communication settings
+  communication:
+    retry_attempts: 3            # Number of retry attempts for failed commands
+    retry_delay: 0.1             # Seconds between retry attempts
+    json_validation: true        # Validate JSON before sending
+    response_timeout: 2.0        # Seconds to wait for command response
+
+  # Logging settings
+  logging:
+    log_commands: false          # Log all sent commands (debug mode)
+    log_responses: false         # Log all received responses (debug mode)
+    log_errors: true             # Always log communication errors
+    performance_monitoring: true # Monitor and log performance metrics
+
+# ROS2 topic configuration
+topics:
+  # Motor controller topics
+  cmd_vel: "/cmd_vel"                    # Subscribe to geometry_msgs/Twist
+  motor_command: "/motor_command"        # Subscribe to robot_interfaces/MotorCommand
+  motor_status: "/motor_status"          # Publish motor status
+  chassis_state: "/chassis_state"        # Publish robot_interfaces/ChassisState
+  odom_raw: "/odom_raw"                  # Publish rough odometry estimate
+
+  # IMU topics
+  imu_data: "/imu/data"                  # Publish sensor_msgs/Imu
+  imu_raw: "/imu/raw"                    # Publish raw IMU data
+
+# ROS2 service configuration
+services:
+  emergency_stop: "/emergency_stop"      # robot_interfaces/EmergencyStop
+  set_mode: "/set_mode"                  # robot_interfaces/SetMode
+
+# Node configuration
+nodes:
+  motor_controller:
+    node_name: "uart_motor_controller"
+    namespace: ""
+    use_sim_time: false
+
+  imu_node:
+    node_name: "uart_imu_node"
+    namespace: ""
+    use_sim_time: false
+
+# Frame IDs for coordinate transformations
+frame_ids:
+  base_link: "base_link"
+  odom: "odom"
+  imu_link: "imu_link"

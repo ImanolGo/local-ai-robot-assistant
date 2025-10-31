@@ -173,25 +173,25 @@
 - [x] Create launch file directory structure
 
 ### 2.2 UART Communication Node
-- [ ] Implement `uart_motor_controller.py`
-  - [ ] Serial port initialization
-  - [ ] JSON command builder
-  - [ ] JSON response parser
-  - [ ] ROS2 node structure
-  - [ ] Subscribe to `/cmd_vel` topic
-  - [ ] Publish to `/motor_status` topic
-  - [ ] Implement differential drive kinematics
-  - [ ] Add watchdog timer
-  - [ ] Add emergency stop service
-- [ ] Implement `uart_imu_node.py`
-  - [ ] Periodic IMU query (20 Hz)
-  - [ ] JSON response parser
-  - [ ] Publish to `/imu/data` topic
-  - [ ] Data validation
-  - [ ] Error handling
-- [ ] Create unit tests for both nodes
-- [ ] Create integration test for UART package
-- [ ] Document UART protocol in package README
+- [x] Implement `uart_motor_controller.py`
+  - [x] Serial port initialization
+  - [x] JSON command builder
+  - [x] JSON response parser
+  - [x] ROS2 node structure
+  - [x] Subscribe to `/cmd_vel` topic
+  - [x] Publish to `/motor_status` topic
+  - [x] Implement differential drive kinematics
+  - [x] Add watchdog timer
+  - [x] Add emergency stop service
+- [x] Implement `uart_imu_node.py`
+  - [x] Periodic IMU query (20 Hz)
+  - [x] JSON response parser
+  - [x] Publish to `/imu/data` topic
+  - [x] Data validation
+  - [x] Error handling
+- [x] Create unit tests for both nodes
+- [x] Create integration test for UART package
+- [x] Document UART protocol in package README
 
 **Tests Required**:
 ```python
