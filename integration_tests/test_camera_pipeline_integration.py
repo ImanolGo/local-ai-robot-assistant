@@ -107,7 +107,7 @@ class CameraPipelineIntegrationTest(unittest.TestCase):
                 "use_gpu_acceleration": False,  # Use CPU for testing
                 "interpolation_method": "linear",
                 "border_mode": "constant",
-                "border_value": [0, 0, 0],
+                "border_value": 0,  # Scalar value instead of list
                 "cache_maps": True,
                 "use_optimized_camera_matrix": True,
                 "alpha": 1.0,
@@ -134,12 +134,22 @@ class CameraPipelineIntegrationTest(unittest.TestCase):
                 super().__init__("test_subscriber")
                 self.test_instance = test_instance
 
+                # QoS profile to match the image_undistort_node
+                from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+
+                qos = QoSProfile(
+                    reliability=ReliabilityPolicy.BEST_EFFORT,
+                    durability=DurabilityPolicy.VOLATILE,
+                    history=HistoryPolicy.KEEP_LAST,
+                    depth=1,
+                )
+
                 # Subscribers
                 self.raw_sub = self.create_subscription(
                     Image, "/camera/raw", self._raw_callback, 10
                 )
                 self.undistorted_sub = self.create_subscription(
-                    Image, "/camera/undistorted", self._undistorted_callback, 10
+                    Image, "/camera/undistorted", self._undistorted_callback, qos
                 )
                 self.camera_info_sub = self.create_subscription(
                     CameraInfo, "/camera/camera_info", self._camera_info_callback, 10
@@ -239,24 +249,23 @@ class CameraPipelineIntegrationTest(unittest.TestCase):
 
         return MockCameraDriver(self.calib_file)
 
-    @patch("perception_nodes.image_undistort_node.ImageUndistortNode._load_config")
-    def test_complete_pipeline_integration(self, mock_load_config):
+    def test_complete_pipeline_integration(self):
         """Test the complete camera pipeline from raw capture to undistorted output."""
 
-        # Mock config loading to use our test files
-        def mock_config_side_effect():
-            with open(self.config_file, "r") as f:
-                return yaml.safe_load(f)
-
-        mock_load_config.side_effect = mock_config_side_effect
-
-        # Import nodes after mocking
+        # Import nodes
         from perception_nodes.image_undistort_node import ImageUndistortNode
 
-        # Create nodes
-        mock_camera = self._create_mock_camera_driver()
-        undistort_node = ImageUndistortNode()
-        test_subscriber = self._create_test_subscriber_node()
+        # Create a mock load config method that sets the config
+        def mock_load_config(node_instance):
+            with open(self.config_file, "r") as f:
+                node_instance.config = yaml.safe_load(f)
+
+        # Patch the _load_config method
+        with patch.object(ImageUndistortNode, "_load_config", mock_load_config):
+            # Create nodes
+            mock_camera = self._create_mock_camera_driver()
+            undistort_node = ImageUndistortNode()
+            test_subscriber = self._create_test_subscriber_node()
 
         # Add nodes to executor
         self.executor.add_node(mock_camera)
@@ -311,19 +320,16 @@ class CameraPipelineIntegrationTest(unittest.TestCase):
     def test_pipeline_performance_monitoring(self):
         """Test that performance monitoring works correctly."""
 
-        # Mock config loading
-        def mock_config_side_effect():
+        # Import nodes
+        from perception_nodes.image_undistort_node import ImageUndistortNode
+
+        def mock_load_config(node_instance):
             with open(self.config_file, "r") as f:
                 config = yaml.safe_load(f)
                 config["monitoring"]["log_performance_stats"] = True
-                return config
+                node_instance.config = config
 
-        with patch(
-            "perception_nodes.image_undistort_node.ImageUndistortNode._load_config",
-            side_effect=mock_config_side_effect,
-        ):
-            from perception_nodes.image_undistort_node import ImageUndistortNode
-
+        with patch.object(ImageUndistortNode, "_load_config", mock_load_config):
             undistort_node = ImageUndistortNode()
 
         # Simulate some processing
