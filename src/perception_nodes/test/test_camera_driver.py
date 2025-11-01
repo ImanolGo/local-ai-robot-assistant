@@ -34,6 +34,12 @@ mock_gst.FlowReturn.ERROR = 1
 mock_gst.MapFlags = MagicMock()
 mock_gst.MapFlags.READ = 1
 
+# Create a mock bus that returns None after first call to prevent infinite loop
+mock_bus = MagicMock()
+mock_bus.timed_pop_filtered.return_value = None
+mock_gst.Element = MagicMock()
+mock_gst.Element.get_bus.return_value = mock_bus
+
 with patch.dict(
     "sys.modules", {"gi.repository.Gst": mock_gst, "gi.repository.GObject": MagicMock()}
 ):
@@ -60,6 +66,9 @@ class TestCameraDriver(unittest.TestCase):
             os.unlink(self.temp_config)
         if hasattr(self, "temp_calib"):
             os.unlink(self.temp_calib)
+
+        # Ensure ROS2 cleanup
+        time.sleep(0.1)  # Small delay to allow cleanup
 
     def _create_test_config(self) -> str:
         """Create a temporary camera configuration file."""
@@ -125,26 +134,67 @@ class TestCameraDriver(unittest.TestCase):
     @patch("perception_nodes.camera_driver.CameraDriver._setup_deepstream_pipeline")
     @patch("perception_nodes.camera_driver.CameraDriver._start_pipeline")
     @patch("perception_nodes.camera_driver.CameraDriver._load_calibration")
-    def test_node_initialization(self, mock_load_calib, mock_start, mock_setup):
+    @patch("perception_nodes.camera_driver.CameraDriver._setup_ros2")
+    def test_node_initialization(self, mock_setup_ros2, mock_load_calib, mock_start, mock_setup):
         """Test basic node initialization."""
         # Mock methods to prevent actual pipeline creation
         mock_load_calib.return_value = None
         mock_setup.return_value = None
         mock_start.return_value = None
+        mock_setup_ros2.return_value = None
 
-        with patch("builtins.open", unittest.mock.mock_open(read_data=yaml.dump({}))):
-            node = CameraDriver()
+        node = None
+        test_config = {
+            "camera": {
+                "device_id": 0,
+                "sensor_mode": 0,
+                "width": 640,
+                "height": 480,
+                "framerate": 30,
+                "flip_method": 0,
+            },
+            "deepstream": {
+                "source_element": "nvarguscamerasrc",
+                "nvmm_memory": True,
+                "format": "NV12",
+                "buffer_pool_size": 4,
+                "max_buffers": 8,
+                "do_timestamp": True,
+            },
+            "ros2": {
+                "raw_image_topic": "/camera/raw",
+                "camera_info_topic": "/camera/camera_info",
+                "frame_id": "camera_link",
+                "publish_camera_info": True,
+            },
+            "monitoring": {
+                "enable_fps_monitoring": True,
+                "enable_gpu_monitoring": True,
+                "log_performance_stats": True,
+                "stats_publish_rate": 1.0,
+            },
+        }
 
-        # Verify node is properly initialized
-        self.assertIsInstance(node, Node)
-        self.assertEqual(node.get_name(), "camera_driver")
+        try:
+            # Patch the config loading and set config manually
+            with patch.object(CameraDriver, "_load_config"):
+                node = CameraDriver()
+                node.config = test_config  # Set the config manually after creation
 
-        # Verify methods were called
-        mock_load_calib.assert_called_once()
-        mock_setup.assert_called_once()
-        mock_start.assert_called_once()
+            # Verify node is properly initialized
+            self.assertIsInstance(node, Node)
+            self.assertEqual(node.get_name(), "camera_driver")
 
-        node.destroy_node()
+            # Verify methods were called
+            mock_load_calib.assert_called_once()
+            mock_setup.assert_called_once()
+            mock_start.assert_called_once()
+            mock_setup_ros2.assert_called_once()
+
+        finally:
+            if node is not None:
+                node.destroy_node()
+                time.sleep(0.1)  # Allow cleanup
 
     @patch("perception_nodes.camera_driver.CameraDriver._setup_deepstream_pipeline")
     @patch("perception_nodes.camera_driver.CameraDriver._start_pipeline")

@@ -71,7 +71,8 @@ class TestImageUndistortNode(unittest.TestCase):
 
     def tearDown(self):
         """Clean up after tests."""
-        pass
+        # Small delay to allow any background processes to complete
+        time.sleep(0.1)
 
     @patch("perception_nodes.image_undistort_node.ImageUndistortNode._setup_undistortion")
     @patch("perception_nodes.image_undistort_node.ImageUndistortNode._setup_ros2")
@@ -367,29 +368,35 @@ class TestImageUndistortNode(unittest.TestCase):
         node.destroy_node()
 
     def test_error_handling_in_undistortion(self):
-        """Test error handling in undistortion process."""
-        with patch("perception_nodes.image_undistort_node.ImageUndistortNode._setup_ros2"):
+        """Test error handling during undistortion process."""
+        node = None
+        try:
             with patch(
                 "perception_nodes.image_undistort_node.ImageUndistortNode._setup_undistortion"
             ):
-                with patch(
-                    "builtins.open",
-                    unittest.mock.mock_open(read_data=yaml.dump(self.test_config)),
-                ):
-                    node = ImageUndistortNode()
+                with patch("perception_nodes.image_undistort_node.ImageUndistortNode._setup_ros2"):
+                    with patch(
+                        "builtins.open",
+                        unittest.mock.mock_open(read_data=yaml.dump(self.test_config)),
+                    ):
+                        node = ImageUndistortNode()
 
-        # Setup node with invalid calibration to trigger error
-        node.camera_matrix = None
-        node.dist_coeffs = None
-        node.use_gpu = False
+            # Setup node with invalid calibration to trigger error
+            node.camera_matrix = None
+            node.dist_coeffs = None
+            node.new_camera_matrix = None
+            node.use_gpu = False
 
-        # Test error handling - should return original image
-        result = node._undistort_cpu(self.test_image)
+            # Test error handling - should return original image
+            result = node._undistort_cpu(self.test_image)
 
-        # Since calibration is invalid, should return original image
-        np.testing.assert_array_equal(result, self.test_image)
+            # Since calibration is invalid, should return original image
+            np.testing.assert_array_equal(result, self.test_image)
 
-        node.destroy_node()
+        finally:
+            if node is not None:
+                node.destroy_node()
+                time.sleep(0.1)  # Allow cleanup
 
     @patch("perception_nodes.image_undistort_node.GPU_AVAILABLE", True)
     @patch("cv2.cuda")

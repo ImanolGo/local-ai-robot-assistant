@@ -14,4 +14,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "black", "ruff"]
+dev = [
+    "pytest>=7.0",
+    "pytest-timeout",
+    "pytest-cov",
+    "pytest-mock",
+    "black",
+    "ruff",
+    "pre-commit"
+]
+test = [
+    "pytest>=7.0",
+    "pytest-timeout",
+    "pytest-cov",
+    "pytest-mock",
+    "unittest-xml-reporting"
+]

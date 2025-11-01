@@ -355,6 +355,15 @@ class ImageUndistortNode(Node):
     def _undistort_cpu(self, image: np.ndarray) -> np.ndarray:
         """Apply CPU undistortion."""
         try:
+            # Validate calibration data first
+            if (
+                self.camera_matrix is None
+                or self.dist_coeffs is None
+                or self.new_camera_matrix is None
+            ):
+                self.get_logger().warning("Invalid calibration data, returning original image")
+                return image
+
             if self.config["undistortion"]["cache_maps"] and self.map1 is not None:
                 # Use cached maps for better performance
                 undistorted = cv2.remap(

@@ -212,33 +212,47 @@ class CameraDriver(Node):
             flip_method = self.get_parameter("flip_method").value
 
             # Create pipeline string for nvarguscamerasrc
-            pipeline_str = (
+            # Build the source and conversion part
+            src_part = (
                 f"{ds_config['source_element']} "
                 f"sensor-id={device_id} "
                 f"sensor-mode={cam_config['sensor_mode']} "
                 f"do-timestamp={str(ds_config['do_timestamp']).lower()} "
-                f"! "
-                f"video/x-raw(memory:NVMM), "
-                f"width={width}, "
-                f"height={height}, "
-                f"framerate={framerate}/1, "
-                f"format={ds_config['format']} "
-                f"! "
-                f"nvvidconv flip-method={flip_method} "
-                f"! "
-                f"video/x-raw, "
-                f"width={width}, "
-                f"height={height}, "
-                f"format=BGRx "
-                f"! "
-                f"videoconvert "
-                f"! "
-                f"video/x-raw, format=BGR "
-                f"! "
-                f"appsink name=appsink emit-signals=true "
-                f"max-buffers={ds_config['max_buffers']} "
+                f"! video/x-raw(memory:NVMM),"
+                f"width={width},height={height},"
+                f"framerate={framerate}/1,format={ds_config['format']} ! "
+                f"nvvidconv flip-method={flip_method} ! "
+                f"video/x-raw, width={width}, height={height}, format=BGRx ! "
+                f"videoconvert ! video/x-raw, format=BGR ! "
+            )
+
+            # Optionally insert nvdewarper (hardware-accelerated undistortion)
+            dewarper_cfg = ds_config.get("nvdewarper", {}) if isinstance(ds_config, dict) else {}
+            # In our config the nvdewarper block is at top-level, try that too
+            top_nv = self.config.get("nvdewarper", {})
+            use_dewarper = bool(
+                top_nv.get("use_nvdewarper", False) or dewarper_cfg.get("use_nvdewarper", False)
+            )
+
+            dewarper_part = ""
+            if use_dewarper:
+                # Prefer config file if provided
+                cfg_file = top_nv.get("config_file") or dewarper_cfg.get("config_file")
+                if cfg_file:
+                    dewarper_part = f"nvdewarper config-file={cfg_file} ! "
+                else:
+                    # Format inline params
+                    params = top_nv.get("params", {}) or dewarper_cfg.get("params", {})
+                    params_str = " ".join([f"{k}={v}" for k, v in params.items()])
+                    dewarper_part = f"nvdewarper {params_str} ! "
+
+            # Final appsink part
+            sink_part = (
+                f"appsink name=appsink emit-signals=true max-buffers={ds_config['max_buffers']} "
                 f"drop=true sync=false"
             )
+
+            pipeline_str = src_part + dewarper_part + sink_part
 
             self.get_logger().info(f"Creating DeepStream pipeline: {pipeline_str}")
 
@@ -289,29 +303,49 @@ class CameraDriver(Node):
 
     def _monitor_pipeline(self) -> None:
         """Monitor the pipeline for errors and EOS."""
-        if not self.pipeline:
-            return
+        try:
+            if not self.pipeline:
+                return
 
-        bus = self.pipeline.get_bus()
-        bus.add_signal_watch()
+            bus = self.pipeline.get_bus()
+            if not bus:
+                return
 
-        while self.running:
-            message = bus.timed_pop_filtered(
-                Gst.CLOCK_TIME_NONE,
-                Gst.MessageType.ERROR | Gst.MessageType.EOS | Gst.MessageType.WARNING,
-            )
+            bus.add_signal_watch()
 
-            if message:
-                if message.type == Gst.MessageType.ERROR:
-                    err, debug = message.parse_error()
-                    self.get_logger().error(f"Pipeline error: {err}, Debug: {debug}")
-                    break
-                elif message.type == Gst.MessageType.EOS:
-                    self.get_logger().info("End of stream received")
-                    break
-                elif message.type == Gst.MessageType.WARNING:
-                    warn, debug = message.parse_warning()
-                    self.get_logger().warning(f"Pipeline warning: {warn}, Debug: {debug}")
+            while self.running:
+                message = bus.timed_pop_filtered(
+                    Gst.CLOCK_TIME_NONE,
+                    Gst.MessageType.ERROR | Gst.MessageType.EOS | Gst.MessageType.WARNING,
+                )
+
+                if message:
+                    if message.type == Gst.MessageType.ERROR:
+                        err, debug = message.parse_error()
+                        self.get_logger().error(f"Pipeline error: {err}, Debug: {debug}")
+                        break
+                    elif message.type == Gst.MessageType.EOS:
+                        self.get_logger().info("End of stream received")
+                        break
+                    elif message.type == Gst.MessageType.WARNING:
+                        warn, debug = message.parse_warning()
+                        self.get_logger().warning(f"Pipeline warning: {warn}, Debug: {debug}")
+
+        except Exception as e:
+            if self.running:  # Only log if we're still supposed to be running
+                self.get_logger().error(f"Pipeline monitoring error: {e}")
+        finally:
+            try:
+                if (
+                    hasattr(self, "pipeline")
+                    and self.pipeline
+                    and hasattr(self.pipeline, "get_bus")
+                ):
+                    bus = self.pipeline.get_bus()
+                    if bus and hasattr(bus, "remove_signal_watch"):
+                        bus.remove_signal_watch()
+            except Exception:
+                pass  # Ignore cleanup errors
 
         bus.remove_signal_watch()
 
@@ -417,14 +451,26 @@ class CameraDriver(Node):
         self.running = False
 
         # Stop pipeline
-        if self.pipeline:
-            self.pipeline.set_state(Gst.State.NULL)
+        try:
+            if self.pipeline:
+                self.pipeline.set_state(Gst.State.NULL)
+        except Exception as e:
+            self.get_logger().warning(f"Error stopping pipeline: {e}")
 
         # Wait for monitoring thread
-        if self.pipeline_thread and self.pipeline_thread.is_alive():
-            self.pipeline_thread.join(timeout=2.0)
+        try:
+            if self.pipeline_thread and self.pipeline_thread.is_alive():
+                self.pipeline_thread.join(timeout=2.0)
+                if self.pipeline_thread.is_alive():
+                    self.get_logger().warning("Pipeline thread did not stop gracefully")
+        except Exception as e:
+            self.get_logger().warning(f"Error joining pipeline thread: {e}")
 
-        super().destroy_node()
+        try:
+            super().destroy_node()
+        except Exception as e:
+            self.get_logger().warning(f"Error in super().destroy_node(): {e}")
+
         self.get_logger().info("Camera driver shutdown complete")
 
 
