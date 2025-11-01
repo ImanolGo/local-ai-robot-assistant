@@ -257,10 +257,22 @@ class TestUARTMotorController(unittest.TestCase):
 
     def test_watchdog_functionality(self):
         """Test watchdog timer stops motors on timeout."""
-        # Set a command time in the past
+        # Set up conditions for watchdog to trigger
+        current_time = time.time()
+
         with self.node._state_lock:
-            self.node._last_command_time = time.time() - 1.0  # 1 second ago
+            # Simulate node has been running for sufficient time
+            self.node._node_start_time = current_time - 10.0  # 10 seconds ago
+
+            # Set command times to simulate timeout
+            self.node._last_command_time = current_time - 1.0  # 1 second ago (timeout)
+            self.node._last_nonzero_command_time = current_time - 0.5  # Recent motion command
+
+            # Set motor speeds to indicate motors are running
             self.node._current_wheel_speeds = {"left": 0.3, "right": 0.3}
+
+            # Mark that commands have been received
+            self.node._commands_received = True
 
         # Clear previous calls
         self.mock_serial.write.reset_mock()
@@ -318,12 +330,14 @@ class TestUARTMotorController(unittest.TestCase):
         # Simulate serial port closure
         self.mock_serial.is_open = False
 
-        # Try to send command
-        command = {"T": 1, "L": 0.0, "R": 0.0}
-        result = self.node._send_command(command)
+        # Mock _connect_serial to return False (failed reconnection)
+        with patch.object(self.node, "_connect_serial", return_value=False):
+            # Try to send command
+            command = {"T": 1, "L": 0.0, "R": 0.0}
+            result = self.node._send_command(command)
 
-        # Should return False when serial is not available
-        self.assertFalse(result)
+            # Should return False when serial is not available
+            self.assertFalse(result)
 
     def test_command_rate_limits(self):
         """Test that command rate limiting works."""
