@@ -125,10 +125,10 @@ def run_motor_tests(ser: serial.Serial, out_q: queue.Queue) -> bool:
     # Use device-documented CMD_SPEED_CTRL: {"T":1,"L":<left_speed>,"R":<right_speed>}
     # Speed range: -0.5 .. +0.5
     cmds = [
-        {"T": 1, "L": 0.2, "R": 0.2},
-        {"T": 1, "L": -0.2, "R": -0.2},
-        # Turn in place: left forward, right backward
-        {"T": 1, "L": 0.2, "R": -0.2},
+        {"T": 1, "L": 0.2, "R": 0.2},  # Forward
+        {"T": 1, "L": -0.2, "R": -0.2},  # Backward
+        {"T": 1, "L": 0.2, "R": -0.2},  # Turn left (differential)
+        {"T": 1, "L": 0, "R": 0},  # Stop (safety)
     ]
     success = True
     for c in cmds:
@@ -140,6 +140,9 @@ def run_motor_tests(ser: serial.Serial, out_q: queue.Queue) -> bool:
             out_q, lambda it: isinstance(it, dict) or isinstance(it, str), timeout=1.0
         )
         logger.info("Motor test command %s -> resp=%s", c, resp)
+        # Small delay between movement commands for safety
+        time.sleep(0.5)
+
     # Also test PWM input (debugging command)
     success = success and run_pwm_test(ser, out_q)
     # Test ROS-style control (if supported)
@@ -236,13 +239,64 @@ def run_oled_test(ser: serial.Serial, out_q: queue.Queue) -> bool:
     return item is not None
 
 
+def run_chassis_feedback_test(ser: serial.Serial, out_q: queue.Queue) -> bool:
+    """Test chassis feedback request with {'T':130}."""
+    req = {"T": 130}
+    if not send_command(ser, req):
+        return False
+    item = wait_for_response(
+        out_q, lambda it: isinstance(it, dict) and it.get("T") == 130, timeout=3.0
+    )
+    logger.info("Chassis feedback test response: %s", item)
+    return item is not None
+
+
+def run_serial_echo_test(ser: serial.Serial, out_q: queue.Queue) -> bool:
+    """Test serial echo control with {'T':143,'cmd':1}."""
+    # Enable echo
+    req = {"T": 143, "cmd": 1}
+    if not send_command(ser, req):
+        return False
+    # Send a test command and expect it to be echoed back
+    test_cmd = {"T": 1, "L": 0, "R": 0}  # Stop command
+    if not send_command(ser, test_cmd):
+        return False
+    # Look for echo response
+    item = wait_for_response(
+        out_q, lambda it: isinstance(it, dict) and it.get("T") == 1, timeout=2.0
+    )
+    logger.info("Serial echo test response: %s", item)
+    # Disable echo
+    disable_req = {"T": 143, "cmd": 0}
+    send_command(ser, disable_req)
+    return item is not None
+
+
+def run_gpio_test(ser: serial.Serial, out_q: queue.Queue) -> bool:
+    """Test GPIO PWM control with {'T':132,'IO4':value,'IO5':value}."""
+    req = {"T": 132, "IO4": 128, "IO5": 128}  # 50% PWM
+    if not send_command(ser, req):
+        return False
+    item = wait_for_response(
+        out_q, lambda it: isinstance(it, dict) or isinstance(it, str), timeout=2.0
+    )
+    logger.info("GPIO PWM test response: %s", item)
+    return True
+
+
 def run_automated_tests(
     ser: serial.Serial, out_q: queue.Queue, which: Optional[str] = None
 ) -> None:
-    """Run automated tests. which can be 'motor','imu','feedback','oled' or 'all'."""
+    """Run automated tests.
+    which can be 'motor','imu','feedback','oled','chassis','echo','gpio' or 'all'.
+    """
     logger.info("Starting automated tests (%s)", which or "all")
     ok = True
-    targets = [which] if which and which != "all" else ["motor", "imu", "feedback", "oled"]
+    targets = (
+        [which]
+        if which and which != "all"
+        else ["motor", "imu", "feedback", "oled", "chassis", "echo", "gpio"]
+    )
     for t in targets:
         if t == "motor":
             ok = ok and run_motor_tests(ser, out_q)
@@ -252,6 +306,12 @@ def run_automated_tests(
             ok = ok and run_continuous_feedback_test(ser, out_q)
         elif t == "oled":
             ok = ok and run_oled_test(ser, out_q)
+        elif t == "chassis":
+            ok = ok and run_chassis_feedback_test(ser, out_q)
+        elif t == "echo":
+            ok = ok and run_serial_echo_test(ser, out_q)
+        elif t == "gpio":
+            ok = ok and run_gpio_test(ser, out_q)
         else:
             logger.warning("Unknown automated test: %s", t)
 
@@ -269,6 +329,12 @@ def main() -> None:
         "  python hardware_tests/test_waveroever_uart.py --port /dev/ttyTHS1 --test motor\n\n"
         "  # Run only the IMU test\n"
         "  python hardware_tests/test_waveroever_uart.py --port /dev/ttyTHS1 --test imu\n\n"
+        "  # Run chassis feedback test\n"
+        "  python hardware_tests/test_waveroever_uart.py --port /dev/ttyTHS1 --test chassis\n\n"
+        "  # Run serial echo test\n"
+        "  python hardware_tests/test_waveroever_uart.py --port /dev/ttyTHS1 --test echo\n\n"
+        "  # Run GPIO PWM test\n"
+        "  python hardware_tests/test_waveroever_uart.py --port /dev/ttyTHS1 --test gpio\n\n"
         "  # Turn on serial echo before running tests:\n"
         '  # (use device docs: {"T":143,"cmd":1} to enable echo)\n'
         '  # (use device docs: {"T":131,"cmd":1} to enable continuous feedback)\n'
@@ -290,9 +356,9 @@ def main() -> None:
     parser.add_argument(
         "--test",
         type=str,
-        choices=["motor", "imu", "feedback", "oled", "all"],
+        choices=["motor", "imu", "feedback", "oled", "chassis", "echo", "gpio", "all"],
         help=(
-            "Run only one automated test (motor, imu, feedback, oled, all). "
+            "Run only one automated test (motor, imu, feedback, oled, chassis, echo, gpio, all). "
             "If omitted, the full sequence runs when --auto is set."
         ),
     )
