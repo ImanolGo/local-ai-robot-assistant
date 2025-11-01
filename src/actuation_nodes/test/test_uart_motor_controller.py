@@ -265,7 +265,10 @@ class TestUARTMotorController(unittest.TestCase):
             self.node._node_start_time = current_time - 10.0  # 10 seconds ago
 
             # Set command times to simulate timeout
-            self.node._last_command_time = current_time - 1.0  # 1 second ago (timeout)
+            # time_since_command > watchdog_timeout (0.5s) should trigger watchdog
+            self.node._last_command_time = current_time - 1.0  # 1 second ago (exceeds 0.5s timeout)
+
+            # Had recent motion (< 2.0s ago) to satisfy had_recent_motion condition
             self.node._last_nonzero_command_time = current_time - 0.5  # Recent motion command
 
             # Set motor speeds to indicate motors are running
@@ -274,7 +277,7 @@ class TestUARTMotorController(unittest.TestCase):
             # Mark that commands have been received
             self.node._commands_received = True
 
-        # Clear previous calls
+        # Clear previous calls to make sure we capture the watchdog call
         self.mock_serial.write.reset_mock()
 
         # Trigger watchdog callback
@@ -327,8 +330,8 @@ class TestUARTMotorController(unittest.TestCase):
 
     def test_serial_reconnection(self):
         """Test handling of serial connection loss."""
-        # Simulate serial port closure
-        self.mock_serial.is_open = False
+        # Set node's serial to None to simulate disconnection
+        self.node._serial = None
 
         # Mock _connect_serial to return False (failed reconnection)
         with patch.object(self.node, "_connect_serial", return_value=False):
