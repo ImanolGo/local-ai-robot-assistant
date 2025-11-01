@@ -18,6 +18,7 @@ License: Apache-2.0
 """
 
 import json
+import queue
 import threading
 import time
 from dataclasses import dataclass
@@ -80,16 +81,26 @@ class UARTMotorController(Node):
         self._last_command_time = time.time()
         self._last_cmd_vel = Twist()
         self._current_wheel_speeds = {"left": 0.0, "right": 0.0}
+        self._commands_received = False  # Track if any commands have been received
+        self._last_nonzero_command_time = (
+            0.0  # Track when we last received non-zero motion commands
+        )
+        self._node_start_time = time.time()  # Track when node started
 
         # Thread safety
         self._serial_lock = threading.Lock()
         self._state_lock = threading.Lock()
 
+        # Response handling
+        self._response_queue = queue.Queue(maxsize=100)
+        self._reader_thread = None
+        self._stop_reader = threading.Event()
+
         # Initialize serial connection
         self._serial: Optional[serial.Serial] = None
         self._connect_serial()
 
-        # Set up QoS profiles
+        # Set up QoS profiles - use BEST_EFFORT for sensor data to avoid compatibility issues
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
@@ -97,7 +108,7 @@ class UARTMotorController(Node):
         )
 
         qos_reliable = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
+            reliability=ReliabilityPolicy.BEST_EFFORT,  # Changed to BEST_EFFORT for compatibility
             durability=DurabilityPolicy.VOLATILE,
             depth=10,
         )
@@ -136,8 +147,19 @@ class UARTMotorController(Node):
             0.1, self._status_timer_callback  # Publish status at 10Hz
         )
 
+        # Add chassis feedback request timer (reduced frequency since continuous
+        # feedback provides data)
+        self.chassis_feedback_timer = self.create_timer(
+            1.0, self._chassis_feedback_callback
+        )  # 1Hz chassis requests
+
+        # Add IMU request timer (reduced since continuous feedback includes IMU)
+        self.imu_timer = self.create_timer(0.5, self._imu_timer_callback)  # 2Hz IMU requests
+
         # Enable continuous feedback mode
-        if self._serial:
+        if self._serial and self._serial.is_open:
+            self._start_response_reader()  # Start reader FIRST
+            time.sleep(0.1)  # Brief delay to ensure reader is ready
             self._enable_continuous_feedback()
 
         self.get_logger().info(f"UART Motor Controller initialized on {self.uart_config.port}")
@@ -208,6 +230,10 @@ class UARTMotorController(Node):
                 write_timeout=self.uart_config.write_timeout,
             )
 
+            # Critical: Disable hardware flow control as per Wave Rover docs
+            self._serial.setRTS(False)
+            self._serial.setDTR(False)
+
             # Flush any existing data
             self._serial.flushInput()
             self._serial.flushOutput()
@@ -224,18 +250,25 @@ class UARTMotorController(Node):
     def _send_command(self, command: Dict[str, Any]) -> bool:
         """Send JSON command via UART with error handling."""
         if not self._serial or not self._serial.is_open:
-            self.get_logger().warn("Serial port not available")
-            return False
+            self.get_logger().warn("Serial port not available, attempting reconnection")
+            if not self._connect_serial():
+                return False
 
         try:
             with self._serial_lock:
                 json_str = json.dumps(command) + "\n"
                 self._serial.write(json_str.encode())
+                self._serial.flush()  # Ensure data is sent
                 self.get_logger().debug(f"Sent command: {command}")
                 return True
 
-        except Exception as e:
+        except serial.SerialException as e:
             self.get_logger().error(f"UART send error: {e}")
+            # Attempt to reconnect on serial errors
+            self._serial = None
+            return False
+        except Exception as e:
+            self.get_logger().error(f"Unexpected error sending command: {e}")
             return False
 
     def _enable_continuous_feedback(self) -> bool:
@@ -245,8 +278,169 @@ class UARTMotorController(Node):
         if success:
             self.get_logger().info("Continuous feedback mode enabled")
         else:
-            self.get_logger().warn("Failed to enable continuous feedback mode")
+            self.get_logger().error("Failed to enable continuous feedback")
         return success
+
+    def _start_response_reader(self):
+        """Start background thread to read serial responses."""
+        if self._reader_thread and self._reader_thread.is_alive():
+            return
+
+        self._reader_thread = threading.Thread(target=self._read_responses, daemon=True)
+        self._reader_thread.start()
+
+    def _read_responses(self):
+        """Background thread to continuously read serial responses."""
+        while not self._stop_reader.is_set() and self._serial and self._serial.is_open:
+            try:
+                if self._serial.in_waiting > 0:
+                    line = self._serial.readline()
+                    if line:
+                        text = ""  # Initialize text variable
+                        try:
+                            # Try UTF-8 decode with error handling
+                            text = line.decode("utf-8", errors="ignore").strip()
+
+                            # Wave Rover sends mixed binary/JSON data, extract JSON portion
+                            if text and "{" in text and "}" in text:
+                                # Find the JSON part within the mixed data
+                                start_idx = text.find("{")
+                                end_idx = text.rfind("}") + 1
+                                if start_idx >= 0 and end_idx > start_idx:
+                                    json_part = text[start_idx:end_idx]
+                                    try:
+                                        response = json.loads(json_part)
+                                        self._process_response(response)
+                                    except json.JSONDecodeError:
+                                        self.get_logger().debug(
+                                            f"Invalid JSON extracted: {json_part}"
+                                        )
+                            elif text and not any(ord(c) < 32 for c in text if c not in "\r\n\t"):
+                                # Log clean text that isn't JSON
+                                self.get_logger().debug(f"Non-JSON text: {text}")
+
+                        except Exception as e:
+                            self.get_logger().debug(f"Response processing error: {e}")
+
+                time.sleep(0.01)  # Small delay to prevent busy waiting
+
+            except serial.SerialException as e:
+                if "device reports readiness to read but returned no data" in str(e):
+                    # This happens when multiple processes access the same port
+                    self.get_logger().debug("Serial port contention detected")
+                    time.sleep(0.1)  # Back off for a moment
+                else:
+                    self.get_logger().error(f"Serial read error: {e}")
+                    break
+            except Exception as e:
+                self.get_logger().error(f"Unexpected read error: {e}")
+                break
+
+    def _process_response(self, response: Dict[str, Any]):
+        """Process incoming JSON responses from Wave Rover."""
+        try:
+            self._response_queue.put_nowait(response)
+
+            # Log important responses
+            if "T" in response:
+                cmd_type = response.get("T")
+                self.get_logger().info(f"Processing response type T={cmd_type}: {response}")
+                if cmd_type == 1001:  # Continuous feedback (actual Wave Rover format)
+                    self._update_continuous_feedback(response)
+                elif cmd_type == 130:  # Chassis feedback
+                    self._update_chassis_state(response)
+                elif cmd_type == 126:  # IMU data
+                    self._update_imu_data(response)
+            else:
+                self.get_logger().debug(f"Response without T field: {response}")
+
+        except queue.Full:
+            self.get_logger().debug("Response queue full, dropping message")
+        except Exception as e:
+            self.get_logger().error(f"Response processing error: {e}")
+            self.get_logger().debug(f"Problematic response: {response}")
+
+    def _update_continuous_feedback(self, response: Dict[str, Any]):
+        """Update state from Wave Rover continuous feedback (T=1001)."""
+        # Parse the actual Wave Rover feedback format
+        # {"T": 1001, "L": 0, "R": 0, "r": roll, "p": pitch, "y": yaw, "temp": temp, "v": voltage}
+        try:
+            # Create and publish chassis state immediately with real data
+            chassis_msg = ChassisState()
+            chassis_msg.header = Header()
+            chassis_msg.header.stamp = self.get_clock().now().to_msg()
+            chassis_msg.header.frame_id = "base_link"
+
+            with self._state_lock:
+                chassis_msg.motors_enabled = (
+                    self._motors_enabled and not self._emergency_stop_active
+                )
+                chassis_msg.emergency_stop_active = self._emergency_stop_active
+
+                # Parse motor speeds
+                if "L" in response:
+                    chassis_msg.left_motor_current = float(response["L"])
+                if "R" in response:
+                    chassis_msg.right_motor_current = float(response["R"])
+
+                # Parse IMU data from continuous feedback
+                if "r" in response:
+                    chassis_msg.roll = float(response["r"])
+                if "p" in response:
+                    chassis_msg.pitch = float(response["p"])
+                if "y" in response:
+                    chassis_msg.yaw = float(response["y"])
+                    chassis_msg.heading_angle = float(response["y"])
+                if "v" in response:
+                    chassis_msg.battery_voltage = float(response["v"])
+                if "temp" in response:
+                    chassis_msg.temperature = float(response["temp"])
+                    # Estimate power consumption from temperature (rough approximation)
+                    base_temp = 25.0  # Assume 25°C baseline
+                    temp_diff = max(0, chassis_msg.temperature - base_temp)
+                    chassis_msg.power_consumption = temp_diff * 0.1  # Rough estimate
+
+            # Publish chassis state with real data
+            try:
+                self.chassis_state_pub.publish(chassis_msg)
+                self.get_logger().info(
+                    f"Published chassis state: roll={chassis_msg.roll:.2f}, \
+                        pitch={chassis_msg.pitch:.2f}, yaw={chassis_msg.yaw:.2f},\
+                                voltage={chassis_msg.battery_voltage:.2f}V,\
+                                      temp={chassis_msg.temperature:.1f}°C"
+                )
+            except Exception as pub_error:
+                self.get_logger().error(f"Error publishing chassis state: {pub_error}")
+
+        except Exception as e:
+            self.get_logger().warn(f"Error processing continuous feedback: {e}")
+            # Log the problematic response for debugging
+            self.get_logger().debug(f"Problematic response: {response}")
+
+    def _update_chassis_state(self, response: Dict[str, Any]):
+        """Update chassis state from Wave Rover feedback."""
+        # Process chassis feedback response (T=130)
+        if "T" in response and response["T"] == 130:
+            self.get_logger().debug(f"Chassis feedback: {response}")
+            self._update_continuous_feedback(response)  # Process same way as continuous feedback
+
+    def _update_imu_data(self, response: Dict[str, Any]):
+        """Update IMU data from Wave Rover feedback."""
+        # TODO: Parse actual IMU response format
+        # This depends on the actual response format from Wave Rover
+        pass
+
+    def _imu_timer_callback(self):
+        """Request IMU data from Wave Rover."""
+        if self._serial and self._serial.is_open:
+            imu_command = {"T": 126}
+            self._send_command(imu_command)
+
+    def _chassis_feedback_callback(self):
+        """Request chassis feedback from Wave Rover."""
+        if self._serial and self._serial.is_open:
+            chassis_command = {"T": 130}
+            self._send_command(chassis_command)
 
     def _twist_to_wheel_speeds(self, twist: Twist) -> Tuple[float, float]:
         """Convert Twist message to left/right wheel speeds using differential drive kinematics.
@@ -310,10 +504,15 @@ class UARTMotorController(Node):
         return success
 
     def _cmd_vel_callback(self, msg: Twist):
-        """Handle cmd_vel messages."""
+        """Handle incoming cmd_vel messages."""
         with self._state_lock:
             self._last_cmd_vel = msg
-            self._last_command_time = time.time()
+            self._last_command_time = time.time()  # Update only on actual commands
+            self._commands_received = True  # Mark that we've received commands
+
+            # Track when we receive non-zero motion commands
+            if abs(msg.linear.x) > 0.01 or abs(msg.angular.z) > 0.01:
+                self._last_nonzero_command_time = time.time()
 
     def _motor_command_callback(self, msg: MotorCommand):
         """Handle direct motor command messages."""
@@ -323,7 +522,8 @@ class UARTMotorController(Node):
                 self.get_logger().warn("Failed to send motor command")
 
         with self._state_lock:
-            self._last_command_time = time.time()
+            self._last_command_time = time.time()  # Update only on actual commands
+            self._commands_received = True  # Mark that we've received commands
 
     def _command_timer_callback(self):
         """Periodic command sending based on last received cmd_vel."""
@@ -332,12 +532,14 @@ class UARTMotorController(Node):
 
         with self._state_lock:
             cmd_vel = self._last_cmd_vel
+            time_since_command = time.time() - self._last_command_time
 
-        # Convert twist to wheel speeds
-        left_speed, right_speed = self._twist_to_wheel_speeds(cmd_vel)
-
-        # Send motor command
-        self._send_motor_command(left_speed, right_speed)
+        # Only send commands if we recently received cmd_vel or if motors need to stop
+        if time_since_command < self.motor_config.watchdog_timeout:
+            # Convert twist to wheel speeds
+            left_speed, right_speed = self._twist_to_wheel_speeds(cmd_vel)
+            # Send motor command
+            self._send_motor_command(left_speed, right_speed)
 
     def _watchdog_callback(self):
         """Watchdog timer to stop motors if no commands received."""
@@ -345,14 +547,26 @@ class UARTMotorController(Node):
 
         with self._state_lock:
             time_since_command = current_time - self._last_command_time
+            time_since_nonzero_command = current_time - self._last_nonzero_command_time
+            motors_are_running = any(
+                abs(speed) > 0.01 for speed in self._current_wheel_speeds.values()
+            )
+            commands_received = self._commands_received
 
-        if time_since_command > self.motor_config.watchdog_timeout:
-            # Stop motors due to timeout
-            if any(speed != 0.0 for speed in self._current_wheel_speeds.values()):
-                self.get_logger().warn(
-                    f"Watchdog timeout ({time_since_command:.2f}s), stopping motors"
-                )
-                self._send_motor_command(0.0, 0.0)
+        # Conservative watchdog: only trigger if we've been running for a while
+        # and we had recent motion commands but now have stopped receiving them
+        node_running_time = current_time - self._node_start_time
+        had_recent_motion = self._last_nonzero_command_time > 0 and time_since_nonzero_command < 2.0
+
+        if (
+            node_running_time > 5.0  # Only after node has been running for 5 seconds
+            and commands_received
+            and had_recent_motion
+            and motors_are_running
+            and time_since_command > self.motor_config.watchdog_timeout
+        ):
+            self.get_logger().warn(f"Watchdog timeout ({time_since_command:.2f}s), stopping motors")
+            self._send_motor_command(0.0, 0.0)
 
     def _status_timer_callback(self):
         """Publish motor status and chassis state."""
@@ -367,9 +581,18 @@ class UARTMotorController(Node):
             chassis_msg.left_motor_current = 0.0  # TODO: Parse from feedback
             chassis_msg.right_motor_current = 0.0  # TODO: Parse from feedback
 
-        # Publish chassis state
+        # Always publish chassis state for testing
         self.chassis_state_pub.publish(chassis_msg)
         self.motor_status_pub.publish(chassis_msg)
+
+        # Log occasionally for debugging
+        if hasattr(self, "_status_counter"):
+            self._status_counter += 1
+        else:
+            self._status_counter = 1
+
+        if self._status_counter % 50 == 0:  # Every 5 seconds at 10Hz
+            self.get_logger().debug(f"Published chassis state #{self._status_counter}")
 
     def _emergency_stop_callback(
         self, request: EmergencyStop.Request, response: EmergencyStop.Response
@@ -407,6 +630,11 @@ class UARTMotorController(Node):
 
     def destroy_node(self):
         """Cleanup on node shutdown."""
+        # Stop reader thread
+        if self._reader_thread and self._reader_thread.is_alive():
+            self._stop_reader.set()
+            self._reader_thread.join(timeout=1.0)
+
         # Stop motors before shutdown
         if self._serial and self._serial.is_open:
             self.get_logger().info("Stopping motors before shutdown")
@@ -414,7 +642,10 @@ class UARTMotorController(Node):
             time.sleep(0.1)  # Give time for command to send
 
             # Close serial connection
-            self._serial.close()
+            try:
+                self._serial.close()
+            except Exception as e:
+                self.get_logger().warn(f"Error closing serial: {e}")
 
         super().destroy_node()
 

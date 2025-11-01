@@ -191,7 +191,7 @@ class UARTIMUNode(Node):
         try:
             with self._serial_lock:
                 if self._serial.in_waiting > 0:
-                    line = self._serial.readline().decode("utf-8").strip()
+                    line = self._serial.readline().decode("utf-8", errors="ignore").strip()
                     if line:
                         try:
                             data = json.loads(line)
