@@ -1,0 +1,152 @@
+# Camera Configuration for IMX219 Camera Module
+# DeepStream-optimized settings for NVIDIA Jetson Orin Nano
+
+# Camera hardware configuration
+camera:
+  # Device settings
+  device_id: 0                        # Camera device ID
+  sensor_type: "imx219"               # Camera sensor type
+  interface: "mipi_csi"               # Camera interface (MIPI CSI-2)
+
+  # Image capture settings
+  image:
+    width: 1640                       # Image width in pixels
+    height: 1232                      # Image height in pixels
+    format: "NV12"                    # Pixel format (YUV 4:2:0)
+    framerate: 30                     # Target frame rate (FPS)
+
+  # DeepStream pipeline settings
+  deepstream:
+    # GStreamer pipeline elements
+    source_element: "nvarguscamerasrc"
+    sensor_id: 0
+
+    # Performance settings
+    bufapi_version: true              # Use new buffer API
+    enable_egl: true                  # Enable EGL for zero-copy
+    gpu_id: 0                         # GPU device ID
+
+    # Memory management
+    nvbuf_memory_type: 4              # NVMM unified memory
+    batch_size: 1                     # Single frame batch
+
+    # Quality settings
+    wbmode: 1                         # Auto white balance
+    scene_mode: 0                     # Auto scene mode
+    aeantibanding: 3                  # Anti-banding mode
+    exposuretimerange: "34000 358733000"  # Exposure time range (ns)
+    ispdigitalgainrange: "1 8"        # Digital gain range
+    gainrange: "1 16"                 # Analog gain range
+
+  # Advanced camera settings
+  advanced:
+    auto_exposure: true               # Enable auto exposure
+    auto_white_balance: true          # Enable auto white balance
+    saturation: 1.0                   # Color saturation (0.0-2.0)
+    edge_enhancement: 0.5             # Edge enhancement (0.0-1.0)
+    noise_reduction: 0.5              # Noise reduction (0.0-1.0)
+
+  # Calibration settings
+  calibration:
+    calibration_file: "camera_calibration.yaml"
+    undistortion_enabled: true
+    roi_enabled: false                # Region of interest cropping
+
+# Pipeline configuration
+pipeline:
+  # Processing stages
+  stages:
+    raw_capture: true                 # Raw image capture
+    undistortion: true                # Image undistortion
+    preprocessing: true               # Image preprocessing for AI
+
+  # Buffer management
+  buffers:
+    raw_buffer_size: 4                # Number of raw image buffers
+    processed_buffer_size: 2          # Number of processed image buffers
+    max_latency: 3                    # Maximum pipeline latency (frames)
+
+  # Performance monitoring
+  monitoring:
+    fps_monitoring: true              # Monitor frame rate
+    latency_monitoring: true          # Monitor processing latency
+    memory_monitoring: false          # Monitor memory usage (debug mode)
+
+# ROS2 topic configuration
+topics:
+  # Publishers
+  raw_image: "/camera/raw"            # Raw camera images
+  undistorted_image: "/camera/undistorted"  # Undistorted images
+  camera_info: "/camera/camera_info"  # Camera information
+
+  # Diagnostics
+  diagnostics: "/camera/diagnostics"  # Camera diagnostics
+  performance: "/camera/performance"  # Performance metrics
+
+# Node configuration
+nodes:
+  camera_driver:
+    node_name: "camera_driver"
+    namespace: ""
+    use_sim_time: false
+
+    # Node parameters
+    parameters:
+      publish_rate: 30.0              # Publishing rate (Hz)
+      queue_size: 1                   # Message queue size
+
+  image_undistort:
+    node_name: "image_undistort_node"
+    namespace: ""
+    use_sim_time: false
+
+    # Node parameters
+    parameters:
+      publish_rate: 30.0              # Publishing rate (Hz)
+      queue_size: 1                   # Message queue size
+
+# Frame IDs for coordinate transformations
+frame_ids:
+  camera_link: "camera_link"
+  camera_optical_frame: "camera_optical_frame"
+
+# Error handling and recovery
+error_handling:
+  max_init_retries: 3                 # Maximum initialization retries
+  retry_delay: 1.0                    # Delay between retries (seconds)
+  timeout: 5.0                        # Operation timeout (seconds)
+
+  # Recovery actions
+  auto_restart: true                  # Auto-restart on failure
+  fallback_resolution: [640, 480]     # Fallback resolution on failure
+  fallback_framerate: 15              # Fallback frame rate on failure
+
+# Hardware-specific optimizations
+optimizations:
+  # Memory optimizations
+  zero_copy: true                     # Enable zero-copy operations
+  memory_pool_size: 64                # Memory pool size (MB)
+
+  # GPU optimizations
+  gpu_processing: true                # Use GPU for processing
+  cuda_streams: 2                     # Number of CUDA streams
+
+  # Power management
+  power_mode: "performance"           # Power mode (performance/balanced/power_save)
+
+# Logging and debugging
+logging:
+  log_level: "INFO"                   # Log level (DEBUG/INFO/WARN/ERROR)
+  log_pipeline_events: false          # Log pipeline events (debug mode)
+  log_performance: true               # Log performance metrics
+  log_errors: true                    # Always log errors
+
+# Notes and references
+notes:
+  - "IMX219 sensor supports up to 1640x1232 at 30fps"
+  - "DeepStream provides hardware-accelerated image processing"
+  - "NVMM memory enables zero-copy operations between camera and GPU"
+  - "Calibration file must exist for undistortion to work"
+  - "Use 'nvarguscamerasrc' for optimal performance on Jetson"
+  - "Camera module supports various exposure and gain modes"
+  - "Pipeline latency typically <50ms with proper configuration"

@@ -1,0 +1,13 @@
+[property]
+output-width=1640
+output-height=1232
+num-batch-buffers=4
+
+[surface0]
+surface-index=0
+projection-type=1
+width=1640
+height=1232
+focal-length=786.24,787.67
+optical-center=791.76,591.98
+distortion=-0.3128,0.1005,0.0003,0.0001,-0.0145
