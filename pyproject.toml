@@ -20,6 +20,9 @@ dev = [
     "pytest-cov",
     "pytest-mock",
     "black",
+    "flake8",
+    "isort",
+    "mypy",
     "ruff",
     "pre-commit"
 ]
