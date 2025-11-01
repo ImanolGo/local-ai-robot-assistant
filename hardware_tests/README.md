@@ -97,9 +97,13 @@ python3 hardware_tests/test_camera_capture.py --verbose
 - Python packages: gi, numpy, Pillow
 
 ### test_waveroever_uart.py
+
 Comprehensive UART communication testing with the Wave Rover robot platform.
 
+**Complete JSON Command Reference**: [docs/guides/wave_rover_json_commands.md](../docs/guides/wave_rover_json_commands.md)
+
 **Features:**
+
 - JSON command transmission and response parsing
 - Interactive mode for manual testing
 - Automated test sequences for validation
@@ -111,6 +115,7 @@ Comprehensive UART communication testing with the Wave Rover robot platform.
 - Real-time response monitoring
 
 **Usage:**
+
 ```bash
 # Interactive mode (type JSON commands manually)
 python3 hardware_tests/test_waveroever_uart.py --port /dev/ttyTHS1
@@ -129,6 +134,7 @@ python3 hardware_tests/test_waveroever_uart.py --port /dev/ttyUSB0 --baud 9600
 ```
 
 **Supported Commands:**
+
 - **Motor Control**: `{"T":1,"L":0.2,"R":0.2}` - Speed control (-0.5 to +0.5)
 - **PWM Input**: `{"T":11,"L":100,"R":100}` - Direct PWM control
 - **ROS Control**: `{"T":13,"X":0.05,"Z":0.1}` - Linear/angular velocity
@@ -138,6 +144,7 @@ python3 hardware_tests/test_waveroever_uart.py --port /dev/ttyUSB0 --baud 9600
 - **PID Settings**: `{"T":2,"P":200,"I":2500,"D":0,"L":255}` - Motor PID
 
 **Requirements:**
+
 - Wave Rover connected via UART (typically `/dev/ttyTHS1` on Jetson)
 - Python serial library (`pyserial`)
 - Proper UART permissions

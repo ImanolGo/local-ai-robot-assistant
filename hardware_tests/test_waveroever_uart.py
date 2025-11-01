@@ -14,6 +14,9 @@ Usage:
 
 This script follows the project's guidelines: validate hardware connections,
 handle errors, and keep outputs timestamped for logs.
+
+For complete JSON command reference, see:
+  docs/guides/wave_rover_json_commands.md
 """
 
 from __future__ import annotations
