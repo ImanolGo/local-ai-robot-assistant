@@ -6,9 +6,14 @@ connected via UART. They test the complete integration between the ROS2 nodes
 and the physical hardware.
 
 Run these tests with:
-    python3 test_uart_integration.py --port /dev/ttyTHS1
+    python3 scripts/run_test.py test_uart_integration --port /dev/ttyTHS1
 
-Or as part of the integration test suite:
+Or build the workspace and source it:
+    colcon build --symlink-install
+    source install/setup.bash
+    python3 integration_tests/test_uart_integration.py --port /dev/ttyTHS1
+
+Or as part of the pytest suite:
     python3 -m pytest integration_tests/test_uart_integration.py -v
 
 Author: Local AI Robot Team
@@ -17,10 +22,22 @@ License: Apache-2.0
 
 import argparse
 import json
+import sys
 import threading
 import time
 import unittest
+from pathlib import Path
 from typing import Optional
+
+# Add source paths for imports when run directly
+if __name__ == "__main__":
+    workspace_root = Path(__file__).parent.parent
+    src_path = workspace_root / "src"
+
+    # Add each package to Python path
+    for package_dir in src_path.iterdir():
+        if package_dir.is_dir() and not package_dir.name.startswith("."):
+            sys.path.insert(0, str(package_dir))
 
 import rclpy
 import serial
