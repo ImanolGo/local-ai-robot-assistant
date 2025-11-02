@@ -236,14 +236,14 @@ class YOLODetector:
     def __init__(self, engine_path):
         self.engine = self.load_engine(engine_path)
         self.context = self.engine.create_execution_context()
-        
+
     def detect(self, image):
         # Preprocess image to 640x480
         input_tensor = self.preprocess(image)
-        
+
         # Run inference
         outputs = self.infer(input_tensor)
-        
+
         # Post-process detections
         detections = self.postprocess(outputs)
         return detections
@@ -271,17 +271,17 @@ class DepthEstimator:
     def __init__(self, engine_path, camera_matrix):
         self.engine = self.load_engine(engine_path)
         self.camera_matrix = camera_matrix
-        
+
     def estimate_depth(self, rgb_image):
         # Resize to 320x240
         resized = cv2.resize(rgb_image, (320, 240))
-        
+
         # Normalize
         normalized = self.normalize_image(resized)
-        
+
         # Inference
         depth_map = self.infer(normalized)
-        
+
         # Convert to point cloud if needed
         points = self.depth_to_pointcloud(depth_map)
         return depth_map, points
@@ -315,14 +315,14 @@ class STTNode:
             device="cuda",
             compute_type="int8"
         )
-        
+
     def transcribe(self, audio_data):
         segments, info = self.model.transcribe(
             audio_data,
             beam_size=1,  # Faster inference
             language="en"
         )
-        
+
         text = " ".join([segment.text for segment in segments])
         return text
 ```
@@ -337,15 +337,15 @@ class ModelManager:
     def __init__(self):
         self.loaded_models = {}
         self.memory_threshold = 0.85  # 85% RAM usage
-        
+
     def load_model(self, model_name, model_path):
         # Check memory usage
         if psutil.virtual_memory().percent > self.memory_threshold * 100:
             self.unload_least_used_model()
-        
+
         # Load model
         self.loaded_models[model_name] = self.load_engine(model_path)
-        
+
     def unload_model(self, model_name):
         if model_name in self.loaded_models:
             del self.loaded_models[model_name]
@@ -367,16 +367,16 @@ class ParallelInference:
     def __init__(self):
         self.stream1 = cuda.Stream()
         self.stream2 = cuda.Stream()
-        
+
     def parallel_inference(self, yolo_input, depth_input):
         # Run YOLO and depth estimation in parallel
         yolo_future = self.async_inference(self.yolo_engine, yolo_input, self.stream1)
         depth_future = self.async_inference(self.depth_engine, depth_input, self.stream2)
-        
+
         # Synchronize and get results
         yolo_result = yolo_future.result()
         depth_result = depth_future.result()
-        
+
         return yolo_result, depth_result
 ```
 
@@ -385,17 +385,17 @@ class ParallelInference:
 # Pre-allocate GPU memory pools
 def setup_memory_pools():
     import pycuda.tools
-    
+
     # Create memory pool to avoid frequent allocations
     mem_pool = pycuda.tools.MemoryPool(pycuda.tools.DeviceMemoryPool())
-    
+
     # Pre-allocate common buffer sizes
     common_sizes = [
         640 * 480 * 3 * 4,  # YOLO input
         320 * 240 * 3 * 4,  # Depth input
         1024 * 1024 * 4     # General buffer
     ]
-    
+
     for size in common_sizes:
         mem_pool.allocate(size)
 ```
@@ -409,10 +409,10 @@ class ThermalManager:
         self.temp_warning = 75  # °C
         self.temp_throttle = 80  # °C
         self.temp_emergency = 85  # °C
-        
+
     def check_thermal_state(self):
         gpu_temp = self.get_gpu_temperature()
-        
+
         if gpu_temp > self.temp_emergency:
             return "emergency"  # Disable all AI models
         elif gpu_temp > self.temp_throttle:
@@ -506,7 +506,7 @@ def print_memory_usage():
     # System memory
     mem = psutil.virtual_memory()
     print(f"System RAM: {mem.used/1024**3:.1f}GB / {mem.total/1024**3:.1f}GB ({mem.percent:.1f}%)")
-    
+
     # GPU memory
     nvml.nvmlInit()
     handle = nvml.nvmlDeviceGetHandleByIndex(0)
@@ -575,6 +575,6 @@ For specific model conversion, use the provided scripts in the `tools/conversion
 
 ---
 
-**Last Updated**: November 2025  
-**Version**: 1.0  
+**Last Updated**: November 2025
+**Version**: 1.0
 **Target Platform**: NVIDIA Jetson Orin Nano (8GB)

@@ -9,30 +9,26 @@ According to architecture.md:
 - Validates performance targets from architecture requirements
 """
 
+import argparse
+import json
+import logging
 import os
 import sys
-import argparse
-import logging
-import time
-import json
 import threading
-import signal
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Callable
-from dataclasses import dataclass, asdict
+import time
 from contextlib import contextmanager
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional
 
-import numpy as np
-import psutil
-import nvidia_ml_py3 as nvml
-from tabulate import tabulate
 import matplotlib.pyplot as plt
-import seaborn as sns
+import numpy as np
+import nvidia_ml_py3 as nvml
+import psutil
+from tabulate import tabulate
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -93,7 +89,7 @@ class SystemMonitor:
             self.gpu_handle = nvml.nvmlDeviceGetHandleByIndex(0)
             self.gpu_available = True
             logger.info("✓ NVIDIA GPU monitoring initialized")
-        except:
+        except Exception:
             self.gpu_available = False
             logger.warning("⚠ NVIDIA GPU monitoring not available")
 
@@ -138,9 +134,7 @@ class SystemMonitor:
 
                     # GPU memory
                     gpu_memory = nvml.nvmlDeviceGetMemoryInfo(self.gpu_handle)
-                    self.metrics["gpu_memory_used"].append(
-                        gpu_memory.used / (1024**2)
-                    )  # MB
+                    self.metrics["gpu_memory_used"].append(gpu_memory.used / (1024**2))  # MB
 
                     # GPU temperature
                     gpu_temp = nvml.nvmlDeviceGetTemperature(
@@ -150,11 +144,9 @@ class SystemMonitor:
 
                     # Power consumption
                     try:
-                        power = (
-                            nvml.nvmlDeviceGetPowerUsage(self.gpu_handle) / 1000.0
-                        )  # Watts
+                        power = nvml.nvmlDeviceGetPowerUsage(self.gpu_handle) / 1000.0  # Watts
                         self.metrics["power_watts"].append(power)
-                    except:
+                    except Exception:
                         self.metrics["power_watts"].append(0.0)
 
                 except Exception as e:
@@ -198,7 +190,7 @@ class SystemMonitor:
 
             return 0.0
 
-        except:
+        except Exception:
             return 0.0
 
     def get_average_metrics(self) -> Dict[str, float]:
@@ -299,9 +291,9 @@ class ModelProfiler:
         logger.info(f"Profiling TensorRT model: {engine_path}")
 
         try:
-            import tensorrt as trt
-            import pycuda.driver as cuda
-            import pycuda.autoinit
+            import pycuda.autoinit  # noqa F401
+            import pycuda.driver as cuda  # noqa F401
+            import tensorrt as trt  # noqa F401
         except ImportError as e:
             logger.error(f"Required dependencies not available: {e}")
             raise
@@ -334,9 +326,7 @@ class ModelProfiler:
                 for i in range(num_iterations):
                     start_time = time.perf_counter()
 
-                    outputs_data = self._do_trt_inference(
-                        context, bindings, inputs, outputs, stream
-                    )
+                    _ = self._do_trt_inference(context, bindings, inputs, outputs, stream)
 
                     end_time = time.perf_counter()
                     times.append((end_time - start_time) * 1000)  # Convert to ms
@@ -393,7 +383,14 @@ class ModelProfiler:
 
     def _allocate_trt_buffers(self, engine):
         """Allocate TensorRT buffers"""
-        import pycuda.driver as cuda
+
+        try:
+            import pycuda.autoinit  # noqa F401
+            import pycuda.driver as cuda  # noqa F401
+            import tensorrt as trt  # noqa F401
+        except ImportError as e:
+            logger.error(f"Required dependencies not available: {e}")
+            raise
 
         inputs = []
         outputs = []
@@ -470,7 +467,7 @@ class ModelProfiler:
                 for i in range(num_iterations):
                     start_time = time.perf_counter()
 
-                    result = func(**kwargs)
+                    _ = func(**kwargs)
 
                     end_time = time.perf_counter()
                     times.append((end_time - start_time) * 1000)  # Convert to ms
@@ -561,7 +558,7 @@ class ModelProfiler:
         print(tabulate(rows, headers=headers, tablefmt="grid"))
 
         # Performance summary
-        print(f"\nPERFORMance SUMMARY:")
+        print("\nPERFORMance SUMMARY:")
         total_models = len(self.results)
         passed_models = sum(1 for r in self.results if r.meets_target)
         print(f"Models tested: {total_models}")
@@ -604,7 +601,7 @@ class ModelProfiler:
                         "gpu_memory_total_gb": gpu_memory.total / (1024**3),
                     }
                 )
-            except:
+            except Exception:
                 pass
 
         return info
@@ -663,9 +660,7 @@ class ModelProfiler:
         axes[1, 1].tick_params(axis="x", rotation=45)
 
         plt.tight_layout()
-        plt.savefig(
-            output_dir / "resource_utilization.png", dpi=150, bbox_inches="tight"
-        )
+        plt.savefig(output_dir / "resource_utilization.png", dpi=150, bbox_inches="tight")
         plt.close()
 
         logger.info(f"Performance plots saved to: {output_dir}")
@@ -673,9 +668,7 @@ class ModelProfiler:
 
 def main():
     """Main function for command-line usage"""
-    parser = argparse.ArgumentParser(
-        description="Profile AI model performance on Jetson Orin Nano"
-    )
+    parser = argparse.ArgumentParser(description="Profile AI model performance on Jetson Orin Nano")
     parser.add_argument(
         "--models-dir",
         default="./models",
@@ -692,17 +685,13 @@ def main():
         default=100,
         help="Number of profiling iterations per model",
     )
-    parser.add_argument(
-        "--warmup", type=int, default=10, help="Number of warmup iterations"
-    )
+    parser.add_argument("--warmup", type=int, default=10, help="Number of warmup iterations")
     parser.add_argument(
         "--create-plots",
         action="store_true",
         help="Create performance visualization plots",
     )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose logging"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
 
@@ -770,7 +759,7 @@ def main():
         if args.create_plots:
             profiler.create_performance_plots(str(output_dir))
 
-        print(f"\n✓ Profiling completed successfully!")
+        print("\n✓ Profiling completed successfully!")
         print(f"Results saved to: {output_dir}")
 
     except KeyboardInterrupt:

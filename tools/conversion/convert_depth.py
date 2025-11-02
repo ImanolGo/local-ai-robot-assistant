@@ -10,32 +10,28 @@ According to architecture.md:
 - Performance Target: 15+ FPS at 320x240 resolution
 """
 
-import os
-import sys
 import argparse
 import logging
-import tempfile
+import os
+import sys
 import time
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, Union
+from typing import Any, Dict, Optional, Tuple
 
+import numpy as np
+import nvidia_ml_py3 as nvml
+import onnx
+import onnxruntime as ort
+import psutil
+import tensorrt as trt
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-import tensorrt as trt
-import numpy as np
-import onnx
-import onnxruntime as ort
-from tabulate import tabulate
-import psutil
-import nvidia_ml_py3 as nvml
-import cv2
 from PIL import Image
+from tabulate import tabulate
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -75,25 +71,15 @@ class FastDepthModel(nn.Module):
         """Create decoder for depth estimation"""
         decoder = nn.Sequential(
             # Upsample and decode
-            nn.ConvTranspose2d(
-                1280, 512, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
+            nn.ConvTranspose2d(1280, 512, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(
-                512, 256, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
+            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(
-                256, 128, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(
-                128, 64, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(
-                64, 32, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 1, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),  # Ensure positive depth values
@@ -145,7 +131,7 @@ class FastDepthConverter:
         try:
             nvml.nvmlInit()
             self.gpu_available = True
-        except:
+        except Exception:
             self.gpu_available = False
             logger.warning("NVIDIA ML not available - GPU monitoring disabled")
 
@@ -157,9 +143,7 @@ class FastDepthConverter:
             [
                 transforms.Resize((self.input_shape[2], self.input_shape[3])),
                 transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
 
@@ -250,9 +234,7 @@ class FastDepthConverter:
             dummy_input = np.random.randn(*self.input_shape).astype(np.float32)
             output = session.run(None, {"input": dummy_input})
 
-            logger.info(
-                f"✓ ONNX inference test passed - output shape: {output[0].shape}"
-            )
+            logger.info(f"✓ ONNX inference test passed - output shape: {output[0].shape}")
 
         except Exception as e:
             logger.error(f"ONNX model verification failed: {e}")
@@ -281,9 +263,7 @@ class FastDepthConverter:
 
         # Create builder and network
         builder = trt.Builder(self.trt_logger)
-        network = builder.create_network(
-            1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-        )
+        network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
         parser = trt.OnnxParser(network, self.trt_logger)
 
         # Parse ONNX model
@@ -404,9 +384,7 @@ class FastDepthConverter:
 
         start_time = time.time()
         for _ in range(num_iterations):
-            outputs_data = self._do_inference(
-                context, bindings, inputs, outputs, stream
-            )
+            outputs_data = self._do_inference(context, bindings, inputs, outputs, stream)
         end_time = time.time()
 
         # Calculate metrics
@@ -415,9 +393,7 @@ class FastDepthConverter:
         fps = 1.0 / avg_time
 
         # Analyze output
-        depth_output = outputs_data[0].reshape(
-            1, 1, self.input_shape[2], self.input_shape[3]
-        )
+        depth_output = outputs_data[0].reshape(1, 1, self.input_shape[2], self.input_shape[3])
         depth_stats = {
             "min_depth": float(np.min(depth_output)),
             "max_depth": float(np.max(depth_output)),
@@ -446,8 +422,8 @@ class FastDepthConverter:
 
     def _allocate_buffers(self, engine: trt.ICudaEngine):
         """Allocate buffers for TensorRT inference"""
-        import pycuda.driver as cuda
-        import pycuda.autoinit
+        import pycuda.autoinit  # noqa F401
+        import pycuda.driver as cuda  # noqa F401
 
         inputs = []
         outputs = []
@@ -512,7 +488,7 @@ class FastDepthConverter:
                         "gpu_free_mb": gpu_memory.free / (1024 * 1024),
                     }
                 )
-            except:
+            except Exception:
                 pass
 
         return info
@@ -559,13 +535,9 @@ class FastDepthConverter:
         # Performance assessment
         target_fps = 15.0  # From architecture requirements
         if results["fps"] >= target_fps:
-            print(
-                f"\n✓ Performance target met: {results['fps']:.1f} FPS >= {target_fps} FPS"
-            )
+            print(f"\n✓ Performance target met: {results['fps']:.1f} FPS >= {target_fps} FPS")
         else:
-            print(
-                f"\n⚠ Performance below target: {results['fps']:.1f} FPS < {target_fps} FPS"
-            )
+            print(f"\n⚠ Performance below target: {results['fps']:.1f} FPS < {target_fps} FPS")
 
     def test_with_sample_image(
         self, engine_path: str, sample_image_path: Optional[str] = None
@@ -608,9 +580,7 @@ class FastDepthConverter:
         outputs_data = self._do_inference(context, bindings, inputs, outputs, stream)
 
         # Reshape output to depth map
-        depth_map = outputs_data[0].reshape(
-            1, 1, self.input_shape[2], self.input_shape[3]
-        )
+        depth_map = outputs_data[0].reshape(1, 1, self.input_shape[2], self.input_shape[3])
         depth_map = depth_map.squeeze()  # Remove batch and channel dimensions
 
         logger.info(f"✓ Depth prediction completed - shape: {depth_map.shape}")
@@ -618,9 +588,7 @@ class FastDepthConverter:
 
         return depth_map
 
-    def convert_full_pipeline(
-        self, output_dir: str, skip_existing: bool = True
-    ) -> Dict[str, str]:
+    def convert_full_pipeline(self, output_dir: str, skip_existing: bool = True) -> Dict[str, str]:
         """
         Run complete conversion pipeline: PyTorch → ONNX → TensorRT
 
@@ -649,9 +617,7 @@ class FastDepthConverter:
         if not paths["pytorch"].exists() or not skip_existing:
             self.create_model(str(paths["pytorch"]))
         else:
-            logger.info(
-                f"Skipping model creation - PyTorch model exists: {paths['pytorch']}"
-            )
+            logger.info(f"Skipping model creation - PyTorch model exists: {paths['pytorch']}")
 
         # Step 2: Convert to ONNX
         if not paths["onnx"].exists() or not skip_existing:
@@ -663,9 +629,7 @@ class FastDepthConverter:
         if not paths["tensorrt"].exists() or not skip_existing:
             self.convert_to_tensorrt(str(paths["onnx"]), str(paths["tensorrt"]))
         else:
-            logger.info(
-                f"Skipping TensorRT conversion - file exists: {paths['tensorrt']}"
-            )
+            logger.info(f"Skipping TensorRT conversion - file exists: {paths['tensorrt']}")
 
         # Step 4: Benchmark
         benchmark_results = self.benchmark_model(str(paths["tensorrt"]))
@@ -732,9 +696,7 @@ def main():
         action="store_true",
         help="Skip conversion if output files already exist",
     )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose logging"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
 
@@ -764,9 +726,7 @@ def main():
 
         if args.sample_image:
             print(f"\nTesting with sample image: {args.sample_image}")
-            depth_map = converter.test_with_sample_image(
-                paths["tensorrt"], args.sample_image
-            )
+            _ = converter.test_with_sample_image(paths["tensorrt"], args.sample_image)
 
     except Exception as e:
         logger.error(f"Conversion failed: {e}")

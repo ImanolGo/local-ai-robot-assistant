@@ -7,30 +7,25 @@ Pipeline: PyTorch/HuggingFace → ONNX → TensorRT
 Optimized for NVIDIA Jetson Orin Nano deployment
 """
 
+import argparse
+import json
+import logging
 import os
 import sys
-import argparse
-import logging
-import json
 import time
-import shutil
-from pathlib import Path
-from typing import Dict, Any, Optional, Union, List, Callable
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, asdict
-import tempfile
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-import torch
-import tensorrt as trt
 import numpy as np
 import onnx
 import onnxruntime as ort
+import tensorrt as trt
 from tabulate import tabulate
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -122,9 +117,7 @@ class BaseModelConverter(ABC):
 
         # Create builder and network
         builder = trt.Builder(self.trt_logger)
-        network = builder.create_network(
-            1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-        )
+        network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
         parser = trt.OnnxParser(network, self.trt_logger)
 
         # Parse ONNX model
@@ -221,17 +214,13 @@ class BaseModelConverter(ABC):
             input_name = session.get_inputs()[0].name
             output = session.run(None, {input_name: dummy_input})
 
-            logger.info(
-                f"✓ ONNX inference test passed - output shape: {output[0].shape}"
-            )
+            logger.info(f"✓ ONNX inference test passed - output shape: {output[0].shape}")
 
         except Exception as e:
             logger.error(f"ONNX model verification failed: {e}")
             raise
 
-    def benchmark_tensorrt_model(
-        self, trt_path: str, num_iterations: int = 100
-    ) -> Dict[str, Any]:
+    def benchmark_tensorrt_model(self, trt_path: str, num_iterations: int = 100) -> Dict[str, Any]:
         """
         Benchmark TensorRT model performance
 
@@ -245,8 +234,8 @@ class BaseModelConverter(ABC):
         logger.info(f"Benchmarking TensorRT model: {trt_path}")
 
         try:
-            import pycuda.driver as cuda
-            import pycuda.autoinit
+            import pycuda.autoinit  # noqa F401
+            import pycuda.driver as cuda  # noqa F401
         except ImportError:
             logger.warning("PyCUDA not available - skipping benchmark")
             return {}
@@ -360,12 +349,8 @@ class BaseModelConverter(ABC):
             logger.info(f"Output directory: {self.config.output_dir}")
 
             # Define file paths
-            pytorch_path = os.path.join(
-                self.config.output_dir, f"{self.config.model_name}.pt"
-            )
-            onnx_path = os.path.join(
-                self.config.output_dir, f"{self.config.model_name}.onnx"
-            )
+            pytorch_path = os.path.join(self.config.output_dir, f"{self.config.model_name}.pt")
+            onnx_path = os.path.join(self.config.output_dir, f"{self.config.model_name}.onnx")
             trt_path = os.path.join(
                 self.config.output_dir,
                 f"{self.config.model_name}_{self.config.precision}.trt",
@@ -375,9 +360,7 @@ class BaseModelConverter(ABC):
             if not os.path.exists(pytorch_path) or not skip_existing:
                 pytorch_path = self.load_or_create_pytorch_model()
             else:
-                logger.info(
-                    f"Skipping PyTorch model creation - file exists: {pytorch_path}"
-                )
+                logger.info(f"Skipping PyTorch model creation - file exists: {pytorch_path}")
 
             # Step 2: Convert to ONNX
             if not os.path.exists(onnx_path) or not skip_existing:
@@ -398,9 +381,7 @@ class BaseModelConverter(ABC):
             # Calculate metrics
             conversion_time = time.time() - start_time
             model_size_mb = (
-                os.path.getsize(trt_path) / (1024 * 1024)
-                if os.path.exists(trt_path)
-                else 0
+                os.path.getsize(trt_path) / (1024 * 1024) if os.path.exists(trt_path) else 0
             )
 
             # Create result
@@ -484,9 +465,7 @@ class ConversionPipeline:
             ConversionResult with paths and metrics
         """
         if config.model_type not in self.converters:
-            raise ValueError(
-                f"No converter registered for model type: {config.model_type}"
-            )
+            raise ValueError(f"No converter registered for model type: {config.model_type}")
 
         converter_class = self.converters[config.model_type]
         converter = converter_class(config)
@@ -512,9 +491,7 @@ class ConversionPipeline:
         results = []
 
         for config in configs:
-            logger.info(
-                f"Converting model {len(results) + 1}/{len(configs)}: {config.model_name}"
-            )
+            logger.info(f"Converting model {len(results) + 1}/{len(configs)}: {config.model_name}")
 
             try:
                 result = self.convert_model(config, skip_existing)
@@ -523,9 +500,7 @@ class ConversionPipeline:
                 if result.success:
                     logger.info(f"✓ {config.model_name} converted successfully")
                 else:
-                    logger.error(
-                        f"✗ {config.model_name} conversion failed: {result.error_message}"
-                    )
+                    logger.error(f"✗ {config.model_name} conversion failed: {result.error_message}")
 
             except Exception as e:
                 logger.error(f"✗ {config.model_name} conversion failed: {e}")
@@ -552,11 +527,7 @@ class ConversionPipeline:
 
         for result in self.results:
             status = "✓" if result.success else "✗"
-            fps = (
-                result.benchmark_results.get("fps", 0)
-                if result.benchmark_results
-                else 0
-            )
+            fps = result.benchmark_results.get("fps", 0) if result.benchmark_results else 0
 
             rows.append(
                 [
@@ -564,11 +535,7 @@ class ConversionPipeline:
                     result.model_type,
                     status,
                     f"{fps:.2f}" if fps > 0 else "N/A",
-                    (
-                        f"{result.model_size_mb:.1f}"
-                        if result.model_size_mb > 0
-                        else "N/A"
-                    ),
+                    (f"{result.model_size_mb:.1f}" if result.model_size_mb > 0 else "N/A"),
                     f"{result.conversion_time_s:.1f}",
                 ]
             )
@@ -582,7 +549,7 @@ class ConversionPipeline:
         total_models = len(self.results)
         successful_conversions = sum(1 for r in self.results if r.success)
 
-        print(f"\nConversion Statistics:")
+        print("\nConversion Statistics:")
         print(f"Total models: {total_models}")
         print(f"Successful conversions: {successful_conversions}/{total_models}")
         print(f"Success rate: {successful_conversions/total_models*100:.1f}%")
@@ -602,9 +569,7 @@ class ConversionPipeline:
         logger.info(f"Batch results saved to: {output_path}")
 
 
-def create_sample_config(
-    model_type: str, output_dir: str = "./models"
-) -> ConversionConfig:
+def create_sample_config(model_type: str, output_dir: str = "./models") -> ConversionConfig:
     """
     Create sample configuration for different model types
 
@@ -678,9 +643,7 @@ def main():
         action="store_true",
         help="Skip conversion if output files already exist",
     )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose logging"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
 
@@ -688,7 +651,7 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Initialize pipeline
-    pipeline = ConversionPipeline()
+    # pipeline = ConversionPipeline()
 
     # Note: In actual implementation, converters would be registered here
     # pipeline.register_converter('yolo', YOLOConverter)
@@ -703,9 +666,7 @@ def main():
             config.workspace_size_mb = args.workspace_size
 
             logger.info(f"Converting {args.model_type} model...")
-            logger.info(
-                f"Note: This is a template - actual converter implementation needed"
-            )
+            logger.info("Note: This is a template - actual converter implementation needed")
 
             # In actual implementation:
             # result = pipeline.convert_model(config, args.skip_existing)
@@ -714,9 +675,7 @@ def main():
             logger.info("Model Conversion Pipeline Template")
             logger.info("=====================================")
             logger.info("")
-            logger.info(
-                "This template provides a standardized framework for model conversion."
-            )
+            logger.info("This template provides a standardized framework for model conversion.")
             logger.info("To use it, implement specific converters for each model type:")
             logger.info("")
             logger.info("1. Inherit from BaseModelConverter")
@@ -726,12 +685,8 @@ def main():
             logger.info("")
             logger.info("Example usage:")
             logger.info("  python tools/utils/conversion_pipeline.py --model-type yolo")
-            logger.info(
-                "  python tools/utils/conversion_pipeline.py --model-type depth"
-            )
-            logger.info(
-                "  python tools/utils/conversion_pipeline.py --model-type whisper"
-            )
+            logger.info("  python tools/utils/conversion_pipeline.py --model-type depth")
+            logger.info("  python tools/utils/conversion_pipeline.py --model-type whisper")
             logger.info("")
             logger.info("For actual model conversion, use specific scripts:")
             logger.info("  python tools/conversion/convert_yolo.py")

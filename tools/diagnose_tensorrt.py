@@ -4,9 +4,9 @@ TensorRT Diagnostic Script
 Checks memory, TensorRT version, and creates a simple test with modern API
 """
 
-import os
-import sys
 import gc
+import sys
+
 import psutil
 
 
@@ -80,9 +80,7 @@ def test_tensorrt_modern_api():
             print("⚠️  Cannot set workspace size - unknown API version")
 
         # Create network
-        network = builder.create_network(
-            1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-        )
+        network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
 
         # Add a simple identity layer
         input_tensor = network.add_input(name="input", dtype=trt.float32, shape=(1, 1))
@@ -109,9 +107,7 @@ def test_tensorrt_modern_api():
                         print("✗ Failed to deserialize TensorRT engine")
                         return False
                 else:
-                    print(
-                        "✗ Failed to build TensorRT serialized network (returned None)"
-                    )
+                    print("✗ Failed to build TensorRT serialized network (returned None)")
                     return False
             elif hasattr(builder, "build_engine"):
                 # TensorRT 8.x API

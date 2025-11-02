@@ -10,31 +10,25 @@ According to architecture.md:
 - Real-time factor < 0.3x
 """
 
-import os
-import sys
 import argparse
-import logging
-import tempfile
-import time
-import subprocess
-from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, Union
-import shutil
 import json
+import logging
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-import torch
-import tensorrt as trt
 import numpy as np
-import onnx
-import onnxruntime as ort
-from tabulate import tabulate
-import psutil
 import nvidia_ml_py3 as nvml
+import psutil
+import tensorrt as trt
+import torch
+from tabulate import tabulate
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -47,9 +41,7 @@ class WhisperConverter:
     2. Custom TensorRT conversion - Alternative approach
     """
 
-    def __init__(
-        self, model_size: str = "tiny", quantization: str = "int8", device: str = "cuda"
-    ):
+    def __init__(self, model_size: str = "tiny", quantization: str = "int8", device: str = "cuda"):
         """
         Initialize Whisper converter
 
@@ -66,7 +58,7 @@ class WhisperConverter:
         try:
             nvml.nvmlInit()
             self.gpu_available = True
-        except:
+        except Exception:
             self.gpu_available = False
             logger.warning("NVIDIA ML not available - GPU monitoring disabled")
 
@@ -80,9 +72,7 @@ class WhisperConverter:
         """Validate initialization parameters"""
         valid_sizes = ["tiny", "base", "small", "medium", "large"]
         if self.model_size not in valid_sizes:
-            raise ValueError(
-                f"Invalid model size: {self.model_size}. Must be one of {valid_sizes}"
-            )
+            raise ValueError(f"Invalid model size: {self.model_size}. Must be one of {valid_sizes}")
 
         valid_quant = ["int8", "int16", "float16", "float32"]
         if self.quantization not in valid_quant:
@@ -92,9 +82,7 @@ class WhisperConverter:
 
         valid_devices = ["cuda", "cpu"]
         if self.device not in valid_devices:
-            raise ValueError(
-                f"Invalid device: {self.device}. Must be one of {valid_devices}"
-            )
+            raise ValueError(f"Invalid device: {self.device}. Must be one of {valid_devices}")
 
     def install_dependencies(self) -> bool:
         """
@@ -201,7 +189,7 @@ class WhisperConverter:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
             if result.returncode == 0:
-                logger.info(f"✓ faster-whisper model converted successfully")
+                logger.info("✓ faster-whisper model converted successfully")
                 logger.info(f"Model saved to: {model_dir}")
 
                 # Verify model files
@@ -210,7 +198,7 @@ class WhisperConverter:
                 return model_dir
             else:
                 logger.error(f"Conversion failed: {result.stderr}")
-                raise RuntimeError(f"faster-whisper conversion failed")
+                raise RuntimeError("faster-whisper conversion failed")
 
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to convert to faster-whisper: {e}")
@@ -218,9 +206,7 @@ class WhisperConverter:
             logger.error(f"Command error: {e.stderr}")
             raise
         except FileNotFoundError:
-            logger.error(
-                "ct2-transformers-converter not found. Please install it with:"
-            )
+            logger.error("ct2-transformers-converter not found. Please install it with:")
             logger.error("pip install ct2-transformers-converter")
             raise
 
@@ -255,9 +241,7 @@ class WhisperConverter:
             model.eval()
 
             # Export encoder to ONNX
-            encoder_path = os.path.join(
-                output_dir, f"whisper_{self.model_size}_encoder.onnx"
-            )
+            encoder_path = os.path.join(output_dir, f"whisper_{self.model_size}_encoder.onnx")
 
             # Create dummy input for encoder
             mel_input = torch.randn(1, 80, 3000)  # Mel spectrogram input
@@ -281,15 +265,11 @@ class WhisperConverter:
             logger.info(f"✓ Encoder ONNX model saved to: {encoder_path}")
 
             # Export decoder to ONNX (more complex due to autoregressive nature)
-            decoder_path = os.path.join(
-                output_dir, f"whisper_{self.model_size}_decoder.onnx"
-            )
+            _ = os.path.join(output_dir, f"whisper_{self.model_size}_decoder.onnx")
 
             # Note: Full decoder export is complex due to autoregressive generation
             # For production, recommend using faster-whisper instead
-            logger.info(
-                "⚠ Decoder ONNX export is complex - recommend using faster-whisper"
-            )
+            logger.info("⚠ Decoder ONNX export is complex - recommend using faster-whisper")
 
             return encoder_path
 
@@ -312,9 +292,7 @@ class WhisperConverter:
 
         # Create builder and network
         builder = trt.Builder(self.trt_logger)
-        network = builder.create_network(
-            1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-        )
+        network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
         parser = trt.OnnxParser(network, self.trt_logger)
 
         # Parse ONNX model
@@ -376,9 +354,7 @@ class WhisperConverter:
 
             # Load model
             logger.info("Loading faster-whisper model...")
-            model = WhisperModel(
-                model_dir, device=self.device, compute_type=self.quantization
-            )
+            model = WhisperModel(model_dir, device=self.device, compute_type=self.quantization)
 
             # Prepare test audio
             if audio_file and os.path.exists(audio_file):
@@ -403,9 +379,7 @@ class WhisperConverter:
             for i in range(num_iterations):
                 start_time = time.time()
 
-                segments, info = model.transcribe(
-                    test_audio, beam_size=1, language="en"
-                )
+                segments, info = model.transcribe(test_audio, beam_size=1, language="en")
 
                 # Consume all segments
                 transcription = " ".join([segment.text for segment in segments])
@@ -439,9 +413,7 @@ class WhisperConverter:
                 "iterations": num_iterations,
                 "memory_usage_mb": memory_info,
                 "sample_transcription": (
-                    transcription[:100] + "..."
-                    if len(transcription) > 100
-                    else transcription
+                    transcription[:100] + "..." if len(transcription) > 100 else transcription
                 ),
             }
 
@@ -451,17 +423,13 @@ class WhisperConverter:
             return results
 
         except ImportError:
-            logger.error(
-                "faster-whisper not installed. Install with: pip install faster-whisper"
-            )
+            logger.error("faster-whisper not installed. Install with: pip install faster-whisper")
             raise
         except Exception as e:
             logger.error(f"Benchmark failed: {e}")
             raise
 
-    def _create_dummy_audio(
-        self, duration: float = 5.0, sample_rate: int = 16000
-    ) -> str:
+    def _create_dummy_audio(self, duration: float = 5.0, sample_rate: int = 16000) -> str:
         """Create dummy audio file for testing"""
         import tempfile
         import wave
@@ -510,7 +478,7 @@ class WhisperConverter:
                         "gpu_free_mb": gpu_memory.free / (1024 * 1024),
                     }
                 )
-            except:
+            except Exception:
                 pass
 
         return info
@@ -553,20 +521,24 @@ class WhisperConverter:
 
         if results["real_time_factor"] <= target_rtf:
             print(
-                f"\n✓ Real-time factor target met: {results['real_time_factor']:.3f}x <= {target_rtf}x"
+                f"\n✓ Real-time factor target met:\
+                      {results['real_time_factor']:.3f}x <= {target_rtf}x"
             )
         else:
             print(
-                f"\n⚠ Real-time factor above target: {results['real_time_factor']:.3f}x > {target_rtf}x"
+                f"\n⚠ Real-time factor above target:\
+                      {results['real_time_factor']:.3f}x > {target_rtf}x"
             )
 
         if results["avg_transcription_time_s"] <= target_latency:
             print(
-                f"✓ Latency target met: {results['avg_transcription_time_s']:.3f}s <= {target_latency}s"
+                f"✓ Latency target met:\
+                      {results['avg_transcription_time_s']:.3f}s <= {target_latency}s"
             )
         else:
             print(
-                f"⚠ Latency above target: {results['avg_transcription_time_s']:.3f}s > {target_latency}s"
+                f"⚠ Latency above target:\
+                      {results['avg_transcription_time_s']:.3f}s > {target_latency}s"
             )
 
         print(f"\nSample transcription: {results['sample_transcription']}")
@@ -607,18 +579,14 @@ class WhisperConverter:
                 converted_model_dir = self.convert_to_faster_whisper(str(output_dir))
                 results["faster_whisper"] = converted_model_dir
             else:
-                logger.info(
-                    f"Skipping conversion - faster-whisper model exists: {model_dir}"
-                )
+                logger.info(f"Skipping conversion - faster-whisper model exists: {model_dir}")
                 results["faster_whisper"] = model_dir
 
             # Benchmark
             benchmark_results = self.benchmark_faster_whisper(results["faster_whisper"])
 
             # Save benchmark results
-            with open(
-                output_dir / f"whisper_{self.model_size}_benchmark.json", "w"
-            ) as f:
+            with open(output_dir / f"whisper_{self.model_size}_benchmark.json", "w") as f:
                 json.dump(benchmark_results, f, indent=2)
 
         elif conversion_type == "tensorrt":
@@ -634,17 +602,13 @@ class WhisperConverter:
                 results["onnx"] = str(onnx_path)
 
             if not trt_path.exists() or not skip_existing:
-                trt_model_path = self.convert_to_tensorrt(
-                    results["onnx"], str(trt_path)
-                )
+                trt_model_path = self.convert_to_tensorrt(results["onnx"], str(trt_path))
                 results["tensorrt"] = trt_model_path
             else:
                 logger.info(f"Skipping TensorRT conversion - file exists: {trt_path}")
                 results["tensorrt"] = str(trt_path)
 
-            logger.info(
-                "⚠ TensorRT conversion is experimental - recommend using faster-whisper"
-            )
+            logger.info("⚠ TensorRT conversion is experimental - recommend using faster-whisper")
 
         else:
             raise ValueError(f"Invalid conversion type: {conversion_type}")
@@ -679,9 +643,7 @@ def main():
         choices=["int8", "int16", "float16", "float32"],
         help="Quantization level for faster-whisper",
     )
-    parser.add_argument(
-        "--device", default="cuda", choices=["cuda", "cpu"], help="Target device"
-    )
+    parser.add_argument("--device", default="cuda", choices=["cuda", "cpu"], help="Target device")
     parser.add_argument(
         "--conversion-type",
         "-t",
@@ -706,9 +668,7 @@ def main():
         action="store_true",
         help="Skip conversion if output files already exist",
     )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose logging"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
 

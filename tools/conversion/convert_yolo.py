@@ -9,29 +9,24 @@ According to architecture.md:
 - Performance Target: 20+ FPS at 640x480 resolution
 """
 
-import os
-import sys
 import argparse
 import logging
-import tempfile
+import os
+import sys
 import time
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
+from typing import Any, Dict, Tuple
 
-import torch
-import tensorrt as trt
 import numpy as np
-from ultralytics import YOLO
-import onnx
-import onnxruntime as ort
-from tabulate import tabulate
-import psutil
 import nvidia_ml_py3 as nvml
+import onnx
+import psutil
+import tensorrt as trt
+from tabulate import tabulate
+from ultralytics import YOLO
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -65,7 +60,7 @@ class YOLOConverter:
         try:
             nvml.nvmlInit()
             self.gpu_available = True
-        except:
+        except Exception:
             self.gpu_available = False
             logger.warning("NVIDIA ML not available - GPU monitoring disabled")
 
@@ -170,9 +165,7 @@ class YOLOConverter:
 
         # Create builder and network
         builder = trt.Builder(self.trt_logger)
-        network = builder.create_network(
-            1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-        )
+        network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
         parser = trt.OnnxParser(network, self.trt_logger)
 
         # Parse ONNX model
@@ -320,8 +313,8 @@ class YOLOConverter:
 
     def _allocate_buffers(self, engine: trt.ICudaEngine):
         """Allocate buffers for TensorRT inference"""
-        import pycuda.driver as cuda
-        import pycuda.autoinit
+        import pycuda.autoinit  # noqa F401
+        import pycuda.driver as cuda  # noqa F401
 
         inputs = []
         outputs = []
@@ -386,7 +379,7 @@ class YOLOConverter:
                         "gpu_free_mb": gpu_memory.free / (1024 * 1024),
                     }
                 )
-            except:
+            except Exception:
                 pass
 
         return info
@@ -420,17 +413,11 @@ class YOLOConverter:
         # Performance assessment
         target_fps = 20.0  # From architecture requirements
         if results["fps"] >= target_fps:
-            print(
-                f"\n✓ Performance target met: {results['fps']:.1f} FPS >= {target_fps} FPS"
-            )
+            print(f"\n✓ Performance target met: {results['fps']:.1f} FPS >= {target_fps} FPS")
         else:
-            print(
-                f"\n⚠ Performance below target: {results['fps']:.1f} FPS < {target_fps} FPS"
-            )
+            print(f"\n⚠ Performance below target: {results['fps']:.1f} FPS < {target_fps} FPS")
 
-    def convert_full_pipeline(
-        self, output_dir: str, skip_existing: bool = True
-    ) -> Dict[str, str]:
+    def convert_full_pipeline(self, output_dir: str, skip_existing: bool = True) -> Dict[str, str]:
         """
         Run complete conversion pipeline: PyTorch → ONNX → TensorRT
 
@@ -470,9 +457,7 @@ class YOLOConverter:
         if not paths["tensorrt"].exists() or not skip_existing:
             self.convert_to_tensorrt(str(paths["onnx"]), str(paths["tensorrt"]))
         else:
-            logger.info(
-                f"Skipping TensorRT conversion - file exists: {paths['tensorrt']}"
-            )
+            logger.info(f"Skipping TensorRT conversion - file exists: {paths['tensorrt']}")
 
         # Step 4: Benchmark
         benchmark_results = self.benchmark_model(str(paths["tensorrt"]))
@@ -534,9 +519,7 @@ def main():
         action="store_true",
         help="Skip conversion if output files already exist",
     )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose logging"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
 

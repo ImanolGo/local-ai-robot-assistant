@@ -33,7 +33,7 @@ check_cuda() {
         echo "✗ CUDA not found. Please install JetPack SDK first."
         exit 1
     fi
-    
+
     if python3 -c "import torch; print(f'PyTorch CUDA available: {torch.cuda.is_available()}')" 2>/dev/null; then
         echo "✓ PyTorch with CUDA support detected"
     else
@@ -56,14 +56,14 @@ install_system_deps() {
         libnvonnxparsers-dev \
         python3-libnvinfer-dev \
         tensorrt
-    
+
     echo "✓ System dependencies installed"
 }
 
 # Function to install Python packages
 install_python_deps() {
     echo "Installing Python dependencies..."
-    
+
     # Create requirements file for model conversion tools
     cat > /tmp/tensorrt_requirements.txt << EOF
 # Core ML frameworks
@@ -97,20 +97,20 @@ EOF
     # Install packages
     pip3 install --upgrade pip
     pip3 install -r /tmp/tensorrt_requirements.txt
-    
+
     # Verify installations
     echo "Verifying Python installations..."
     python3 -c "import tensorrt; print(f'TensorRT version: {tensorrt.__version__}')" || echo "⚠ TensorRT Python bindings not available"
     python3 -c "import onnx; print(f'ONNX version: {onnx.__version__}')" || echo "⚠ ONNX not available"
     python3 -c "import onnxruntime; print(f'ONNX Runtime version: {onnxruntime.__version__}')" || echo "⚠ ONNX Runtime not available"
-    
+
     echo "✓ Python dependencies installed"
 }
 
 # Function to test TensorRT installation
 test_tensorrt() {
     echo "Testing TensorRT installation..."
-    
+
     # Test trtexec command
     if command -v trtexec &> /dev/null; then
         echo "✓ trtexec found:"
@@ -118,7 +118,7 @@ test_tensorrt() {
     else
         echo "⚠ trtexec not found in PATH"
     fi
-    
+
     # Test Python TensorRT
     python3 -c "
 import tensorrt as trt
@@ -138,7 +138,7 @@ print('✓ TensorRT Runtime created successfully')
 # Function to create sample test scripts
 create_test_scripts() {
     echo "Creating test scripts..."
-    
+
     # Create simple TensorRT test
     cat > /tmp/test_tensorrt_simple.py << 'EOF'
 #!/usr/bin/env python3
@@ -159,61 +159,61 @@ def create_dummy_onnx_model():
     # Create a simple identity model
     input_tensor = helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 3, 224, 224])
     output_tensor = helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 3, 224, 224])
-    
+
     node = helper.make_node('Identity', ['input'], ['output'])
     graph = helper.make_graph([node], 'test_graph', [input_tensor], [output_tensor])
     model = helper.make_model(graph, producer_name='test')
-    
+
     return model
 
 def test_tensorrt_conversion():
     """Test ONNX to TensorRT conversion"""
     print("Creating dummy ONNX model...")
     model = create_dummy_onnx_model()
-    
+
     # Save to temporary file
     with tempfile.NamedTemporaryFile(suffix='.onnx', delete=False) as f:
         onnx.save(model, f.name)
         onnx_path = f.name
-    
+
     try:
         print("Converting ONNX to TensorRT...")
-        
+
         # Create TensorRT logger and builder
         logger = trt.Logger(trt.Logger.WARNING)
         builder = trt.Builder(logger)
         network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
         parser = trt.OnnxParser(network, logger)
-        
+
         # Parse ONNX model
         with open(onnx_path, 'rb') as model_file:
             if not parser.parse(model_file.read()):
                 print("Failed to parse ONNX model")
                 return False
-        
+
         # Build engine
         config = builder.create_builder_config()
         config.max_workspace_size = 1 << 28  # 256MB
-        
+
         print("Building TensorRT engine...")
         engine = builder.build_engine(network, config)
-        
+
         if engine is None:
             print("Failed to build TensorRT engine")
             return False
-        
+
         print("✓ TensorRT conversion successful!")
         print(f"Engine has {engine.num_bindings} bindings")
-        
+
         # Test inference context creation
         context = engine.create_execution_context()
         if context is None:
             print("Failed to create execution context")
             return False
-        
+
         print("✓ TensorRT execution context created successfully!")
         return True
-        
+
     finally:
         # Cleanup
         if os.path.exists(onnx_path):
@@ -263,7 +263,7 @@ main() {
     echo "Starting TensorRT installation for Local AI Robot Assistant..."
     echo "Target platform: NVIDIA Jetson Orin Nano"
     echo ""
-    
+
     check_jetson
     check_cuda
     #install_system_deps
@@ -271,7 +271,7 @@ main() {
     test_tensorrt
     create_test_scripts
     show_post_install_info
-    
+
     echo ""
     echo "✓ TensorRT and dependencies installation complete!"
 }

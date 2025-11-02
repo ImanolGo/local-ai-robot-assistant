@@ -4,8 +4,8 @@ Simple TensorRT Installation Test
 Tests basic TensorRT Python bindings without complex dependencies
 """
 
-import sys
 import logging
+import sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 def test_tensorrt_import():
     """Test TensorRT Python bindings import"""
     try:
-        import tensorrt as trt
+        import tensorrt as trt  # noqa F401
 
-        logger.info(f"✓ TensorRT imported successfully")
+        logger.info("✓ TensorRT imported successfully")
         logger.info(f"TensorRT version: {trt.__version__}")
         return True
     except ImportError as e:
@@ -30,7 +30,7 @@ def test_tensorrt_logger():
     try:
         import tensorrt as trt
 
-        logger_obj = trt.Logger(trt.Logger.WARNING)
+        _ = trt.Logger(trt.Logger.WARNING)
         logger.info("✓ TensorRT Logger created successfully")
         return True
     except Exception as e:
@@ -44,7 +44,7 @@ def test_tensorrt_builder():
         import tensorrt as trt
 
         logger_obj = trt.Logger(trt.Logger.WARNING)
-        builder = trt.Builder(logger_obj)
+        _ = trt.Builder(logger_obj)
         logger.info("✓ TensorRT Builder created successfully")
         return True
     except Exception as e:
@@ -58,7 +58,7 @@ def test_tensorrt_runtime():
         import tensorrt as trt
 
         logger_obj = trt.Logger(trt.Logger.WARNING)
-        runtime = trt.Runtime(logger_obj)
+        _ = trt.Runtime(logger_obj)
         logger.info("✓ TensorRT Runtime created successfully")
         return True
     except Exception as e:

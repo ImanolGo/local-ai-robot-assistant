@@ -46,7 +46,7 @@
 
 ### 0.5 Model Conversion Tools Setup (100% Complete ✅)
 - ✅ Install TensorRT and trtexec (TensorRT 10.3.0 validated)
-- ✅ Install ONNX runtime with CUDA support  
+- ✅ Install ONNX runtime with CUDA support
 - ✅ Create `tools/` directory for conversion scripts
 - ✅ Test TensorRT installation with sample model (modern API compatibility confirmed)
 - ✅ Create model conversion pipeline template (`tools/utils/conversion_pipeline.py`)
@@ -249,7 +249,7 @@
 ### 3.3 FastDepth Depth Estimation (0% Complete ⏳)
 
 - ⏳ Download and convert FastDepth model to TensorRT
-- ⏳ Implement depth_estimation_node.py  
+- ⏳ Implement depth_estimation_node.py
 - ⏳ Create ROS2 node for real-time depth estimation
 - ⏳ Test depth accuracy and speed (target: 15+ FPS)
 - ⏳ Implement depth image processing and filtering
@@ -358,7 +358,7 @@
 
 ## Next Milestones
 
-- **Week 2**: Complete Phase 2 (Core Infrastructure) - finalize camera pipeline implementation  
+- **Week 2**: Complete Phase 2 (Core Infrastructure) - finalize camera pipeline implementation
 - **Week 3**: Complete Phase 3 (Perception Models) - deploy and test converted TensorRT models
 - **Week 4**: Start Phase 4 (Audio Pipeline) - implement wake word detection using faster-whisper
 - **Week 5**: Begin SLAM integration (Phase 5) - implement visual odometry and mapping

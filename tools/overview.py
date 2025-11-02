@@ -4,8 +4,6 @@ Model Conversion Tools Overview
 Summary script for all available model conversion utilities
 """
 
-import os
-import sys
 from pathlib import Path
 
 
@@ -33,7 +31,8 @@ def print_available_tools():
             "name": "YOLO Conversion",
             "script": "conversion/convert_yolo.py",
             "description": "Convert YOLOv8 models to TensorRT FP16",
-            "usage": "python3 tools/conversion/convert_yolo.py --model yolov8n --output-dir ./models/yolo_trt",
+            "usage": "python3 tools/conversion/convert_yolo.py\
+                  --model yolov8n --output-dir ./models/yolo_trt",
         },
         {
             "name": "FastDepth Conversion",
@@ -45,7 +44,8 @@ def print_available_tools():
             "name": "Whisper Conversion",
             "script": "conversion/convert_whisper.py",
             "description": "Convert Whisper to faster-whisper or TensorRT",
-            "usage": "python3 tools/conversion/convert_whisper.py --model-size tiny --conversion-type faster-whisper",
+            "usage": "python3 tools/conversion/convert_whisper.py --model-size tiny\
+                  --conversion-type faster-whisper",
         },
         {
             "name": "Model Profiling",

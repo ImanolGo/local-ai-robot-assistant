@@ -167,18 +167,18 @@ direnv allow || true
 # --- Install Python project deps ---
 if [ -f pyproject.toml ]; then
     echo "📦 Installing project dependencies from pyproject.toml..."
-    
+
     # Install PyTorch for Jetson first (if available)
     echo "🔥 Installing PyTorch for Jetson..."
-    
+
     # Check if we're on Jetson and try to install optimized PyTorch
     if [ -f /etc/nv_tegra_release ]; then
         echo "   Detected Jetson - attempting to install optimized PyTorch..."
-        
+
         # Try to install PyTorch for Jetson (user should check latest wheels at forums)
         # Note: These URLs may need to be updated for latest versions
         TORCH_WHEEL_URL="https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.1.0a0+41361538.nv23.06-cp310-cp310-linux_aarch64.whl"
-        
+
         if curl --output /dev/null --silent --head --fail "$TORCH_WHEEL_URL"; then
             echo "   Installing PyTorch wheel for Jetson..."
             uv pip install "$TORCH_WHEEL_URL"
@@ -186,7 +186,7 @@ if [ -f pyproject.toml ]; then
             echo "   ⚠️  Jetson PyTorch wheel not available, falling back to pip install"
             uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
         fi
-        
+
         # Install ONNX Runtime for Jetson
         echo "   Installing ONNX Runtime GPU for Jetson..."
         uv pip install onnxruntime-gpu || uv pip install onnxruntime
@@ -194,21 +194,21 @@ if [ -f pyproject.toml ]; then
         echo "   Installing standard PyTorch..."
         uv pip install torch torchvision
     fi
-    
+
     # Install remaining dependencies
     echo "   Installing remaining project dependencies..."
     uv sync
-    
+
     # Install optional model conversion dependencies
     echo "   Installing model conversion tools..."
     uv sync --extra conversion --extra audio
-    
+
     # Test TensorRT installation
     echo "🧪 Testing TensorRT installation..."
     if [ -f tools/test_tensorrt.py ]; then
         .venv/bin/python tools/test_tensorrt.py || echo "⚠️  TensorRT test failed - some dependencies may be missing"
     fi
-    
+
 else
     echo "⚠️  No pyproject.toml found. Creating a minimal one..."
     uv init --app
