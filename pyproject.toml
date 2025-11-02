@@ -32,6 +32,11 @@ where = ["src"]
 include = ["*"]
 exclude = ["test*"]
 
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",

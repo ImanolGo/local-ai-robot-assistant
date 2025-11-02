@@ -982,6 +982,11 @@ test = [
     { name = "unittest-xml-reporting" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pre-commit" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "black", marker = "extra == 'dev'" },
@@ -1023,6 +1028,9 @@ requires-dist = [
     { name = "webrtcvad", marker = "extra == 'audio'", specifier = ">=2.0.0" },
 ]
 provides-extras = ["dev", "test", "conversion", "audio", "jetson"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pre-commit", specifier = ">=4.3.0" }]
 
 [[package]]
 name = "lxml"
