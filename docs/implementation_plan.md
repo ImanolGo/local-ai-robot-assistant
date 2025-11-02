@@ -43,12 +43,12 @@
 - [x] Create development workflow guide
 
 ### 0.5 Model Conversion Tools Setup
-- [ ] Install TensorRT and trtexec
-- [ ] Install ONNX runtime with CUDA support
-- [ ] Create `tools/` directory for conversion scripts
-- [ ] Test TensorRT installation with sample model
-- [ ] Create model conversion pipeline template
-- [ ] Document conversion best practices
+- [x] Install TensorRT and trtexec
+- [x] Install ONNX runtime with CUDA support
+- [x] Create `tools/` directory for conversion scripts
+- [x] Test TensorRT installation with sample model
+- [x] Create model conversion pipeline template
+- [x] Document conversion best practices
 
 **Deliverables**:
 - GitHub repo initialized

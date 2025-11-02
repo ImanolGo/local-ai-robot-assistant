@@ -4,13 +4,23 @@ version = "0.1.0"
 requires-python = ">=3.10"
 
 dependencies = [
+    # Core scientific computing
     "numpy<2.0",
     "opencv-python",
-    "torch",
-    "transformers",
+    "scipy>=1.9.0",
+    # Core ML frameworks (Jetson-optimized versions will be installed via setup.sh)
+    "torch>=1.12.0",
+    "torchvision>=0.13.0",
+    "transformers>=4.20.0",
+    # ROS2 and robotics
     "pyaudio",
     "pyserial",
     "pyds",
+    # Basic utilities
+    "psutil>=5.9.0",
+    "tqdm>=4.64.0",
+    "colorama>=0.4.4",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
@@ -41,4 +51,26 @@ test = [
     "pytest-cov",
     "pytest-mock",
     "unittest-xml-reporting"
+]
+conversion = [
+    # Model conversion specific dependencies
+    "onnx>=1.12.0",
+    "onnxruntime>=1.12.0",
+    "ultralytics>=8.0.0",
+    "ctranslate2>=3.0.0",
+    # Profiling and benchmarking
+    "nvidia-ml-py3>=7.0.0",
+    "matplotlib>=3.5.0",
+    "tabulate>=0.9.0"
+]
+audio = [
+    # Audio processing dependencies
+    "sounddevice>=0.4.0",
+    "webrtcvad>=2.0.0"
+]
+jetson = [
+    # Jetson-specific dependencies that need manual installation
+    # These will be installed via setup.sh script
+    # "tensorrt" - installed via apt
+    # "pycuda" - installed via apt/manual compilation
 ]
