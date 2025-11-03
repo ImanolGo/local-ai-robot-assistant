@@ -154,15 +154,53 @@ If you prefer a udev-based rule or need more fine-grained control (for CI or aut
    ip addr show
    ```
 
-2. Optional: configure headless (text-only) mode to reduce memory used by GUI:
+2. **RAM Optimization (Critical for 8GB Jetson Orin Nano)**
+
+   Running LLMs requires significant RAM. On Jetson Orin Nano with only 8GB RAM,
+   it's crucial to optimize system memory usage.
+
+   **Disable Desktop GUI (saves ~800MB):**
+
+   If using SSH for development, disable the Ubuntu desktop GUI:
 
    ```bash
+   # Temporary disable (can restart with 'sudo init 5')
+   sudo init 3
+
+   # Permanent disable (persistent across reboots)
    sudo systemctl set-default multi-user.target
    sudo reboot
+
+   # To re-enable desktop later:
+   # sudo systemctl set-default graphical.target
    ```
 
-3. Create a 16GB swap file on NVMe for build & model conversion steps (adjust path
-   if you're using a different disk):
+   **Disable unnecessary services:**
+
+   ```bash
+   sudo systemctl disable nvargus-daemon.service
+   ```
+
+3. **Create optimized swap file (preferably on NVMe SSD):**
+
+   For building containers and working with large models, mount SWAP:
+
+   ```bash
+   # Disable ZRAM first
+   sudo systemctl disable nvzramconfig
+
+   # Create 16GB swap file (adjust path for your storage)
+   # Use /ssd/ if you have NVMe, otherwise /swapfile for eMMC
+   sudo fallocate -l 16G /ssd/16GB.swap
+   sudo chmod 600 /ssd/16GB.swap
+   sudo mkswap /ssd/16GB.swap
+   sudo swapon /ssd/16GB.swap
+
+   # Make persistent across reboots
+   echo '/ssd/16GB.swap none swap sw 0 0' | sudo tee -a /etc/fstab
+   ```
+
+   **Alternative for eMMC storage:**
 
    ```bash
    sudo fallocate -l 16G /swapfile
@@ -259,120 +297,16 @@ ros2 --version
 The `jetson-io` tool can configure the GPIO header, the CSI connectors and the M.2 Key E connector for use with the Jetson. Here we'll work with the CSI connector. To start, check that the camera is available — it should report as `/dev/video*` where `*` is a number:
 
 ```bash
-$ ls /dev/video*
+ls /dev/video*
 ```
 
 Next, start the `jetson-io` utility:
 
 ```bash
-$ cd /opt/nvidia/jetson-io/
-$ sudo python jetson-io.py
+cd /opt/nvidia/jetson-io/
+sudo python jetson-io.py
 ```
 
 Once the script starts select `Configure Jetson 24 pin CSI Connector` then `Configure for compatible hardware`. Remember that the IMX219 is the RPi V2 camera and the IMX477 is the RPi V3. Dual lane uses the CSI 4 lane for the IMX477. You can mix and match cameras. Make your selection then choose `Save pin changes` and `Save and reboot to reconfigure pins`. Confirm and the Jetson will reboot.
 
 After reboot the camera(s) will appear as `/dev/video*` again. Re-run the `ls /dev/video*` check to confirm.
-
-````
-   4. Install development tools commonly needed:
-
-      ```bash
-      sudo apt install -y \
-         git \
-         vim \
-         tmux \
-         htop \
-         python3-pip \
-         build-essential \
-         cmake
-      ```
-
-   5. Optional useful tools:
-
-   - `nvtop` (GPU monitoring), `nvidia-smi` (on Jetson newer BSPs) or `tegrastats` for monitoring
-   - `docker` if you plan to use containers for reproducibility
-
-   ---
-
-   ## Step 2: Set Up ROS2 Environment (Est. 1-2 hours)
-
-   ### 2.1 Install ROS2 Humble
-
-   Follow the official ROS2 installation steps. Example (Ubuntu):
-
-   ```bash
-   # Locale
-   sudo apt update && sudo apt install locales
-   sudo locale-gen en_US en_US.UTF-8
-   sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
-   export LANG=en_US.UTF-8
-
-   # Add ROS2 apt repository
-   sudo apt install software-properties-common -y
-   sudo add-apt-repository universe
-   sudo apt update && sudo apt install curl -y
-   sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
-
-   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
-
-   # Install ROS2 Humble (desktop for full tools)
-   sudo apt update
-   sudo apt install ros-humble-desktop -y
-
-   # Developer tooling
-   sudo apt install python3-colcon-common-extensions python3-rosdep -y
-
-   # Initialize rosdep
-   sudo rosdep init || true
-   rosdep update
-   ```
-
-   ### 2.2 Configure ROS2 environment
-
-   Add sourcing to your shell startup so ROS2 tools are available:
-
-   ```bash
-   echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
-   source ~/.bashrc
-
-   # Verify
-   ros2 --version
-   ```
-
-   ## Quick verification checklist
-
-   - SSH access works from host
-   - Enough disk space and swap configured
-   - `ros2` command is available
-   - GPU drivers and CUDA (if needed) are present
-
-   ## Troubleshooting & notes
-
-   - If SDK Manager fails to see the Jetson, ensure the device is in recovery mode and USB cable is good.
-   - For GPU/CUDA/TensorRT concerns, check NVIDIA JetPack / L4T compatibility matrix for the Jetson Orin Nano and the models you plan to run.
-   - If using NVMe as the boot/install target, confirm BIOS/boot config and NVMe health.
-
-   ## Where to record changes
-
-   - Add any machine-specific notes (IP address, user, serial numbers) to `docs/images` or an internal secure inventory — do not commit secrets.
-
-   ## Configuring the CSI Connector
-
-   The `jetson-io` tool can configure the GPIO header, the CSI connectors and the M.2 Key E connector for use with the Jetson. Here we'll work with the CSI connector. To start, check that the camera is available — it should report as `/dev/video*` where `*` is a number:
-
-   ```bash
-   $ ls /dev/video*
-   ```
-
-   Next, start the `jetson-io` utility:
-
-   ```bash
-   $ cd /opt/nvidia/jetson-io/
-   $ sudo python jetson-io.py
-   ```
-
-   Once the script starts select `Configure Jetson 24 pin CSI Connector` then `Configure for compatible hardware`. Remember that the IMX219 is the RPi V2 camera and the IMX477 is the RPi V3. Dual lane uses the CSI 4 lane for the IMX477. You can mix and match cameras. Make your selection then choose `Save pin changes` and `Save and reboot to reconfigure pins`. Confirm and the Jetson will reboot.
-
-   After reboot the camera(s) will appear as `/dev/video*` again. Re-run the `ls /dev/video*` check to confirm.
-
-   ````
