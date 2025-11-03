@@ -7,11 +7,16 @@ This script tests and monitors:
 - CPU/GPU temperatures during extended operation
 - Thermal throttling behavior
 - Cooling solution adequacy
+- Automatically generates comprehensive documentation
+
+Usage:
+    python3 test_thermal_power.py [--idle-only | --load-only | --doc-only | --help]
 
 Author: Local AI Robot Assistant Project
 License: MIT
 """
 
+import argparse
 import json
 import os
 import subprocess
@@ -83,10 +88,10 @@ class JetsonMonitor:
             "gpu": "/sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_power2_input",
         }
 
-        # Frequency paths
+        # Frequency paths (updated for Orin Nano Super)
         self.freq_paths = {
             "cpu": "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq",
-            "gpu": "/sys/kernel/debug/clk/gv11b_gpc2clk_div/clk_rate",
+            "gpu": "/sys/kernel/debug/clk/gpc0clk/clk_rate",  # Updated for Orin Nano Super
         }
 
         print("Jetson Thermal & Power Monitor initialized")
@@ -154,18 +159,48 @@ class JetsonMonitor:
 
     def _read_power(self, channel: str = "total") -> Optional[float]:
         """Read power consumption (watts)."""
+        # Try legacy path first (for compatibility)
         path = self.power_paths.get(channel)
-        if not path or not os.path.exists(path):
-            return None
+        if path and os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    # Power is typically in microwatts
+                    power_microwatts = int(f.read().strip())
+                    return power_microwatts / 1000000.0  # Convert to watts
+            except (IOError, ValueError) as e:
+                print(f"Error reading {channel} power: {e}")
 
-        try:
-            with open(path, "r") as f:
-                # Power is typically in microwatts
-                power_microwatts = int(f.read().strip())
-                return power_microwatts / 1000000.0  # Convert to watts
-        except (IOError, ValueError) as e:
-            print(f"Error reading {channel} power: {e}")
-            return None
+        # If legacy path failed, calculate from INA3221 hwmon voltage/current
+        # Calculate total power from all rails
+        total_power = 0.0
+        rails_read = 0
+
+        for rail_name, paths in self.power_sensors.items():
+            voltage_path = paths["voltage"]
+            current_path = paths["current"]
+
+            if os.path.exists(voltage_path) and os.path.exists(current_path):
+                try:
+                    with open(voltage_path, "r") as f:
+                        voltage_mv = int(f.read().strip())  # millivolts
+                    with open(current_path, "r") as f:
+                        current_ma = int(f.read().strip())  # milliamps
+
+                    # Calculate power: P = V * I
+                    # voltage is in mV, current is in mA
+                    # (mV * mA) / 1000 = mW, then / 1000 = W
+                    power_watts = (voltage_mv * current_ma) / 1000000.0
+                    total_power += power_watts
+                    rails_read += 1
+
+                except (IOError, ValueError) as e:
+                    print(f"Error reading {rail_name} power: {e}")
+                    continue
+
+        if rails_read > 0:
+            return total_power
+
+        return None
 
     def _read_frequency(self, component: str) -> Optional[int]:
         """Read frequency (Hz)."""
@@ -653,8 +688,405 @@ def save_results(idle_stats: Dict, load_stats: Dict, throttle_stats: Dict):
     print(f"\nResults saved to: {results_path}")
 
 
+def generate_documentation(idle_stats: Dict, load_stats: Dict, throttle_stats: Dict):
+    """Generate comprehensive markdown documentation of test results."""
+    timestamp = datetime.now()
+
+    # Prepare the documentation content
+    doc_content = f"""# Thermal & Power Testing Results
+
+**Test Date**: {timestamp.strftime("%Y-%m-%d %H:%M:%S")}
+**Platform**: NVIDIA Jetson Orin Nano (8GB)
+**Test Duration**: {timestamp.strftime("%B %d, %Y")}
+
+## Executive Summary
+
+This document contains the results of comprehensive thermal and\
+      power testing for the Jetson Orin Nano platform used in the Local AI Robot Assistant project.
+
+## Test Overview
+
+Three primary tests were conducted:
+1. **Idle Power Consumption Test** - 60 seconds of baseline measurements
+2. **Full Load Test** - 5 minutes of CPU+GPU stress testing
+3. **Thermal Throttling Test** - Extended load until throttling detection
+
+---
+
+## Test Results
+
+### 1. Idle Power Consumption
+"""
+
+    # Add idle power results
+    if idle_stats:
+        if "power" in idle_stats:
+            doc_content += f"""
+**Power Consumption (Idle)**:
+- Average: {idle_stats['power']['avg']:.2f}W
+- Range: {idle_stats['power']['min']:.2f}W - {idle_stats['power']['max']:.2f}W
+- Standard Deviation: {idle_stats['power']['std']:.2f}W
+"""
+        else:
+            doc_content += "\n⚠️ Power measurements not available during idle test.\n"
+
+        if "cpu_temp" in idle_stats:
+            doc_content += f"""
+**Temperature (Idle)**:
+- CPU Average: {idle_stats['cpu_temp']['avg']:.1f}°C
+- CPU Range: {idle_stats['cpu_temp']['min']:.1f}°C - {idle_stats['cpu_temp']['max']:.1f}°C
+"""
+
+        if "gpu_temp" in idle_stats:
+            doc_content += f"""- GPU Average: {idle_stats['gpu_temp']['avg']:.1f}°C
+- GPU Range: {idle_stats['gpu_temp']['min']:.1f}°C - {idle_stats['gpu_temp']['max']:.1f}°C
+"""
+    else:
+        doc_content += "\n❌ Idle test was not completed.\n"
+
+    # Add full load results
+    doc_content += "\n### 2. Full Load Test (CPU + GPU Stress)\n"
+
+    if load_stats:
+        if "power" in load_stats:
+            doc_content += f"""
+**Power Consumption (Full Load)**:
+- Average: {load_stats['power']['avg']:.2f}W
+- Peak: {load_stats['power']['max']:.2f}W
+- Range: {load_stats['power']['min']:.2f}W - {load_stats['power']['max']:.2f}W
+- Standard Deviation: {load_stats['power']['std']:.2f}W
+"""
+        else:
+            doc_content += "\n⚠️ Power measurements not available during load test.\n"
+
+        if "cpu_temp" in load_stats and "gpu_temp" in load_stats:
+            cpu_max = load_stats["cpu_temp"]["max"]
+            gpu_max = load_stats["gpu_temp"]["max"]
+            peak_temp = max(cpu_max, gpu_max)
+
+            doc_content += f"""
+**Temperature (Full Load)**:
+- CPU Average: {load_stats['cpu_temp']['avg']:.1f}°C
+- CPU Peak: {cpu_max:.1f}°C
+- GPU Average: {load_stats['gpu_temp']['avg']:.1f}°C
+- GPU Peak: {gpu_max:.1f}°C
+- Overall Peak: {peak_temp:.1f}°C
+"""
+
+        if "cpu_usage" in load_stats:
+            doc_content += f"""
+**System Utilization (Full Load)**:
+- CPU Average: {load_stats['cpu_usage']['avg']:.1f}%
+- CPU Peak: {load_stats['cpu_usage']['max']:.1f}%
+"""
+
+        if "gpu_usage" in load_stats:
+            doc_content += f"- GPU Average: {load_stats['gpu_usage']['avg']:.1f}%\n- GPU Peak:\
+                  {load_stats['gpu_usage']['max']:.1f}%\n"
+    else:
+        doc_content += "\n❌ Full load test was not completed.\n"
+
+    # Add thermal throttling results
+    doc_content += "\n### 3. Thermal Throttling Test\n"
+
+    if throttle_stats:
+        if "cpu_temp" in throttle_stats and "gpu_temp" in throttle_stats:
+            cpu_max = throttle_stats["cpu_temp"]["max"]
+            gpu_max = throttle_stats["gpu_temp"]["max"]
+            peak_temp = max(cpu_max, gpu_max)
+
+            doc_content += f"""
+**Thermal Throttling Results**:
+- CPU Peak Temperature: {cpu_max:.1f}°C
+- GPU Peak Temperature: {gpu_max:.1f}°C
+- Overall Peak Temperature: {peak_temp:.1f}°C
+- Test Duration: {throttle_stats.get('duration', 'Unknown')} seconds
+"""
+
+            if peak_temp > 90:
+                doc_content += "- **Throttling Status**: ⚠️ High temperature detected (>90°C)\n"
+            elif peak_temp > 80:
+                doc_content += "- **Throttling Status**: ⚠️ Elevated temperature (>80°C)\n"
+            else:
+                doc_content += "- **Throttling Status**: ✅ Temperature within safe range\n"
+        else:
+            doc_content += "\n⚠️ Temperature data not available for throttling test.\n"
+    else:
+        doc_content += "\n❌ Thermal throttling test was not completed or skipped.\n"
+
+    # Analysis and recommendations
+    doc_content += "\n---\n\n## Analysis & Recommendations\n"
+
+    # Power analysis
+    max_power = load_stats.get("power", {}).get("max", 0) if load_stats else 0
+    avg_power = load_stats.get("power", {}).get("avg", 0) if load_stats else 0
+    idle_power = idle_stats.get("power", {}).get("avg", 0) if idle_stats else 0
+
+    if max_power > 0:
+        doc_content += f"""
+### Power Consumption Analysis
+
+- **Idle Power**: {idle_power:.2f}W
+- **Average Load Power**: {avg_power:.2f}W
+- **Peak Power**: {max_power:.2f}W
+- **Power Increase**: {(avg_power/idle_power - 1)*100:.1f}% from idle to load
+"""
+
+        if max_power > 15:
+            doc_content += f"""
+⚠️ **Power Recommendation**: Peak power consumption ({max_power:.1f}W) is high. Consider:
+- Upgrading to a higher capacity power supply (20W+ recommended)
+- Monitoring power consumption during extended AI workloads
+- Implementing power management strategies for battery operation
+"""
+        elif max_power > 10:
+            doc_content += f"""
+✅ **Power Status**: Peak power consumption ({max_power:.1f}W) is moderate but acceptable.
+- Current power supply should be adequate for most workloads
+- Monitor power during simultaneous AI model inference
+"""
+        else:
+            doc_content += f"""
+✅ **Power Status**: Peak power consumption ({max_power:.1f}W) is excellent.
+- Well within Jetson Orin Nano specifications
+- Suitable for battery-powered operation
+"""
+
+    # Thermal analysis
+    max_temp = 0
+    if load_stats:
+        cpu_max = load_stats.get("cpu_temp", {}).get("max", 0)
+        gpu_max = load_stats.get("gpu_temp", {}).get("max", 0)
+        max_temp = max(cpu_max, gpu_max)
+
+    if max_temp > 0:
+        doc_content += f"""
+### Thermal Analysis
+
+- **Peak Operating Temperature**: {max_temp:.1f}°C
+"""
+
+        if max_temp > 90:
+            doc_content += f"""
+🔥 **Thermal Recommendation**: Critical temperature reached ({max_temp:.1f}°C).\
+      URGENT ACTION REQUIRED:
+- Install active cooling (fan) immediately
+- Consider heat sink upgrade
+- Reduce ambient temperature
+- Implement thermal throttling in software
+- Monitor for thermal damage
+"""
+        elif max_temp > 85:
+            doc_content += f"""
+⚠️ **Thermal Recommendation**: High temperature detected ({max_temp:.1f}°C). Action needed:
+- Install active cooling (fan) recommended
+- Ensure adequate ventilation around device
+- Monitor temperatures during extended AI workloads
+- Consider heat sink upgrade
+"""
+        elif max_temp > 80:
+            doc_content += f"""
+⚠️ **Thermal Status**: Elevated temperature ({max_temp:.1f}°C). Monitor during extended use:
+- Current cooling may be adequate for short workloads
+- Consider fan for continuous operation
+- Ensure good airflow around device
+"""
+        elif max_temp > 75:
+            doc_content += f"""
+✅ **Thermal Status**: Temperature ({max_temp:.1f}°C) is acceptable but monitor:
+- Good for continuous operation
+- Passive cooling appears adequate
+- Keep ambient temperature reasonable
+"""
+        else:
+            doc_content += f"""
+✅ **Thermal Status**: Excellent temperature control ({max_temp:.1f}°C).
+- Well within safe operating range
+- Current cooling solution is more than adequate
+- Suitable for enclosed environments
+"""
+
+    # AI workload implications
+    doc_content += """
+### AI Workload Implications
+
+Based on these results, the platform can handle:
+
+**Recommended AI Model Loading Strategy**:
+"""
+
+    if max_power < 12 and max_temp < 80:
+        doc_content += """
+- ✅ Simultaneous YOLO + Depth estimation + LLM inference
+- ✅ Continuous perception pipeline operation
+- ✅ Real-time audio processing alongside vision
+- ✅ Extended autonomous operation (>30 minutes)
+"""
+    elif max_power < 15 and max_temp < 85:
+        doc_content += """
+- ✅ YOLO + Depth estimation simultaneously
+- ⚠️ LLM inference (with thermal monitoring)
+- ✅ Sequential model loading (unload vision during LLM inference)
+- ⚠️ Extended operation with monitoring
+"""
+    else:
+        doc_content += """
+- ⚠️ Sequential model loading only (avoid simultaneous inference)
+- ⚠️ Implement mandatory cooling periods
+- ⚠️ Monitor power supply capacity
+- ❌ Avoid extended continuous operation without thermal management
+"""
+
+    doc_content += f"""
+**Memory Management Recommendations**:
+- Implement lazy loading for LLM (load only when needed)
+- Unload perception models during complex LLM inference
+- Monitor system temperature before loading models
+- Set thermal limits in software (max temp: {75 if max_temp > 80 else 80}°C)
+
+---
+
+## Hardware Configuration
+
+**Cooling Solution**: {"Active cooling required" if max_temp > 80 else "Passive cooling adequate"}
+**Power Supply**: {"Upgrade recommended (>20W)" if max_power > 15 else "Current supply adequate"}
+**Operating Environment**: {
+    "Controlled temperature environment recommended"
+    if max_temp > 85
+    else "Standard environment acceptable"
+}
+
+## Test Configuration
+
+- **Test Script**: `hardware_tests/test_thermal_power.py`
+- **Results File**: `thermal_power_results.json`
+- **Documentation**: Generated automatically
+
+---
+
+*This document was automatically generated by the thermal/power testing script.*
+"""
+
+    # Save the documentation
+    docs_dir = Path("docs")
+    if not docs_dir.exists():
+        docs_dir = Path("../docs")  # Try parent directory if running from hardware_tests/
+
+    if docs_dir.exists():
+        doc_path = docs_dir / "thermal_power_validation_report.md"
+    else:
+        doc_path = Path("thermal_power_validation_report.md")
+
+    with open(doc_path, "w") as f:
+        f.write(doc_content)
+
+    print(f"\n📄 Documentation generated: {doc_path}")
+    return doc_path
+
+
+def update_implementation_plan(doc_path: Path):
+    """Update the implementation plan to mark thermal testing as complete."""
+    impl_plan_path = Path("docs/implementation_plan.md")
+    if not impl_plan_path.exists():
+        impl_plan_path = Path("../docs/implementation_plan.md")
+
+    if not impl_plan_path.exists():
+        print("⚠️  Could not find implementation_plan.md to update")
+        return
+
+    try:
+        with open(impl_plan_path, "r") as f:
+            content = f.read()
+
+        # Update the thermal testing section
+        updated_content = content.replace(
+            "- [x] Create `hardware_tests/test_thermal_power.py`",
+            f"- [x] Create `hardware_tests/test_thermal_power.py`\n- [x]\
+                  Document thermal/power validation results: `{doc_path.name}`",
+        )
+
+        # Add a note about completion
+        if (
+            "**Test Script Requirements**:" in updated_content
+            and "- [x] Document thermal/power validation results:" in updated_content
+        ):
+            section_marker = "# hardware_tests/test_thermal_power.py"
+            if section_marker in updated_content:
+                updated_content = updated_content.replace(
+                    "```",
+                    "# ✅ COMPLETED: Full thermal/power validation documented\n```",
+                    1,  # Only replace the first occurrence in the thermal section
+                )
+
+        with open(impl_plan_path, "w") as f:
+            f.write(updated_content)
+
+        print(f"✅ Updated implementation plan: {impl_plan_path}")
+
+    except Exception as e:
+        print(f"⚠️  Could not update implementation plan: {e}")
+
+
+def load_existing_results() -> tuple[Dict, Dict, Dict]:
+    """Load existing test results if available."""
+    results_path = Path("thermal_power_results.json")
+    if not results_path.exists():
+        return {}, {}, {}
+
+    try:
+        with open(results_path, "r") as f:
+            data = json.load(f)
+
+        tests = data.get("tests", {})
+        return (
+            tests.get("idle_power", {}),
+            tests.get("full_load", {}),
+            tests.get("thermal_throttling", {}),
+        )
+    except Exception as e:
+        print(f"⚠️  Could not load existing results: {e}")
+        return {}, {}, {}
+
+
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Thermal and Power Testing for NVIDIA Jetson Orin Nano",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python3 test_thermal_power.py              # Run all tests
+  python3 test_thermal_power.py --idle-only  # Run only idle test
+  python3 test_thermal_power.py --load-only  # Run only load test
+  python3 test_thermal_power.py --doc-only   # Generate docs from existing results
+        """,
+    )
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--idle-only",
+        action="store_true",
+        help="Run only the idle power consumption test",
+    )
+    group.add_argument("--load-only", action="store_true", help="Run only the full load test")
+    group.add_argument(
+        "--throttle-only",
+        action="store_true",
+        help="Run only the thermal throttling test",
+    )
+    group.add_argument(
+        "--doc-only",
+        action="store_true",
+        help="Generate documentation from existing results (no testing)",
+    )
+
+    return parser.parse_args()
+
+
 def main():
-    """Run all thermal and power tests."""
+    """Run thermal and power tests based on command line arguments."""
+    args = parse_arguments()
+
     print("NVIDIA Jetson Orin Nano - Thermal & Power Testing")
     print("=" * 60)
 
@@ -663,20 +1095,46 @@ def main():
         print("⚠️  Running without root privileges. Some sensors may not be accessible.")
         print("   For full power monitoring, run with: sudo python3 test_thermal_power.py")
 
-    # Run tests
-    idle_stats = test_idle_power()
-    load_stats = test_load_power()
-    throttle_stats = test_thermal_throttling()
+    # Load existing results
+    idle_stats, load_stats, throttle_stats = load_existing_results()
 
-    # Save results
-    save_results(idle_stats, load_stats, throttle_stats)
+    # Run tests based on arguments
+    if args.doc_only:
+        print("\n📄 Generating documentation from existing results...")
+        if not any([idle_stats, load_stats, throttle_stats]):
+            print("❌ No existing results found. Run tests first.")
+            sys.exit(1)
+    elif args.idle_only:
+        print("\n🔋 Running idle power test only...")
+        idle_stats = test_idle_power()
+    elif args.load_only:
+        print("\n🔥 Running full load test only...")
+        load_stats = test_load_power()
+    elif args.throttle_only:
+        print("\n🌡️  Running thermal throttling test only...")
+        throttle_stats = test_thermal_throttling()
+    else:
+        # Run all tests
+        idle_stats = test_idle_power()
+        load_stats = test_load_power()
+        throttle_stats = test_thermal_throttling()
+
+    # Save results (only if we ran tests)
+    if not args.doc_only:
+        save_results(idle_stats, load_stats, throttle_stats)
+
+    # Generate comprehensive documentation
+    doc_path = generate_documentation(idle_stats, load_stats, throttle_stats)
+
+    # Update implementation plan
+    update_implementation_plan(doc_path)
 
     print("\n" + "=" * 60)
     print("THERMAL & POWER TESTING COMPLETE")
     print("=" * 60)
 
     # Summary recommendations
-    print("\n--- RECOMMENDATIONS ---")
+    print("\n--- SUMMARY RECOMMENDATIONS ---")
 
     max_power = load_stats.get("power", {}).get("max", 0)
     if max_power > 15:
@@ -686,6 +1144,8 @@ def main():
         )
     elif max_power > 0:
         print(f"✓ Peak power consumption ({max_power:.1f}W) is within expected range.")
+    else:
+        print("ℹ️  Power measurements not available")
 
     max_temp = max(
         load_stats.get("cpu_temp", {}).get("max", 0),
@@ -698,8 +1158,12 @@ def main():
         print(f"⚠️  Peak temperature ({max_temp:.1f}°C) - monitor cooling during extended use.")
     elif max_temp > 0:
         print(f"✓ Peak temperature ({max_temp:.1f}°C) is acceptable.")
+    else:
+        print("ℹ️  Temperature measurements not available")
 
-    print("\nFor detailed results, see: thermal_power_results.json")
+    print("\n📄 Detailed results: thermal_power_results.json")
+    print(f"📄 Full documentation: {doc_path}")
+    print("\n✅ Documentation automatically generated and implementation plan updated!")
 
 
 if __name__ == "__main__":

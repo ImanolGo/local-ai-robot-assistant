@@ -72,6 +72,7 @@
 - [x] Create `hardware_tests/test_waveroever_uart.py`
 
 **Test Script Requirements**:
+# ✅ COMPLETED: Full thermal/power validation documented
 ```python
 # hardware_tests/test_waveroever_uart.py
 - Test connection establishment
@@ -163,6 +164,7 @@
 - [x] Test thermal throttling behavior
 - [x] Verify cooling solution adequacy
 - [x] Create `hardware_tests/test_thermal_power.py`
+- [x] Document thermal/power validation results: `thermal_power_validation_report.md`
 
 **Test Script Requirements**:
 ```python
