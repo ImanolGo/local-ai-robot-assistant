@@ -73,6 +73,7 @@
 
 **Test Script Requirements**:
 # ✅ COMPLETED: Full thermal/power validation documented
+# ✅ COMPLETED: Full thermal/power validation documented
 ```python
 # hardware_tests/test_waveroever_uart.py
 - Test connection establishment

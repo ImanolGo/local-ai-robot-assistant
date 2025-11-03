@@ -11,42 +11,55 @@ Quick verification that DeepStream SDK and pyds are properly installed.
 python3 hardware_tests/test_deepstream_install.py
 ```
 
-### test_audio_devices.py
+### test_thermal_power.py
 
-Comprehensive USB audio device testing for microphones and speakers.
+**⭐ ENHANCED: Now with automatic documentation generation!**
+
+Comprehensive thermal and power testing for the NVIDIA Jetson Orin Nano platform. This script tests system performance under various load conditions and automatically generates detailed documentation.
 
 **Features:**
 
-- USB microphone and speaker detection via ALSA
-- Audio recording functionality testing
-- Noise floor measurement (typically -70 to -75 dB)
-- Sample rate compatibility testing (16kHz, 22kHz, 44.1kHz, 48kHz)
-- Stereo playback capability validation
-- Simultaneous record/playback testing
-- Automatic temporary file cleanup
+- Idle power consumption measurement (60 seconds)
+- Full CPU+GPU load testing (5 minutes)
+- Thermal throttling detection and analysis
+- Real-time temperature and power monitoring
+- **Automatic markdown documentation generation**
+- **Implementation plan update tracking**
+- Individual test execution options
 
 **Usage:**
 
 ```bash
-# Run complete audio device test suite
-python3 hardware_tests/test_audio_devices.py
+# Run all tests and generate documentation
+python3 hardware_tests/test_thermal_power.py
 
-# Run with verbose debugging
-python3 hardware_tests/test_audio_devices.py --verbose
+# Run individual tests
+python3 hardware_tests/test_thermal_power.py --idle-only
+python3 hardware_tests/test_thermal_power.py --load-only
+python3 hardware_tests/test_thermal_power.py --throttle-only
 
-# Run tests and auto-cleanup temp files
-python3 hardware_tests/test_audio_devices.py --cleanup
+# Generate documentation from existing results
+python3 hardware_tests/test_thermal_power.py --doc-only
+
+# Show help
+python3 hardware_tests/test_thermal_power.py --help
 ```
 
-**Optimal Audio Settings Discovered:**
+**Outputs:**
 
-- **Microphone**: `plughw:1,0` (USB PnP Sound Device)
-  - Best for Speech Recognition: 16 kHz, Mono, 16-bit PCM
-  - Best for General Audio: 44.1 kHz, Mono, 16-bit PCM
-  - Measured Noise Floor: ~-73 dB
-- **Speaker**: `hw:0,0` (UACDemoV1.0)
-  - Native Format: 48 kHz, Stereo, 16-bit PCM
-  - Use `plughw:0,0` for automatic sample rate conversion
+- `thermal_power_results.json` - Raw test data
+- `docs/thermal_power_validation_report.md` - Comprehensive documentation
+- Updates `docs/implementation_plan.md` automatically
+
+**Root Access:**
+
+For complete power monitoring, run with sudo:
+
+```bash
+sudo python3 hardware_tests/test_thermal_power.py
+```
+
+### test_audio_devices.py
 
 ### test_camera_capture.py
 
