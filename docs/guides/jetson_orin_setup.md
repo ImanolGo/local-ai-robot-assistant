@@ -181,34 +181,51 @@ If you prefer a udev-based rule or need more fine-grained control (for CI or aut
    sudo systemctl disable nvargus-daemon.service
    ```
 
-3. **Create optimized swap file (preferably on NVMe SSD):**
+3. **Create optimized swap file:**
 
-   For building containers and working with large models, mount SWAP:
+   First, check your current storage and swap configuration:
 
    ```bash
-   # Disable ZRAM first
-   sudo systemctl disable nvzramconfig
+   # Check current swap status
+   swapon --show
 
-   # Create 16GB swap file (adjust path for your storage)
-   # Use /ssd/ if you have NVMe, otherwise /swapfile for eMMC
-   sudo fallocate -l 16G /ssd/16GB.swap
-   sudo chmod 600 /ssd/16GB.swap
-   sudo mkswap /ssd/16GB.swap
-   sudo swapon /ssd/16GB.swap
-
-   # Make persistent across reboots
-   echo '/ssd/16GB.swap none swap sw 0 0' | sudo tee -a /etc/fstab
+   # Check storage layout to see if you have NVMe
+   lsblk
+   df -h
    ```
 
-   **Alternative for eMMC storage:**
-
+   If you see ZRAM devices, disable them first:
    ```bash
+   sudo systemctl disable nvzramconfig
+   sudo reboot
+   ```
+
+   **For systems with NVMe SSD (mounted as root `/`):**
+   ```bash
+   # Create swap file on NVMe (via root filesystem)
    sudo fallocate -l 16G /swapfile
    sudo chmod 600 /swapfile
    sudo mkswap /swapfile
    sudo swapon /swapfile
    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
    ```
+
+   **For systems with separate NVMe mount (rare):**
+   ```bash
+   # Only if you have /ssd/ or similar separate mount point
+   sudo fallocate -l 16G /ssd/16GB.swap
+   sudo chmod 600 /ssd/16GB.swap
+   sudo mkswap /ssd/16GB.swap
+   sudo swapon /ssd/16GB.swap
+   echo '/ssd/16GB.swap none swap sw 0 0' | sudo tee -a /etc/fstab
+   ```
+
+   **Verify optimal configuration:**
+   ```bash
+   swapon --show
+   free -h
+   ```
+   Target: Only one swap file, no ZRAM devices, maximum available RAM.
 
 4. Install development tools commonly needed:
 

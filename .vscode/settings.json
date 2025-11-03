@@ -37,7 +37,37 @@
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
 
+  "python.analysis.memory.keepLibraryAst": false,
+  "python.analysis.autoImportCompletions": false,
+  "python.analysis.autoSearchPaths": false,
+  "python.analysis.indexing": false,
+  "cSpell.enabled": false,
+
   "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/build": true,
+    "**/install": true,
+    "**/log": true
+  },
+
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/.venv/**": true,
+    "**/venv/**": true,
+    "**/__pycache__/**": true,
+    "**/*.pyc": true,
+    "**/build/**": true,
+    "**/install/**": true,
+    "**/log/**": true
+  },
+
+  "search.useIgnoreFiles": true,
+  "search.exclude": {
+    "**/.venv": true,
+    "**/venv": true,
     "**/__pycache__": true,
     "**/*.pyc": true,
     "**/build": true,
