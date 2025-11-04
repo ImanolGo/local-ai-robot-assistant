@@ -78,4 +78,5 @@ jetson = [
     # These will be installed via setup.sh script
     # "tensorrt" - installed via apt
     # "pycuda" - installed via apt/manual compilation
+    "cupy-cuda12x",
 ]

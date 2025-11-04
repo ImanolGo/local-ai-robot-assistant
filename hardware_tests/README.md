@@ -13,24 +13,31 @@ python3 hardware_tests/test_deepstream_install.py
 
 ### test_thermal_power.py
 
-**⭐ ENHANCED: Now with automatic documentation generation!**
+**⭐ ENHANCED: Now with automatic documentation generation and virtual environment support!**
 
-Comprehensive thermal and power testing for the NVIDIA Jetson Orin Nano platform. This script tests system performance under various load conditions and automatically generates detailed documentation.
+Comprehensive thermal and power testing for the NVIDIA Jetson Orin Nano platform. This script tests system performance under various load conditions and automatically generates detailed documentation with actionable recommendations.
 
-**Features:**
+**New Features:**
+
+- **Virtual Environment Support**: Automatically handles `jetson_clocks` with sudo while preserving your Python environment
+- **Enhanced GPU Stress Testing**: Supports CuPy, TensorFlow, and PyTorch with automatic fallback
+- **Intelligent Error Handling**: Graceful handling of permission errors and missing dependencies
+- **Automatic Documentation Generation**: Creates comprehensive markdown reports with thermal analysis
+- **Implementation Plan Integration**: Automatically updates project documentation
+
+**Core Features:**
 
 - Idle power consumption measurement (60 seconds)
 - Full CPU+GPU load testing (5 minutes)
 - Thermal throttling detection and analysis
 - Real-time temperature and power monitoring
-- **Automatic markdown documentation generation**
-- **Implementation plan update tracking**
 - Individual test execution options
+- Comprehensive safety checks and emergency stops
 
 **Usage:**
 
 ```bash
-# Run all tests and generate documentation
+# Run all tests (recommended - works with virtual environments)
 python3 hardware_tests/test_thermal_power.py
 
 # Run individual tests
@@ -45,19 +52,72 @@ python3 hardware_tests/test_thermal_power.py --doc-only
 python3 hardware_tests/test_thermal_power.py --help
 ```
 
-**Outputs:**
+**Virtual Environment & Root Access:**
 
-- `thermal_power_results.json` - Raw test data
-- `docs/thermal_power_validation_report.md` - Comprehensive documentation
-- Updates `docs/implementation_plan.md` automatically
+The script now intelligently handles root privileges:
 
-**Root Access:**
-
-For complete power monitoring, run with sudo:
+#### Option 1: Run normally (recommended)
 
 ```bash
-sudo python3 hardware_tests/test_thermal_power.py
+# Script will automatically use 'sudo jetson_clocks' when needed
+python3 hardware_tests/test_thermal_power.py
 ```
+
+- ✅ Preserves your virtual environment and installed packages
+- ✅ Automatically prompts for sudo when needed for `jetson_clocks`
+- ✅ Graceful fallback if `jetson_clocks` fails
+
+#### Option 2: Full root access (no prompts)
+
+```bash
+# Use your virtual environment's Python with sudo
+sudo /path/to/your/.venv/bin/python3 hardware_tests/test_thermal_power.py
+```
+
+- ✅ No password prompts during execution
+- ✅ Full access to power sensors and performance controls
+- ✅ Still uses your virtual environment libraries
+
+**GPU Stress Testing Requirements:**
+
+The script automatically detects and uses available GPU libraries:
+
+1. **CuPy** (recommended for Jetson): `pip install cupy-cuda12x`
+2. **TensorFlow**: `pip install tensorflow[and-cuda]`
+3. **PyTorch**: `pip install torch`
+
+If none are available, the script provides clear installation instructions.
+
+**Outputs:**
+
+- `thermal_power_results.json` - Raw test data with timestamps
+- `docs/thermal_power_validation_report.md` - Comprehensive analysis and recommendations
+- Updates `docs/implementation_plan.md` automatically
+- Real-time monitoring during tests
+
+**Safety Features:**
+
+- **Emergency Stop**: Automatic shutdown if temperatures exceed 95°C
+- **Thermal Monitoring**: Continuous temperature tracking with warnings
+- **Graceful Degradation**: Continues testing even if some sensors fail
+- **Smart Load Generation**: Adapts to available hardware and libraries
+
+**Analysis & Recommendations:**
+
+The generated report includes:
+
+- **Power Analysis**: Idle vs. load consumption with efficiency recommendations
+- **Thermal Analysis**: Temperature curves with cooling solution recommendations
+- **AI Workload Implications**: Specific guidance for model loading strategies
+- **Hardware Recommendations**: Cooling, power supply, and environment guidance
+- **Performance Optimization**: Memory management and thermal limits
+
+**Expected Results (Jetson Orin Nano):**
+
+- **Idle Power**: 3-5W typical
+- **Load Power**: 8-15W depending on cooling and workload
+- **Safe Operating Temperature**: <80°C sustained
+- **Throttling Temperature**: >85°C (triggers performance reduction)
 
 ### test_audio_devices.py
 
@@ -76,6 +136,7 @@ Comprehensive camera testing using NVIDIA DeepStream SDK for hardware-accelerate
 - Verbose logging for debugging
 
 **Usage:**
+
 ```bash
 # Run full test suite (all sensor modes)
 python3 hardware_tests/test_camera_capture.py
@@ -97,6 +158,7 @@ python3 hardware_tests/test_camera_capture.py --verbose
 ```
 
 **Sensor Modes:**
+
 - **Mode 0**: 3280x2464 @ 21fps (8MP full resolution, native)
 - **Mode 1**: 3280x1848 @ 28fps (6MP wide, native aspect)
 - **Mode 2**: 1920x1080 @ 30fps (2MP HD cropped center)
@@ -105,6 +167,7 @@ python3 hardware_tests/test_camera_capture.py --verbose
 - **Mode 5**: 820x616 @ 60fps (0.25x downscaled)
 
 **Requirements:**
+
 - NVIDIA Jetson with DeepStream SDK 7.1+
 - IMX219 camera connected to CSI port
 - Python packages: gi, numpy, Pillow

@@ -411,39 +411,101 @@ class LoadGenerator:
         # Try to start GPU burn test
         try:
             # Simple CUDA matrix multiplication stress test
-            gpu_script = """
-import numpy as np
+            gpu_script = """import subprocess
 import time
 import sys
 
+# Try method 1: Use jetson_clocks for max performance (try with sudo if needed)
+try:
+    print("Attempting to use jetson_clocks for maximum performance...", flush=True)
+    # First try without sudo
+    result = subprocess.run(['jetson_clocks'], check=True, capture_output=True, text=True)
+    print("jetson_clocks enabled - running at maximum clocks", flush=True)
+except subprocess.CalledProcessError as e:
+    if "root user" in str(e.stderr) or "Permission denied" in str(e.stderr):
+        print("jetson_clocks requires root - attempting with sudo...", flush=True)
+        try:
+            # Try with sudo, but don't fail the whole script if it doesn't work
+            result = subprocess.run(['sudo', 'jetson_clocks'], check=True, capture_output=True,\
+                  text=True)
+            print("jetson_clocks enabled with sudo - running at maximum clocks", flush=True)
+        except subprocess.CalledProcessError:
+            print("sudo jetson_clocks failed - continuing with normal clocks", flush=True)
+        except Exception:
+            print("Could not run jetson_clocks with sudo - continuing with normal clocks",\
+                  flush=True)
+    else:
+        print(f"jetson_clocks failed: {e.stderr}", flush=True)
+except FileNotFoundError:
+    print("jetson_clocks not found - running without clock optimization", flush=True)
+except Exception as e:
+    print(f"jetson_clocks error: {e}", flush=True)
+
+# Try method 2: CuPy
 try:
     import cupy as cp
-    print("Using CuPy for GPU stress test")
+    print("Using CuPy for GPU stress test", flush=True)
 
     while True:
         # Large matrix multiplication on GPU
-        a = cp.random.random((2048, 2048), dtype=cp.float32)
-        b = cp.random.random((2048, 2048), dtype=cp.float32)
+        a = cp.random.random((4096, 4096), dtype=cp.float32)
+        b = cp.random.random((4096, 4096), dtype=cp.float32)
         c = cp.dot(a, b)
         cp.cuda.Stream.null.synchronize()
-        time.sleep(0.01)  # Small delay to prevent complete lockup
 
 except ImportError:
-    print("CuPy not available, using CPU numpy for stress test")
-    while True:
-        a = np.random.random((1024, 1024)).astype(np.float32)
-        b = np.random.random((1024, 1024)).astype(np.float32)
-        c = np.dot(a, b)
-        time.sleep(0.01)
+    # Try method 3: TensorFlow
+    print("CuPy not available - attempting tensorflow GPU stress", flush=True)
+    try:
+        import tensorflow as tf
+        physical_devices = tf.config.list_physical_devices('GPU')
+        if physical_devices:
+            print(f"Using TensorFlow with GPU: {physical_devices}", flush=True)
+            while True:
+                with tf.device('/GPU:0'):
+                    a = tf.random.normal([4096, 4096])
+                    b = tf.random.normal([4096, 4096])
+                    c = tf.matmul(a, b)
+        else:
+            print("No GPU found by TensorFlow", flush=True)
+            sys.exit(1)
+    except ImportError:
+        # Try method 4: PyTorch
+        print("TensorFlow not available - attempting PyTorch GPU stress", flush=True)
+        try:
+            import torch
+            if torch.cuda.is_available():
+                print(f"Using PyTorch with CUDA", flush=True)
+                device = torch.device('cuda')
+                while True:
+                    a = torch.randn(4096, 4096, device=device)
+                    b = torch.randn(4096, 4096, device=device)
+                    c = torch.matmul(a, b)
+                    torch.cuda.synchronize()
+            else:
+                print("CUDA not available in PyTorch", flush=True)
+                sys.exit(1)
+        except ImportError:
+            print("ERROR: No GPU acceleration libraries available (CuPy/TensorFlow/PyTorch)",\
+                  flush=True)
+            print("Install one of: 'pip3 install cupy-cuda12x' (recommended for Jetson)",\
+                  flush=True)
+            sys.exit(1)
 """
 
-            # Write temporary GPU stress script
-            gpu_script_path = "/tmp/gpu_stress.py"
+            # Write temporary GPU stress script in current directory
+            gpu_script_path = Path("gpu_stress_temp.py")
             with open(gpu_script_path, "w") as f:
                 f.write(gpu_script)
 
-            # Start GPU stress process
-            process = subprocess.Popen([sys.executable, gpu_script_path])
+            # Make it executable
+            gpu_script_path.chmod(0o755)
+
+            # Start GPU stress process (temporarily show output for debugging)
+            process = subprocess.Popen(
+                [sys.executable, str(gpu_script_path)]
+                # Removed stdout/stderr suppression to see what's happening
+            )
             self.gpu_processes.append(process)
 
         except Exception as e:
@@ -1093,7 +1155,10 @@ def main():
     # Check if running as root (needed for some power sensors)
     if os.geteuid() != 0:
         print("⚠️  Running without root privileges. Some sensors may not be accessible.")
-        print("   For full power monitoring, run with: sudo python3 test_thermal_power.py")
+        print("⚠️  Script will attempt to use 'sudo jetson_clocks' automatically for GPU stress.")
+        print("   For full power monitoring without sudo prompts, you can run with:")
+        print(f"   sudo {sys.executable} {' '.join(sys.argv)}")
+        print("   (This preserves your virtual environment)")
 
     # Load existing results
     idle_stats, load_stats, throttle_stats = load_existing_results()
