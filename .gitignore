@@ -32,6 +32,7 @@ build/
 models/*/
 !models/README.md
 !models/*/.gitkeep
+!models/model_registry.yaml
 
 # Calibration data
 config/camera_calibration.yaml

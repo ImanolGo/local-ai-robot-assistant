@@ -1,0 +1,332 @@
+# Model Registry for Local AI Robot Assistant
+# This file contains metadata for all AI models used in the system
+
+version: "1.0"
+updated: "2024-11-04"
+description: "Registry of AI models with metadata, sources, and requirements"
+
+models:
+  vision:
+    yolo:
+      name: "YOLOv8n Object Detection"
+      type: "object_detection"
+      framework: "pytorch"
+      runtime: "tensorrt"
+      size_mb: 6.2
+      input_resolution: [640, 480]
+      output_classes: 80  # COCO classes
+      performance_targets:
+        fps: 20
+        latency_ms: 50
+        accuracy_map: 0.37
+      memory_usage:
+        ram_mb: 200
+        vram_mb: 400
+      source:
+        provider: "Ultralytics"
+        url: "https://github.com/ultralytics/ultralytics"
+        license: "GPL-3.0"
+        commercial_use: false  # GPL requires open source derivatives
+      files:
+        pytorch: "yolov8n.pt"
+        tensorrt: "yolov8n_fp16.engine"
+        config: "yolo_config.yaml"
+      conversion:
+        required: true
+        script: "tools/convert_yolo.py"
+        precision: "fp16"
+
+    fastdepth:
+      name: "FastDepth Monocular Depth Estimation"
+      type: "depth_estimation"
+      framework: "pytorch"
+      runtime: "tensorrt"
+      size_mb: 4.8
+      input_resolution: [640, 480]
+      output_format: "depth_map"
+      performance_targets:
+        fps: 15
+        latency_ms: 70
+        accuracy_rmse: 0.15  # meters
+      memory_usage:
+        ram_mb: 150
+        vram_mb: 300
+      source:
+        provider: "MIT CSAIL"
+        url: "https://github.com/dwofk/fast-depth"
+        license: "MIT"
+        commercial_use: true
+      files:
+        pytorch: "fastdepth_mobilenet.pth"
+        tensorrt: "fastdepth_fp16.engine"
+        config: "depth_config.yaml"
+      conversion:
+        required: true
+        script: "tools/convert_depth.py"
+        precision: "fp16"
+
+  audio:
+    whisper:
+      name: "Whisper Tiny Speech Recognition"
+      type: "speech_to_text"
+      framework: "transformers"
+      runtime: "faster_whisper"  # or tensorrt
+      size_mb: 37.2
+      parameters: "39M"
+      languages: ["en"]
+      performance_targets:
+        real_time_factor: 0.3
+        wer_clean: 0.05  # 5% word error rate
+        wer_noisy: 0.10  # 10% in noisy conditions
+      memory_usage:
+        ram_mb: 300
+        vram_mb: 150
+      source:
+        provider: "OpenAI"
+        url: "https://github.com/openai/whisper"
+        license: "MIT"
+        commercial_use: true
+      files:
+        pytorch: "whisper_tiny.bin"
+        config: "config.json"
+        tokenizer: "tokenizer.json"
+        faster_whisper: "model.bin"
+      conversion:
+        required: false  # Use faster-whisper directly
+        alternative_script: "tools/convert_whisper.py"
+        precision: "fp16"
+
+    piper:
+      name: "Piper Text-to-Speech"
+      type: "text_to_speech"
+      framework: "onnx"
+      runtime: "onnx"
+      size_mb: 63.2
+      voice: "en_US-lessac-medium"
+      performance_targets:
+        synthesis_speed: 2.0  # 2x real-time
+        latency_ms: 500  # for 20 words
+        quality_mos: 4.2  # Mean Opinion Score
+      memory_usage:
+        ram_mb: 200
+        vram_mb: 100
+      source:
+        provider: "Rhasspy"
+        url: "https://github.com/rhasspy/piper"
+        license: "MIT"
+        commercial_use: true
+      files:
+        onnx: "en_US-lessac-medium.onnx"
+        config: "en_US-lessac-medium.onnx.json"
+      conversion:
+        required: false  # Already ONNX optimized
+
+    wake_word:
+      name: "openWakeWord Detection"
+      type: "wake_word_detection"
+      framework: "onnx"
+      runtime: "onnx"
+      size_mb: 12.5
+      wake_words: ["hey_jarvis", "alexa", "hey_mycroft"]
+      performance_targets:
+        detection_latency_ms: 100
+        false_positive_rate: 0.01  # 1% per hour
+        true_positive_rate: 0.95   # 95% detection
+        cpu_usage_percent: 5
+      memory_usage:
+        ram_mb: 50
+        vram_mb: 0
+      source:
+        provider: "openWakeWord"
+        url: "https://github.com/dscripka/openWakeWord"
+        license: "Apache-2.0"
+        commercial_use: true
+      files:
+        models: "*.onnx"
+        config: "wake_word_config.yaml"
+      conversion:
+        required: false  # Pre-trained ONNX models
+
+  language:
+    phi3:
+      name: "Microsoft Phi-3 Mini 4K Instruct"
+      type: "large_language_model"
+      framework: "transformers"
+      runtime: "nanollm"
+      size_mb: 7800  # Original size
+      quantized_size_mb: 2500  # INT4 quantized
+      parameters: "3.8B"
+      context_length: 4096
+      performance_targets:
+        tokens_per_second: 15
+        latency_ms: 2000  # for typical response
+        memory_efficiency: "high"
+      memory_usage:
+        ram_mb: 2500  # When loaded
+        vram_mb: 0
+      source:
+        provider: "Microsoft"
+        url: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct"
+        license: "MIT"
+        commercial_use: true
+      files:
+        original: "pytorch_model.bin"
+        quantized: "phi3_int4.bin"
+        config: "config.json"
+        tokenizer: "tokenizer.json"
+      conversion:
+        required: true
+        script: "tools/quantize_llm.py"
+        precision: "int4"
+        method: "awq"
+
+    llama2:
+      name: "Meta LLaMA 2 7B Chat"
+      type: "large_language_model"
+      framework: "transformers"
+      runtime: "nanollm"
+      size_mb: 13000  # Original size
+      quantized_size_mb: 3500  # INT4 quantized
+      parameters: "7B"
+      context_length: 4096
+      performance_targets:
+        tokens_per_second: 12
+        latency_ms: 2500
+        memory_efficiency: "medium"
+      memory_usage:
+        ram_mb: 3500  # When loaded
+        vram_mb: 0
+      source:
+        provider: "Meta AI"
+        url: "https://huggingface.co/meta-llama/Llama-2-7b-chat-hf"
+        license: "LLaMA-2-Custom"
+        commercial_use: true  # With restrictions (<700M MAU)
+      files:
+        original: "pytorch_model.bin"
+        quantized: "llama2_int4.bin"
+        config: "config.json"
+        tokenizer: "tokenizer.json"
+      conversion:
+        required: true
+        script: "tools/quantize_llm.py"
+        precision: "int4"
+        method: "awq"
+
+    gemma2:
+      name: "Google Gemma 2-7B Instruct"
+      type: "large_language_model"
+      framework: "transformers"
+      runtime: "nanollm"
+      size_mb: 14000  # Original size
+      quantized_size_mb: 3800  # INT4 quantized
+      parameters: "7B"
+      context_length: 8192
+      performance_targets:
+        tokens_per_second: 10
+        latency_ms: 3000
+        memory_efficiency: "medium"
+      memory_usage:
+        ram_mb: 3800  # When loaded
+        vram_mb: 0
+      source:
+        provider: "Google DeepMind"
+        url: "https://huggingface.co/google/gemma-2-7b-it"
+        license: "Gemma-Custom"
+        commercial_use: true  # With terms
+      files:
+        original: "pytorch_model.bin"
+        quantized: "gemma2_int4.bin"
+        config: "config.json"
+        tokenizer: "tokenizer.json"
+      conversion:
+        required: true
+        script: "tools/quantize_llm.py"
+        precision: "int4"
+        method: "awq"
+
+# Model deployment configurations
+deployment:
+  memory_management:
+    total_budget_mb: 7500  # Jetson Orin Nano 8GB - 512MB system reserve
+    warning_threshold: 0.80
+    critical_threshold: 0.90
+
+  lazy_loading:
+    enabled: true
+    unload_timeout_minutes: 5
+    priority_order:
+      - wake_word    # Always loaded
+      - camera       # Keep for safety
+      - motor_control # Keep for safety
+      - vision_models # Unload when LLM needed
+      - audio_models  # Unload when LLM needed
+      - llm          # Load on demand
+
+  performance_monitoring:
+    fps_monitoring: true
+    memory_monitoring: true
+    temperature_monitoring: true
+    error_logging: true
+
+# Hardware-specific optimizations
+hardware:
+  jetson_orin_nano:
+    tensorrt_version: "8.6"
+    cuda_version: "11.4"
+    max_batch_size: 1
+    dla_cores: 0  # Orin Nano has no DLA
+    gpu_memory_fraction: 0.8
+
+  optimizations:
+    vision:
+      use_zero_copy: true
+      use_nvmm_memory: true
+      pipeline_depth: 2
+
+    audio:
+      buffer_size_ms: 100
+      sample_rate: 16000
+      channels: 1
+
+    llm:
+      kv_cache_optimization: true
+      attention_optimization: true
+      memory_mapping: true
+
+# Quality thresholds
+quality_targets:
+  vision:
+    object_detection_confidence: 0.5
+    depth_estimation_range: [0.5, 10.0]  # meters
+
+  audio:
+    wake_word_confidence: 0.5
+    speech_recognition_confidence: 0.3
+    tts_quality_minimum: 3.5  # MOS scale
+
+  language:
+    response_relevance: 0.8
+    intent_extraction_confidence: 0.7
+    safety_filter_threshold: 0.9
+
+# Update information
+maintenance:
+  last_updated: "2024-11-04"
+  update_frequency: "monthly"
+  version_tracking: true
+  deprecation_warnings: true
+
+dependencies:
+  system:
+    - "python>=3.10"
+    - "cuda>=11.4"
+    - "tensorrt>=8.6"
+    - "opencv>=4.5"
+
+  python_packages:
+    - "torch>=2.0"
+    - "transformers>=4.30"
+    - "onnxruntime-gpu>=1.15"
+    - "ultralytics>=8.0"
+    - "faster-whisper>=0.9"
+    - "pyaudio>=0.2.11"

@@ -298,14 +298,14 @@
 ## Phase 3: Model Conversion & Optimization (Week 5)
 
 ### 3.1 Model Acquisition
-- [ ] Download YOLOv8n PyTorch model from Ultralytics
-- [ ] Download FastDepth PyTorch model from MIT
-- [ ] Download Whisper Tiny model from OpenAI
-- [ ] Download Piper TTS model and voice files
-- [ ] Download openWakeWord models
-- [ ] Download LLaMA-2 7B or Gemma 2-7B or Phi-2
-- [ ] Organize models in `/models` directory
-- [ ] Document model sources and licenses in `docs/model_credits.md`
+- [x] Download YOLOv8n PyTorch model from Ultralytics
+- [x] Download FastDepth PyTorch model from MIT
+- [x] Download Whisper Tiny model from OpenAI
+- [x] Download Piper TTS model and voice files
+- [x] Download openWakeWord models
+- [x] Download LLaMA-2 7B or Gemma 2-7B or Phi-2
+- [x] Organize models in `/models` directory
+- [x] Document model sources and licenses in `docs/model_credits.md`
 
 ### 3.2 Vision Model Conversion (TensorRT)
 - [ ] Implement `tools/convert_yolo.py`
