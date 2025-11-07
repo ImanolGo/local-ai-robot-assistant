@@ -1,18 +1,18 @@
 # Model Registry for Local AI Robot Assistant
 # This file contains metadata for all AI models used in the system
 
-version: "1.0"
-updated: "2024-11-04"
-description: "Registry of AI models with metadata, sources, and requirements"
+version: "1.1"
+updated: "2025-11-07"
+description: "Registry of AI models with metadata, sources, and requirements. Updated to use RT-MonoDepth-S and YOLO11n."
 
 models:
   vision:
     yolo:
-      name: "YOLOv8n Object Detection"
+      name: "YOLO11n Object Detection"
       type: "object_detection"
       framework: "pytorch"
       runtime: "tensorrt"
-      size_mb: 6.2
+      size_mb: 5.6
       input_resolution: [640, 480]
       output_classes: 80  # COCO classes
       performance_targets:
@@ -24,42 +24,41 @@ models:
         vram_mb: 400
       source:
         provider: "Ultralytics"
-        url: "https://github.com/ultralytics/ultralytics"
-        license: "GPL-3.0"
+        url: "https://huggingface.co/Ultralytics/YOLO11/resolve/main/yolo11n.pt"
+        license: "AGPL-3.0"
         commercial_use: false  # GPL requires open source derivatives
       files:
-        pytorch: "yolov8n.pt"
-        tensorrt: "yolov8n_fp16.engine"
+        pytorch: "yolo11n.pt"
+        tensorrt: "yolo11n_fp16.engine"
         config: "yolo_config.yaml"
       conversion:
         required: true
         script: "tools/convert_yolo.py"
         precision: "fp16"
 
-    fastdepth:
-      name: "FastDepth Monocular Depth Estimation"
+    rt_monodepth:
+      name: "RT-MonoDepth-S Monocular Depth Estimation"
       type: "depth_estimation"
       framework: "pytorch"
       runtime: "tensorrt"
-      size_mb: 4.8
-      input_resolution: [640, 480]
+      size_mb: 232.5
+      input_resolution: [640, 192]
       output_format: "depth_map"
       performance_targets:
-        fps: 15
-        latency_ms: 70
-        accuracy_rmse: 0.15  # meters
+        fps: 30
+        latency_ms: 35
       memory_usage:
-        ram_mb: 150
+        ram_mb: 200
         vram_mb: 300
       source:
-        provider: "MIT CSAIL"
-        url: "https://github.com/dwofk/fast-depth"
-        license: "MIT"
-        commercial_use: true
+        provider: "RT-MonoDepth Research"
+        url: "https://github.com/rt-monodepth/rt-monodepth"
+        license: "Academic Research"
+        commercial_use: false
       files:
-        pytorch: "fastdepth_mobilenet.pth"
-        tensorrt: "fastdepth_fp16.engine"
-        config: "depth_config.yaml"
+        archive: "weights_rtmonodepth.zip"
+        pytorch: "weights/RTMonoDepth/s/m_640_192/"
+        tensorrt: "rt_monodepth_s_fp16.engine"
       conversion:
         required: true
         script: "tools/convert_depth.py"
@@ -70,17 +69,8 @@ models:
       name: "Whisper Tiny Speech Recognition"
       type: "speech_to_text"
       framework: "transformers"
-      runtime: "faster_whisper"  # or tensorrt
-      size_mb: 37.2
-      parameters: "39M"
-      languages: ["en"]
-      performance_targets:
-        real_time_factor: 0.3
-        wer_clean: 0.05  # 5% word error rate
-        wer_noisy: 0.10  # 10% in noisy conditions
-      memory_usage:
-        ram_mb: 300
-        vram_mb: 150
+      runtime: "faster_whisper"
+      size_mb: 144.1
       source:
         provider: "OpenAI"
         url: "https://github.com/openai/whisper"
@@ -90,26 +80,13 @@ models:
         pytorch: "whisper_tiny.bin"
         config: "config.json"
         tokenizer: "tokenizer.json"
-        faster_whisper: "model.bin"
-      conversion:
-        required: false  # Use faster-whisper directly
-        alternative_script: "tools/convert_whisper.py"
-        precision: "fp16"
 
     piper:
       name: "Piper Text-to-Speech"
       type: "text_to_speech"
       framework: "onnx"
       runtime: "onnx"
-      size_mb: 63.2
-      voice: "en_US-lessac-medium"
-      performance_targets:
-        synthesis_speed: 2.0  # 2x real-time
-        latency_ms: 500  # for 20 words
-        quality_mos: 4.2  # Mean Opinion Score
-      memory_usage:
-        ram_mb: 200
-        vram_mb: 100
+      size_mb: 60.3
       source:
         provider: "Rhasspy"
         url: "https://github.com/rhasspy/piper"
@@ -118,36 +95,41 @@ models:
       files:
         onnx: "en_US-lessac-medium.onnx"
         config: "en_US-lessac-medium.onnx.json"
-      conversion:
-        required: false  # Already ONNX optimized
 
     wake_word:
-      name: "openWakeWord Detection"
+      name: "openWakeWord Models"
       type: "wake_word_detection"
       framework: "onnx"
       runtime: "onnx"
-      size_mb: 12.5
-      wake_words: ["hey_jarvis", "alexa", "hey_mycroft"]
-      performance_targets:
-        detection_latency_ms: 100
-        false_positive_rate: 0.01  # 1% per hour
-        true_positive_rate: 0.95   # 95% detection
-        cpu_usage_percent: 5
-      memory_usage:
-        ram_mb: 50
-        vram_mb: 0
+      size_mb: 1.2
       source:
         provider: "openWakeWord"
         url: "https://github.com/dscripka/openWakeWord"
         license: "Apache-2.0"
         commercial_use: true
       files:
-        models: "*.onnx"
-        config: "wake_word_config.yaml"
-      conversion:
-        required: false  # Pre-trained ONNX models
+        onnx: "hey_jarvis_v0.1.onnx"
 
   language:
+    nanollm:
+      name: "NanoLLM Base Model"
+      type: "large_language_model"
+      framework: "transformers"
+      runtime: "nanollm"
+      size_mb: 0.1
+      description: "Microsoft Phi-3 Mini (4K) instruction-tuned base model (info only)"
+      source:
+        provider: "Microsoft"
+        url: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct"
+        license: "MIT"
+        commercial_use: true
+      files:
+        readme: "phi3_readme.md"
+      conversion:
+        required: true
+        script: "tools/quantize_llm.py"
+        note: "Use NanoLLM tools to download and quantize full model"
+
     phi3:
       name: "Microsoft Phi-3 Mini 4K Instruct"
       type: "large_language_model"
@@ -311,7 +293,7 @@ quality_targets:
 
 # Update information
 maintenance:
-  last_updated: "2024-11-04"
+  last_updated: "2025-11-07"
   update_frequency: "monthly"
   version_tracking: true
   deprecation_warnings: true
@@ -322,6 +304,7 @@ dependencies:
     - "cuda>=11.4"
     - "tensorrt>=8.6"
     - "opencv>=4.5"
+    - "gdown>=5.0"  # Required for RT-MonoDepth-S Google Drive downloads
 
   python_packages:
     - "torch>=2.0"

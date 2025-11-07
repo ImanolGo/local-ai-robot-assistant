@@ -5,6 +5,9 @@ Model Download Script for Local AI Robot Assistant
 This script downloads and validates AI models required for the robot assistant.
 Includes checksum validation, progress tracking, and automatic retry mechanisms.
 
+Requirements:
+    pip install gdown  # For Google Drive downloads (RT-MonoDepth-S)
+
 Usage:
     python scripts/setup/download_models.py               # Download all models
     python scripts/setup/download_models.py --verify      # Verify existing models
@@ -21,6 +24,15 @@ import zipfile
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+try:
+    import gdown
+
+    GDOWN_AVAILABLE = True
+except ImportError:
+    GDOWN_AVAILABLE = False
+    print("⚠️  Warning: 'gdown' not available. Google Drive downloads will be skipped.")
+    print("   Install with: pip install gdown")
+
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -28,28 +40,31 @@ sys.path.append(str(PROJECT_ROOT))
 # Model definitions with sources and checksums
 MODEL_REGISTRY = {
     "yolo": {
-        "name": "YOLOv8n Object Detection",
-        "description": "Ultralytics YOLOv8 Nano model for object detection",
-        "url": "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.pt",
-        "filename": "yolov8n.pt",
+        "name": "YOLO11n Object Detection",
+        "description": "Ultralytics YOLO11 Nano model for object detection",
+        "url": "https://huggingface.co/Ultralytics/YOLO11/resolve/main/yolo11n.pt",
+        "filename": "yolo11n.pt",
         "destination": "models/yolo_trt/",
-        "size_mb": 6.2,
-        "sha256": "c22e21cf8e5a0d8e8174ac3e37b6a3ea9a3b0e8c3a5b1d2e8f9b0c1d2e3f4a5b",
-        "license": "GPL-3.0",
+        "size_mb": 5.61,
+        "sha256": "0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1",
+        "license": "AGPL-3.0",
         "source": "Ultralytics",
         "required": True,
     },
-    "fastdepth": {
-        "name": "FastDepth Monocular Depth Estimation",
-        "description": "MIT FastDepth model for monocular depth estimation",
-        "url": "https://github.com/dwofk/fast-depth/releases/download/v1.0/mobilenet-nnconv5dw-skipadd-pruned.pth",  # noqa E501
-        "filename": "fastdepth_mobilenet.pth",
+    "rt_monodepth": {
+        "name": "RT-MonoDepth-S Monocular Depth Estimation",
+        "description": "RT-MonoDepth-S lightweight encoder-decoder for real-time monocular\
+              depth estimation",
+        "url": "https://drive.google.com/file/d/1Jf5K3m0DfAqVcVCE6y0cKufEKIHu86sz/view?usp=drive_link",  # noqa E501
+        "filename": "weights_rtmonodepth.zip",
         "destination": "models/depth_trt/",
-        "size_mb": 4.8,
-        "sha256": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2",
-        "license": "MIT",
-        "source": "MIT CSAIL",
+        "size_mb": 232.5,  # Actual downloaded size
+        "sha256": "44c87fa550e6ce8b44cb4115e37f53f872e1a1a1cd576e58aa270c3c45176739",
+        "license": "Academic Research",
+        "source": "RT-MonoDepth Research",
         "required": True,
+        "extract": True,
+        "download_method": "gdown",
     },
     "whisper": {
         "name": "Whisper Tiny Speech Recognition",
@@ -57,8 +72,8 @@ MODEL_REGISTRY = {
         "url": "https://huggingface.co/openai/whisper-tiny/resolve/main/pytorch_model.bin",
         "filename": "whisper_tiny.bin",
         "destination": "models/whisper_tiny_trt/",
-        "size_mb": 37.2,
-        "sha256": "d4c5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5",
+        "size_mb": 144.10,
+        "sha256": "9607f98a2b22d9e229ae43c52ecea79dcede9e0c5cfae67e8da6eda86d8aac1d",
         "license": "MIT",
         "source": "OpenAI",
         "required": True,
@@ -75,18 +90,18 @@ MODEL_REGISTRY = {
     },
     "piper": {
         "name": "Piper Text-to-Speech",
-        "description": "Piper TTS model with high-quality voice",
-        "url": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx",  # noqa E501
+        "description": "Rhasspy Piper TTS model (en_US-lessac-medium) with high-quality voice",
+        "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx",  # noqa E501
         "filename": "en_US-lessac-medium.onnx",
         "destination": "models/piper_voice/",
-        "size_mb": 63.2,
-        "sha256": "e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6",
+        "size_mb": 60.27,
+        "sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f",
         "license": "MIT",
         "source": "Rhasspy",
         "required": True,
         "additional_files": [
             {
-                "url": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",  # noqa E501
+                "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",  # noqa E501
                 "filename": "en_US-lessac-medium.onnx.json",
             }
         ],
@@ -94,19 +109,19 @@ MODEL_REGISTRY = {
     "wake_word": {
         "name": "openWakeWord Models",
         "description": "Pre-trained wake word detection models",
-        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/openwakeword_models.zip",  # noqa E501
-        "filename": "openwakeword_models.zip",
+        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/hey_jarvis_v0.1.onnx",  # noqa E501
+        "filename": "hey_jarvis_v0.1.onnx",
         "destination": "models/wake_word/",
-        "size_mb": 12.5,
-        "sha256": "f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8",
+        "size_mb": 1.2,
+        "sha256": "94a13cfe60075b132f6a472e7e462e8123ee70861bc3fb58434a73712ee0d2cb",
         "license": "Apache-2.0",
         "source": "openWakeWord",
         "required": True,
-        "extract": True,
+        "extract": False,
     },
     "nanollm": {
         "name": "NanoLLM Base Model",
-        "description": "Quantized LLM for cognitive processing (user must select specific model)",
+        "description": "Microsoft Phi-3 Mini (4K) instruction-tuned base model (info only)",
         "url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct/resolve/main/README.md",
         "filename": "phi3_readme.md",
         "destination": "models/nanollm_quantized/",
@@ -114,9 +129,9 @@ MODEL_REGISTRY = {
         "sha256": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
         "license": "MIT",
         "source": "Microsoft",
-        "required": False,
-        "note": "This downloads model info only. Use NanoLLM tools to download and\
-              quantize full model.",
+        "required": True,
+        "note": "This downloads model info only. Use NanoLLM tools to download\
+              and quantize full model.",
     },
 }
 
@@ -176,6 +191,37 @@ class ModelDownloader:
                 filepath.unlink()  # Remove partial download
             return False
 
+    def download_from_gdrive(self, url: str, filepath: Path) -> bool:
+        """Download file from Google Drive using gdown."""
+        if not GDOWN_AVAILABLE:
+            print(f"❌ Cannot download {filepath.name}: gdown not available")
+            print("   Install with: pip install gdown")
+            return False
+
+        try:
+            print(f"Downloading {filepath.name} from Google Drive...")
+
+            # Create directory if it doesn't exist
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+
+            # Download using gdown with fuzzy matching for drive links
+            success = gdown.download(url, str(filepath), quiet=False, fuzzy=True)
+
+            if not success or not filepath.exists() or filepath.stat().st_size == 0:
+                print(f"❌ Google Drive download failed: {filepath.name}")
+                if filepath.exists():
+                    filepath.unlink()
+                return False
+
+            print(f"✅ Downloaded: {filepath.name} ({filepath.stat().st_size / (1024*1024):.1f} MB)")
+            return True
+
+        except Exception as e:
+            print(f"❌ Google Drive download failed for {filepath.name}: {e}")
+            if filepath.exists():
+                filepath.unlink()  # Remove partial download
+            return False
+
     def verify_checksum(self, filepath: Path, expected_sha256: str) -> bool:
         """Verify file checksum."""
         if not filepath.exists():
@@ -227,29 +273,59 @@ class ModelDownloader:
 
         # Check if already downloaded (unless forcing)
         if main_filepath.exists() and not force:
-            if self.verify_checksum(main_filepath, model_info["sha256"]):
+            # Skip checksum verification for RT-MonoDepth-S if sha256 is empty
+            if model_info["sha256"] and not self.verify_checksum(
+                main_filepath, model_info["sha256"]
+            ):
+                print(f"⚠️  Checksum failed, re-downloading: {model_info['name']}")
+            elif model_info["sha256"]:  # Only verify if checksum is provided
                 print(f"✅ Model already downloaded and verified: {model_info['name']}")
                 return True
             else:
-                print(f"⚠️  Checksum failed, re-downloading: {model_info['name']}")
+                print(
+                    f"✅ Model already downloaded: {model_info['name']}\
+                          (checksum verification skipped)"
+                )
+                return True
 
         print(f"\n📦 Downloading {model_info['name']}")
         print(f"   Source: {model_info['source']}")
-        print(f"   Size: {model_info['size_mb']} MB")
+        print(
+            f"   Size: {model_info['size_mb']} MB (estimated)"
+            if not model_info.get("sha256")
+            else f"   Size: {model_info['size_mb']} MB"
+        )
         print(f"   License: {model_info['license']}")
 
-        # Download main file
-        success = self.download_with_progress(
-            model_info["url"], main_filepath, int(model_info["size_mb"] * 1024 * 1024)
-        )
+        # Download main file using appropriate method
+        download_method = model_info.get("download_method", "urllib")
+        if download_method == "gdown":
+            success = self.download_from_gdrive(model_info["url"], main_filepath)
+        else:
+            success = self.download_with_progress(
+                model_info["url"],
+                main_filepath,
+                int(model_info["size_mb"] * 1024 * 1024),
+            )
 
         if not success:
             return False
 
-        # Verify checksum
-        if not self.verify_checksum(main_filepath, model_info["sha256"]):
-            main_filepath.unlink()  # Remove invalid file
-            return False
+        # Verify checksum (skip if not provided)
+        if model_info["sha256"]:
+            if not self.verify_checksum(main_filepath, model_info["sha256"]):
+                main_filepath.unlink()  # Remove invalid file
+                return False
+        else:
+            print(f"⚠️  Checksum not available for {model_info['name']}, skipping verification")
+            # Calculate and display actual checksum for future reference
+            actual_sha256 = self.calculate_sha256(main_filepath)
+            print(f"   Calculated SHA256: {actual_sha256}")
+
+        # Extract if needed
+        if model_info.get("extract", False):
+            if not self.extract_archive(main_filepath, destination_dir):
+                return False
 
         # Download additional files if specified
         if "additional_files" in model_info:

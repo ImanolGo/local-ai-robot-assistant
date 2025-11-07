@@ -100,10 +100,10 @@ This layer provides environmental understanding and localization.
 - **Performance Target**: 20+ FPS at 640x480 resolution
 
 #### Monocular Depth Estimation
-- **Model**: **FastDepth** converted to **TensorRT FP16 engine**
+- **Model**: **RT-MonoDepth-S** converted to **TensorRT FP16 engine**
 - **Input**: Undistorted color images
 - **Output**: Per-pixel depth maps published to `/perception/depth`
-- **Performance Target**: 15+ FPS at 320x240 resolution
+- **Performance Target**: 30+ FPS at 320x240 resolution (30.5 FPS demonstrated on Jetson Nano)
 
 #### Simultaneous Localization and Mapping (SLAM)
 - **Point Cloud Generation**: Back-project depth maps using calibrated camera intrinsics
@@ -149,6 +149,15 @@ This layer handles all voice interaction using local models and USB audio hardwa
    - Returns to idle state after silence detected
    - Target: <2 second latency for 5-second utterance
 
+4. **Voice Activity Detection Node** (`vad_node.py`)
+   - Implements real-time voice activity detection using `webrtcvad` or `silero-vad`
+   - Dynamically enabled/disabled based on system state
+   - Prevents audio feedback loops during robot speech
+   - Provides intelligent speech segmentation with configurable silence thresholds
+   - Publishes voice activity status to `/audio/vad_status`
+   - Maintains audio buffers for complete utterance capture
+   - Target: <50ms detection latency, <2% CPU usage
+
 ##### Output Pipeline (Speech Synthesis)
 1. **Text-to-Speech Node** (`tts_node.py`)
    - Subscribes to `/audio/tts_request` topic
@@ -165,30 +174,110 @@ This layer handles all voice interaction using local models and USB audio hardwa
    - Manages audio queue and playback state
    - Handles interruptions (emergency stop, new commands)
 
-#### Auditory Layer State Machine
+#### Audio Detection Pipeline
+
+The audio detection system follows a sophisticated multi-stage pipeline designed for robust voice interaction while preventing feedback loops:
+
+```text
+1. [Wake Word] Always listening → Detects Wake Word → Activates system
+                ↓
+2. [VAD] Starts listening → Detects speech → Captures: "turn on the lights"
+                ↓
+3. [Whisper] Transcribes → "turn on the lights"
+                ↓
+4. [Robot] Executes command → Turns on lights
+                ↓
+5. [VAD] Disabled while robot speaks → Prevents feedback loop
+                ↓
+6. [Wake Word] Resumes listening → Waits for next "Hey Jarvis"
 ```
-[Listening for Wake Word]
-    ↓ (wake word detected)
-[Recording Command]
-    ↓ (silence detected / timeout)
-[Processing Speech → Text]
-    ↓
-[Command sent to Cognitive Core]
-    ↓
-[Response generated]
-    ↓
-[Text → Speech Synthesis]
-    ↓
-[Audio Playback]
-    ↓
-[Return to Listening for Wake Word]
+
+##### Voice Activity Detection (VAD) Integration
+
+The VAD system provides intelligent audio segmentation:
+
+- **VAD Model**: `webrtcvad` or `silero-vad` for real-time speech detection
+- **Activation**: Only enabled after wake word detection
+- **Feedback Prevention**: Automatically disabled during robot speech output
+- **Smart Timeout**: Configurable silence detection (default: 2 seconds)
+- **Audio Buffering**: Maintains pre/post-speech buffers for complete utterance capture
+
+##### Pipeline State Management
+
+```python
+# Audio Detection State Machine Implementation
+class AudioDetectionPipeline:
+    def __init__(self):
+        self.state = "LISTENING_WAKE_WORD"
+        self.vad_enabled = False
+        self.audio_buffer = CircularBuffer(size=16000*5)  # 5 second buffer
+
+    def on_wake_word_detected(self):
+        """Triggered when Wake Word is detected"""
+        self.get_logger().info("Wake word detected!")
+        self.state = "CAPTURING_COMMAND"
+        self.vad_enabled = True
+        self.audio_buffer.clear()
+
+    def on_speech_captured(self, audio_data):
+        """Triggered when VAD detects complete utterance"""
+        self.vad_enabled = False  # Stop listening during processing
+        self.state = "PROCESSING_SPEECH"
+
+        # Transcribe with Whisper
+        text = self.whisper.transcribe(audio_data)
+
+        # Send to cognitive core
+        response = self.process_command(text)
+
+        # Generate speech response
+        self.state = "ROBOT_SPEAKING"
+        self.speak(response)
+
+        # Brief pause before resuming
+        time.sleep(0.5)
+
+        # Resume wake word detection
+        self.state = "LISTENING_WAKE_WORD"
+        self.get_logger().info("Ready for next wake word")
+
+    def on_robot_speech_start(self):
+        """Disable VAD during robot speech to prevent feedback"""
+        self.vad_enabled = False
+
+    def on_robot_speech_end(self):
+        """Re-enable wake word detection after robot finishes speaking"""
+        if self.state == "ROBOT_SPEAKING":
+            self.state = "LISTENING_WAKE_WORD"
+```
+
+##### Auditory Layer State Machine
+
+```text
+[LISTENING_WAKE_WORD] ←─────────────────┐
+    ↓ (wake word detected)               │
+[CAPTURING_COMMAND]                      │
+    ↓ (VAD detects complete speech)      │
+[PROCESSING_SPEECH]                      │
+    ↓ (transcription complete)           │
+[COMMAND_SENT_TO_COGNITIVE_CORE]         │
+    ↓ (response generated)               │
+[ROBOT_SPEAKING] ──→ VAD DISABLED        │
+    ↓ (speech playback complete)         │
+[BRIEF_PAUSE] ──→ 0.5s delay            │
+    ↓                                    │
+[RETURN_TO_WAKE_WORD] ──────────────────┘
 ```
 
 #### Resource Optimization
+
 - Wake word detection runs continuously but uses minimal resources (~5% CPU)
+- VAD model activated only after wake word detection (<2% CPU when active)
 - ASR model lazy-loaded on wake word detection
 - TTS model kept in memory (small footprint with Piper)
 - Use INT8 quantization where possible
+- Smart state management prevents audio feedback loops
+- Configurable timeouts and thresholds for power efficiency
 
 ### 2.5. Cognitive Core (Language Model)
 
@@ -354,7 +443,7 @@ PyTorch/HuggingFace → ONNX (intermediate) → TensorRT Engine (deployment)
 
 ### 3.2. Model-Specific Strategies
 
-#### Vision Models (YOLO, FastDepth)
+#### Vision Models (YOLO, RT-MonoDepth-S)
 - **Format**: TensorRT FP16 engines
 - **Optimization**:
   - Layer fusion
@@ -388,7 +477,7 @@ PyTorch/HuggingFace → ONNX (intermediate) → TensorRT Engine (deployment)
 
 Create standardized conversion scripts:
 - `tools/convert_yolo.py` - YOLO → TensorRT
-- `tools/convert_depth.py` - FastDepth → TensorRT
+- `tools/convert_depth.py` - RT-MonoDepth-S → TensorRT
 - `tools/convert_whisper.py` - Whisper → TensorRT/faster-whisper setup
 - `tools/profile_model.py` - Benchmark any model
 
@@ -401,7 +490,7 @@ Create standardized conversion scripts:
 | System/ROS2 | 1.0 GB | 1.2 GB | Base OS + ROS2 |
 | RTAB-Map SLAM | - | 1.2 GB | Loaded on demand |
 | YOLO TensorRT | - | 600 MB | Unload when LLM active |
-| Depth TensorRT | - | 400 MB | Unload when LLM active |
+| RT-MonoDepth-S TensorRT | - | 300 MB | Unload when LLM active |
 | Audio Models | 300 MB | 500 MB | Wake word always loaded |
 | NanoLLM (INT4) | - | 2.5 GB | Lazy load only when needed |
 | Web Server | - | 200 MB | Optional, can disable |
@@ -411,14 +500,14 @@ Create standardized conversion scripts:
 ### 4.2. Dynamic Model Loading
 
 **Perception Mode** (default):
-- SLAM + YOLO + Depth active
+- SLAM + YOLO + RT-MonoDepth-S active
 - LLM unloaded
-- RAM usage: ~4.5 GB
+- RAM usage: ~4.4 GB
 
 **Reasoning Mode** (complex commands):
 - Load LLM
 - Keep SLAM active (for context)
-- Optionally unload YOLO/Depth temporarily
+- Optionally unload YOLO/RT-MonoDepth-S temporarily
 - RAM usage: ~5.5 GB
 
 **Emergency Mode** (RAM pressure):
@@ -496,7 +585,7 @@ Create standardized conversion scripts:
 
 #### AI Models & Libraries
 - **Object Detection**: Ultralytics YOLOv8n (TensorRT FP16)
-- **Monocular Depth**: FastDepth (TensorRT FP16)
+- **Monocular Depth**: RT-MonoDepth-S (TensorRT FP16)
 - **Localization/Mapping**: `robot_localization` (EKF), `rtabmap_ros`
 - **Camera Processing**: OpenCV, NVIDIA VPI (fisheye calibration)
 - **Language Model**: NVIDIA NanoLLM with LLaMA-2/Gemma/Phi-2 (INT4)
@@ -606,6 +695,12 @@ Create standardized conversion scripts:
 - Profile RAM usage under various scenarios
 - Test thermal performance under sustained load
 
+**Performance Targets**:
+- YOLO object detection: 20+ FPS at 640x480
+- RT-MonoDepth-S depth estimation: 30+ FPS at 320x240
+- Voice command to action: <5 seconds total latency
+- Memory efficiency: <5.5 GB peak usage during reasoning
+
 ### 9.4. Failure Mode Testing
 - USB device disconnection/reconnection
 - UART communication errors and recovery
@@ -631,7 +726,7 @@ robot_assistant_project/
 │   │       ├── camera_driver.py
 │   │       ├── image_undistort_node.py
 │   │       ├── object_detector.py (TensorRT)
-│   │       └── depth_estimator.py (TensorRT)
+│   │       └── depth_estimator.py (RT-MonoDepth-S TensorRT)
 │   ├── localization_nodes/
 │   │   ├── launch/
 │   │   │   └── localization_launch.py
@@ -741,7 +836,16 @@ robot_assistant_project/
 - Minimal overhead with efficient JSON parsing
 - Standard rate for IMU data in robotics
 
-### 11.5. Visual Odometry with Fallbacks
+### 11.5. RT-MonoDepth-S Over FastDepth
+**Decision**: Use RT-MonoDepth-S instead of FastDepth for monocular depth estimation
+**Rationale**:
+- 2x better performance: 30.5 FPS vs 15 FPS on Jetson platforms
+- Lighter memory footprint: ~300 MB vs ~400 MB
+- Shared encoder-decoder architecture optimized for embedded systems
+- Real-time performance suitable for continuous SLAM operation
+- Better accuracy-latency balance for robotics applications
+
+### 11.6. Visual Odometry with Fallbacks
 **Decision**: Primary odometry from SLAM with IMU fallback
 **Rationale**:
 - More accurate than dead reckoning from encoderless motors

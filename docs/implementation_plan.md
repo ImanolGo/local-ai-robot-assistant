@@ -299,7 +299,7 @@
 
 ### 3.1 Model Acquisition
 - [x] Download YOLOv8n PyTorch model from Ultralytics
-- [x] Download FastDepth PyTorch model from MIT
+- [x] Download RT-MonoDepth-S PyTorch model
 - [x] Download Whisper Tiny model from OpenAI
 - [x] Download Piper TTS model and voice files
 - [x] Download openWakeWord models
@@ -315,11 +315,11 @@
   - [ ] Benchmark inference time (target: <50ms on Jetson)
   - [ ] Save engine to `models/yolo_trt/yolov8n_fp16.engine`
 - [ ] Implement `tools/convert_depth.py`
-  - [ ] Export FastDepth to ONNX format
+  - [ ] Export RT-MonoDepth-S to ONNX format
   - [ ] Convert ONNX to TensorRT engine (FP16)
   - [ ] Validate depth map quality
-  - [ ] Benchmark inference time (target: <70ms)
-  - [ ] Save engine to `models/depth_trt/fastdepth_fp16.engine`
+  - [ ] Benchmark inference time (target: <35ms for 30+ FPS)
+  - [ ] Save engine to `models/depth_trt/rt_monodepth_s_fp16.engine`
 - [ ] Document conversion process in `docs/guides/model_conversion.md`
 
 ### 3.3 Audio Model Setup
@@ -403,13 +403,13 @@
 
 ### 4.2 Depth Estimation Node
 - [ ] Implement `depth_estimator.py`
-  - [ ] Load TensorRT engine from Phase 3.2
+  - [ ] Load RT-MonoDepth-S TensorRT engine from Phase 3.2
   - [ ] Subscribe to `/camera/undistorted`
   - [ ] Run inference using TensorRT runtime
   - [ ] Publish depth maps to `/perception/depth`
   - [ ] Add depth colormap visualization
   - [ ] Implement depth range normalization
-- [ ] Benchmark inference time (target: 15+ FPS)
+- [ ] Benchmark inference time (target: 30+ FPS)
 - [ ] Test depth accuracy with known distances
 - [ ] Create unit tests
 
@@ -450,97 +450,141 @@
 
 **Deliverables**:
 - Working object detection node (20+ FPS)
-- Working depth estimation node (15+ FPS)
+- Working depth estimation node (30+ FPS)
 - Working point cloud generation
 - Perception pipeline integrated and tested
 - Performance benchmarks documented
 
 ---
 
-## Phase 5: Audio Pipeline (Week 7)
+## Phase 5: Audio Detection Pipeline (Week 7)
 
-### 5.1 Audio Capture & Playback
+### 5.1 Audio Capture & Playback Infrastructure
 - [ ] Implement `audio_capture_node.py`
-  - [ ] PyAudio initialization
-  - [ ] Configure USB microphone from config
+  - [ ] PyAudio initialization with USB microphone configuration
   - [ ] Continuous audio streaming at 16 kHz
   - [ ] Publish to `/audio/raw` topic (audio_msgs/AudioData)
-  - [ ] Add circular buffer management (5-second buffer)
-  - [ ] Implement USB device health monitoring
+  - [ ] Circular buffer management (5-second rolling buffer)
+  - [ ] USB device health monitoring and auto-reconnection
+  - [ ] Configurable sample rate and channels from `config/audio_config.yaml`
 - [ ] Implement `audio_playback_node.py`
-  - [ ] PyAudio initialization
-  - [ ] Configure USB speakers from config
+  - [ ] PyAudio initialization with USB speakers configuration
   - [ ] Subscribe to `/audio/tts_output`
-  - [ ] Queue-based playback system
-  - [ ] Handle playback interruptions (emergency stop)
-  - [ ] Monitor playback errors
+  - [ ] Queue-based playback system with priority handling
+  - [ ] Handle playback interruptions (emergency stop, new commands)
+  - [ ] Volume normalization and audio quality optimization
+  - [ ] Monitor playback errors and device status
 - [ ] Test audio latency (target: <200ms round-trip)
-- [ ] Test simultaneous capture/playback
-- [ ] Test USB device reconnection
+- [ ] Test simultaneous capture/playback without feedback
+- [ ] Test USB device reconnection and hot-swapping
 
 **Tests Required**:
 ```python
 # tests/test_audio_capture.py
-- Test device initialization
-- Test audio streaming at 16 kHz
-- Test buffer management
-- Test device disconnection handling
+- Test device initialization and configuration
+- Test audio streaming at 16 kHz with quality metrics
+- Test circular buffer management under load
+- Test USB device disconnection/reconnection handling
+- Test multi-threading performance
 
 # tests/test_audio_playback.py
-- Test device initialization
-- Test audio playback
-- Test queue management
-- Test interruption handling
+- Test device initialization and speaker configuration
+- Test audio playback with various formats
+- Test queue management with priority systems
+- Test interruption handling and graceful recovery
+- Test volume control and audio quality
 ```
 
-### 5.2 Wake Word Detection
-- [ ] Install openWakeWord library
+### 5.2 Wake Word Detection ("Hey Jarvis")
+
+- [ ] Install openWakeWord library and dependencies
 - [ ] Implement `wake_word_detector_node.py`
-  - [ ] Load wake word model (ONNX)
-  - [ ] Subscribe to `/audio/raw`
-  - [ ] Run continuous detection (separate thread)
-  - [ ] Publish to `/audio/wake_word_detected` (std_msgs/Bool)
-  - [ ] Add detection confidence threshold (default: 0.5)
-  - [ ] Implement cooldown period (2 seconds)
-- [ ] Train or configure custom wake word
-- [ ] Test false positive rate (target: <1 per hour)
-- [ ] Test detection latency (target: <100ms)
-- [ ] Optimize for low CPU usage (target: <5%)
+  - [ ] Load wake word model (ONNX format for "Hey Jarvis")
+  - [ ] Subscribe to `/audio/raw` with real-time processing
+  - [ ] Run continuous detection in dedicated thread
+  - [ ] Publish to `/audio/wake_word_detected` (std_msgs/Bool + confidence)
+  - [ ] Add detection confidence threshold (configurable, default: 0.6)
+  - [ ] Implement cooldown period to prevent multiple triggers (default: 2 seconds)
+  - [ ] Always-on operation with minimal resource footprint
+- [ ] Train or fine-tune custom wake word model for "Hey Jarvis"
+- [ ] Test false positive rate (target: <1 per hour in quiet environment)
+- [ ] Test detection latency (target: <100ms from word completion)
+- [ ] Optimize for ultra-low CPU usage (target: <5% continuously)
+- [ ] Test robustness across different voices, accents, and distances
 
 **Tests Required**:
 ```python
 # tests/test_wake_word.py
-- Test model loading
-- Test detection on sample audio
-- Benchmark CPU usage (target: <5%)
-- Measure detection latency
+- Test model loading and initialization performance
+- Test detection accuracy on diverse audio samples
+- Benchmark continuous CPU usage (target: <5%)
+- Measure detection latency and confidence scores
+- Test cooldown period functionality
 
-# manual_tests/test_wake_word_accuracy.py
-- Test with multiple speakers (5+ people)
-- Test in various noise levels (quiet, moderate, noisy)
-- Measure false positive/negative rates
-- Test in different room acoustics
+# manual_tests/test_wake_word_robustness.py
+- Test with multiple speakers (5+ people, various ages/genders)
+- Test at different distances (1m, 3m, 5m from microphone)
+- Test in various noise levels (quiet, TV background, conversation)
+- Test false positive rate with similar-sounding words
+- Test different speaking speeds and volumes
+- Measure detection accuracy in different room acoustics
 ```
 
-### 5.3 Speech-to-Text (Whisper)
-- [ ] Set up faster-whisper (PRIMARY)
-  - [ ] Install faster-whisper library
-  - [ ] Test model loading time
-- [ ] Implement VAD (Voice Activity Detection)
-  - [ ] Use webrtcvad or silero-vad
-  - [ ] Configure silence threshold
-- [ ] Implement `stt_node.py`
-  - [ ] Load Whisper model (faster-whisper or TensorRT)
-  - [ ] Subscribe to `/audio/wake_word_detected`
-  - [ ] Capture audio segment with VAD (max 10 seconds)
-  - [ ] Run transcription
-  - [ ] Publish to `/audio/transcribed_text` (std_msgs/String)
-  - [ ] Add timeout handling (15 seconds max)
-  - [ ] Implement noise suppression (optional)
-- [ ] Test transcription accuracy (target: WER <10% for clean speech)
-- [ ] Test with various accents/speaking styles
-- [ ] Benchmark inference time (target: <2s for 5s audio)
-- [ ] Optimize for low latency
+### 5.3 Voice Activity Detection (VAD)
+
+- [ ] Install VAD libraries (webrtcvad and/or silero-vad)
+- [ ] Implement `vad_node.py`
+  - [ ] Load VAD model (webrtcvad primary, silero-vad alternative)
+  - [ ] Subscribe to `/audio/raw` and `/audio/wake_word_detected`
+  - [ ] Dynamic enable/disable based on system state
+  - [ ] Real-time speech/silence detection with configurable thresholds
+  - [ ] Publish voice activity status to `/audio/vad_status`
+  - [ ] Maintain audio buffers for complete utterance capture
+  - [ ] Implement smart timeout for silence detection (default: 2 seconds)
+  - [ ] Prevent feedback loops during robot speech output
+- [ ] Configure VAD sensitivity for different environments
+- [ ] Test speech segmentation accuracy (target: >95% correct segmentation)
+- [ ] Test detection latency (target: <50ms)
+- [ ] Optimize resource usage (target: <2% CPU when active)
+- [ ] Test with various background noise levels
+
+**Tests Required**:
+```python
+# tests/test_vad.py
+- Test VAD model loading and initialization
+- Test speech/silence detection accuracy
+- Test dynamic enable/disable functionality
+- Benchmark VAD processing latency and CPU usage
+- Test audio buffer management under various conditions
+
+# manual_tests/test_vad_robustness.py
+- Test speech segmentation with different speaking styles
+- Test performance in noisy environments (SNR: 20dB, 10dB, 5dB)
+- Test timeout behavior with long pauses
+- Test buffer overflow handling with very long utterances
+- Test feedback loop prevention during robot speech
+```
+
+### 5.4 Enhanced Speech-to-Text with VAD Integration
+
+- [ ] Set up faster-whisper (PRIMARY) with optimizations
+  - [ ] Install faster-whisper library with CUDA support
+  - [ ] Test model loading time and memory usage
+  - [ ] Configure INT8 quantization for performance
+- [ ] Implement enhanced `stt_node.py`
+  - [ ] Load Whisper model (faster-whisper or TensorRT engine)
+  - [ ] Subscribe to `/audio/wake_word_detected` and `/audio/vad_status`
+  - [ ] Integrate VAD for intelligent audio capture
+  - [ ] Capture complete utterances with pre/post-speech buffers
+  - [ ] Run transcription on VAD-segmented audio
+  - [ ] Publish to `/audio/transcribed_text` (std_msgs/String + confidence)
+  - [ ] Add comprehensive timeout handling (max 15 seconds)
+  - [ ] Implement noise suppression and audio preprocessing
+  - [ ] Handle overlapping wake word detections gracefully
+- [ ] Test transcription accuracy (target: WER <8% for clean speech)
+- [ ] Test with various accents, speaking styles, and command types
+- [ ] Benchmark inference time (target: <2s for 5s audio, real-time factor <0.4x)
+- [ ] Optimize for low latency and consistent performance
 
 **Tests Required**:
 ```python
@@ -557,53 +601,106 @@
 - Test with different speakers (5+ people)
 ```
 
-### 5.4 Text-to-Speech (Piper)
-- [ ] Install Piper TTS
-- [ ] Download and test voice model
-- [ ] Implement `tts_node.py`
-  - [ ] Load Piper model
-  - [ ] Subscribe to `/audio/tts_request` (std_msgs/String)
-  - [ ] Synthesize speech (ONNX inference)
+### 5.5 Text-to-Speech (Piper) with State Management
+
+- [ ] Install Piper TTS with ONNX runtime support
+- [ ] Download and validate voice model (recommended: en_US-lessac-medium)
+- [ ] Implement enhanced `tts_node.py`
+  - [ ] Load Piper model with optimized ONNX inference
+  - [ ] Subscribe to `/audio/tts_request` (std_msgs/String + priority)
+  - [ ] Synthesize speech with real-time streaming
   - [ ] Publish to `/audio/tts_output` (audio_msgs/AudioData)
-  - [ ] Add speech rate control (parameter)
-  - [ ] Add volume normalization
-- [ ] Test voice quality (subjective evaluation)
+  - [ ] Implement speech rate and volume control via parameters
+  - [ ] Add volume normalization and audio quality enhancement
+  - [ ] Coordinate with VAD node to signal speech start/end
+  - [ ] Handle speech interruptions and queue management
+- [ ] Test voice quality and naturalness (subjective evaluation)
 - [ ] Test synthesis latency (target: <500ms for 20 words)
-- [ ] Test various sentence lengths and structures
-- [ ] Optimize for low latency
+- [ ] Test various sentence types, lengths, and punctuation handling
+- [ ] Optimize for consistent low latency performance
 
 **Tests Required**:
 ```python
 # tests/test_tts.py
-- Test model loading
-- Test synthesis on sample text (10+ sentences)
-- Benchmark latency (target: <500ms for typical sentence)
-- Test voice quality metrics (MOS if available)
+- Test model loading and ONNX inference setup
+- Test synthesis quality on diverse text samples (20+ sentences)
+- Benchmark latency across different text lengths
+- Test voice parameter control (rate, volume, pitch)
+- Test concurrent requests and queue management
 
-# manual_tests/test_tts_naturalness.py
+# manual_tests/test_tts_integration.py
 - Test various sentence types (questions, commands, statements)
-- Test punctuation handling (commas, periods, exclamations)
-- User feedback on naturalness (5+ participants)
-- Test long text synthesis (100+ words)
+- Test punctuation and special character handling
+- User feedback on voice naturalness (5+ participants)
+- Test long text synthesis (100+ words) with streaming
+- Test coordination with VAD for feedback loop prevention
 ```
 
-### 5.5 Audio Pipeline Integration
-- [ ] Create `launch/audio_pipeline_launch.py`
-- [ ] Test complete audio flow:
-  - Mic → Wake Word → ASR → Transcribed Text
-  - TTS Request → TTS → Audio → Speaker
-- [ ] Measure end-to-end latency (target: <4 seconds wake-to-response)
-- [ ] Test error recovery (USB disconnect, model failure)
-- [ ] Optimize resource usage
-- [ ] Test 1-hour continuous operation
+### 5.6 Comprehensive Audio Detection Pipeline Integration
+
+- [ ] Implement `audio_detection_pipeline.py` - Central state machine coordinator
+  - [ ] Coordinate all audio nodes (capture, wake word, VAD, STT, TTS, playback)
+  - [ ] Implement the 6-step pipeline state machine:
+    - Step 1: Always listening for "Hey Jarvis" (LISTENING_WAKE_WORD)
+    - Step 2: VAD activation for speech capture (CAPTURING_COMMAND)
+    - Step 3: Whisper transcription (PROCESSING_SPEECH)
+    - Step 4: Command forwarding to cognitive core (COMMAND_SENT)
+    - Step 5: VAD disabled during robot speech (ROBOT_SPEAKING)
+    - Step 6: Return to wake word listening (READY_FOR_NEXT)
+  - [ ] Implement feedback loop prevention logic
+  - [ ] Handle state transitions and error recovery
+  - [ ] Manage audio buffers across pipeline stages
+  - [ ] Publish pipeline status to `/audio/pipeline_status`
+- [ ] Create `launch/audio_detection_pipeline_launch.py`
+  - [ ] Launch all audio nodes in correct order
+  - [ ] Set up inter-node communication topics
+  - [ ] Configure parameters from `config/audio_config.yaml`
+- [ ] Test complete audio detection flow:
+  - [ ] Wake word → VAD activation → Speech capture → Transcription
+  - [ ] TTS request → Speech synthesis → Playback → VAD disable/enable
+  - [ ] Error recovery and timeout handling
+- [ ] Implement comprehensive integration tests:
+  - [ ] Test end-to-end latency (target: <4 seconds wake-to-response)
+  - [ ] Test feedback loop prevention effectiveness
+  - [ ] Test concurrent user interruptions and overlapping commands
+  - [ ] Test long-duration operation (1 hour+ continuous operation)
+  - [ ] Test resource usage under sustained load
+- [ ] Optimize pipeline performance:
+  - [ ] Minimize audio buffer copying between nodes
+  - [ ] Optimize thread management and CPU affinity
+  - [ ] Tune timeout values and detection thresholds
+  - [ ] Implement smart power management for low-activity periods
+
+**Integration Tests Required**:
+```python
+# tests/test_audio_detection_pipeline.py
+- Test complete pipeline state machine transitions
+- Test feedback loop prevention during robot speech
+- Test error recovery from node failures
+- Test concurrent wake word detections handling
+- Benchmark end-to-end latency and resource usage
+
+# manual_tests/test_full_audio_interaction.py
+- Test realistic conversation scenarios (10+ interactions)
+- Test interruption handling (user speaks while robot responds)
+- Test multiple consecutive commands without wake words
+- Test pipeline recovery from audio device disconnections
+- Test performance degradation over extended use (2+ hours)
+- Test with multiple users and overlapping speech
+```
 
 **Deliverables**:
-- Working audio pipeline (capture to playback)
-- Wake word detection (<5% CPU)
-- Speech-to-text (WER <10%)
-- Text-to-speech (natural voice)
-- Audio tests passing
-- Latency benchmarks documented
+- Complete audio detection pipeline with 6-step state machine
+- Wake word detection for "Hey Jarvis" (<5% CPU continuously)
+- Voice Activity Detection with feedback loop prevention
+- Speech-to-text transcription (WER <8% for clean speech)
+- Text-to-speech synthesis with natural voice output
+- Central pipeline coordinator with state management
+- Comprehensive integration tests and performance benchmarks
+- End-to-end latency <4 seconds (wake word to robot response)
+- 1+ hour continuous operation capability
+- Audio device hot-swap and error recovery
+- Documentation of all performance metrics and tuning parameters
 
 ---
 
@@ -1663,13 +1760,13 @@ class RobotDashboard {
 - Phase 2 (Core Infrastructure): 2 weeks
 - Phase 3 (Model Conversion): 1 week
 - Phase 4 (Perception Integration): 1 week
-- Phase 5 (Audio Pipeline): 1 week
+- Phase 5 (Audio Detection Pipeline): 1.5 weeks
 - Phase 6 (SLAM & Localization): 1 week
 - Phase 7 (Cognitive Core): 2 weeks
 - Phase 8 (Behavioral Architecture): 2 weeks
 - Phase 9 (Web Interface & Monitoring): 1 week
 - Phase 10 (System Integration): 2 weeks
-- Phase 11 (Optimization & Docs): 2 weeks
+- Phase 11 (Optimization & Docs): 1.5 weeks
 - **Total: 17 weeks**
 - Phase 12 (Advanced Features): 2 weeks [OPTIONAL]
 
@@ -1719,7 +1816,7 @@ class RobotDashboard {
 | Text-to-Speech | <500ms for 20 words | <1s |
 | LLM Inference | <3s | <5s |
 | Object Detection | 20+ FPS | 15+ FPS |
-| Depth Estimation | 15+ FPS | 10+ FPS |
+| Depth Estimation | 30+ FPS | 20+ FPS |
 | End-to-End Latency | <5s | <8s |
 | RAM Usage | <7.5 GB | <8 GB |
 | CPU Usage | <80% average | <95% |
