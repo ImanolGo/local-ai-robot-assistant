@@ -303,7 +303,7 @@
 - [x] Download Whisper Tiny model from OpenAI
 - [x] Download Piper TTS model and voice files
 - [x] Download openWakeWord models
-- [x] Download LLaMA-2 7B or Gemma 2-7B or Phi-2
+- [x] Download **Gemma 3n E2B** (5B parameters, 2B effective footprint)
 - [x] Organize models in `/models` directory
 - [x] Document model sources and licenses in `docs/model_credits.md`
 
@@ -342,16 +342,22 @@
   - [ ] Test synthesis quality
   - [ ] Benchmark latency (target: <500ms for 20 words)
 
-### 3.4 LLM Setup (NanoLLM)
-- [ ] Install NVIDIA NanoLLM
-- [ ] Download and quantize LLM:
-  - [ ] Option 1: LLaMA-2 7B (INT4 via AWQ)
-  - [ ] Option 2: Gemma 2-7B (INT4)
-  - [ ] Option 3: Phi-2 (INT8, smaller footprint)
-- [ ] Test inference speed (target: <3s for typical response)
-- [ ] Test RAM usage (target: <2.5 GB)
-- [ ] Implement lazy loading mechanism
-- [ ] Save quantized model to `models/nanollm_quantized/`
+### 3.4 Multimodal LLM Setup (Gemma 3n E2B)
+- [ ] Install HuggingFace Transformers 4.53.0+
+- [ ] Download Gemma 3n E2B model from HuggingFace:
+  - [ ] Model: `google/gemma-3n-e2b` (5B parameters, 2B effective footprint)
+  - [ ] Verify model supports multimodal input (text, audio, image)
+  - [ ] Test model loading with transformers library
+- [ ] Test inference performance:
+  - [ ] Text-only inference (target: <2s for typical response)
+  - [ ] Multimodal inference (target: <4s for complex scene analysis)
+  - [ ] Memory usage (constant 2GB VRAM footprint)
+- [ ] Create preprocessing pipelines:
+  - [ ] Image preprocessing (256x256, 512x512, 768x768 resolutions)
+  - [ ] Audio preprocessing (6.25 tokens/second encoding)
+  - [ ] Text tokenization with 32K context window
+- [ ] Save model to `models/gemma_3n_e2b/`
+- [ ] Create `docs/guides/gemma_3n_setup.md` with setup instructions
 
 ### 3.5 Model Profiling
 - [ ] Implement `tools/profile_model.py`
@@ -704,6 +710,55 @@
 
 ---
 
+## Phase 5.5: Enhanced Multimodal Audio Processing (Week 7.5)
+
+### 5.5.1 Direct Audio Processing for Gemma 3n
+- [ ] Implement `multimodal_audio_processor.py`
+  - [ ] Subscribe to `/audio/raw` for direct audio input
+  - [ ] Implement audio preprocessing for Gemma 3n (6.25 tokens/second encoding)
+  - [ ] Create audio buffering for multimodal processing
+  - [ ] Publish encoded audio to `/audio/gemma_3n_ready`
+  - [ ] Support environmental sound analysis
+  - [ ] Handle multi-speaker scenario processing
+- [ ] Create audio encoding utilities:
+  - [ ] Audio segmentation (1-10 second clips)
+  - [ ] Format conversion for Gemma 3n input
+  - [ ] Quality validation and preprocessing
+  - [ ] Real-time streaming capabilities
+
+### 5.5.2 Environmental Audio Analysis
+- [ ] Implement environmental sound classification:
+  - [ ] Background noise detection (crowd, traffic, music)
+  - [ ] Speaker identification for multi-speaker scenarios
+  - [ ] Emotional tone analysis from voice characteristics
+  - [ ] Urgency detection from audio cues
+- [ ] Test environmental audio understanding:
+  - [ ] Ambient sound classification accuracy (target: >80%)
+  - [ ] Multi-speaker scenario handling
+  - [ ] Background noise robustness
+  - [ ] Real-time processing capability
+
+### 5.5.3 Audio Context Integration
+- [ ] Implement audio context coordination:
+  - [ ] Coordinate between traditional ASR and direct audio processing
+  - [ ] Intelligent mode switching based on command complexity
+  - [ ] Audio context preservation for multimodal reasoning
+  - [ ] Latency optimization for real-time operation
+- [ ] Test integrated audio processing:
+  - [ ] Compare ASR vs direct audio processing accuracy
+  - [ ] Test mode switching reliability
+  - [ ] Benchmark end-to-end latency with multimodal input
+  - [ ] Validate audio context preservation
+
+**Deliverables**:
+- Direct audio processing pipeline for Gemma 3n
+- Environmental sound analysis capabilities
+- Coordinated ASR and multimodal audio processing
+- Audio context integration with visual processing
+- Comprehensive multimodal audio testing
+
+---
+
 ## Phase 6: SLAM & Localization (Week 8)
 
 ### 6.1 Robot Localization Setup (EKF Fusion)
@@ -805,16 +860,38 @@
 
 ---
 
-## Phase 7: Cognitive Core (LLM Integration) (Weeks 9-10)
+## Phase 7: Gemma 3n Multimodal Cognitive Core (Weeks 9-10)
 
-### 7.1 NanoLLM Setup
-- [ ] Install NVIDIA NanoLLM
-- [ ] Download and quantize LLM (Phase 3.4 continuation):
-  - [ ] Verify model size (<2.5 GB)
-  - [ ] Test inference speed (<3s)
-  - [ ] Test RAM usage
-- [ ] Create `cognitive_core_node` ROS2 package
-- [ ] Implement model loading utilities
+### 7.1 Gemma 3n E2B Setup
+- [ ] Install HuggingFace Transformers 4.53.0+ (Phase 3.4 continuation)
+- [ ] Load Gemma 3n E2B model from `models/gemma_3n_e2b/`
+- [ ] Verify multimodal capabilities:
+  - [ ] Text processing (baseline functionality)
+  - [ ] Image understanding (256x256, 512x512, 768x768 resolutions)
+  - [ ] Audio processing (6.25 tokens/second encoding)
+  - [ ] 32K context window across all modalities
+- [ ] Create `cognitive_core_nodes` ROS2 package
+- [ ] Implement model loading utilities with constant 2GB footprint
+- [ ] Test model initialization time (target: <30s first load)
+
+### 7.2 Multimodal Data Pipeline
+- [ ] Implement `multimodal_processor.py`
+  - [ ] Subscribe to `/audio/transcribed_text` (text input)
+  - [ ] Subscribe to `/audio/raw` (direct audio input for complex scenarios)
+  - [ ] Subscribe to `/camera/undistorted` (image input)
+  - [ ] Subscribe to world state from SLAM/perception
+  - [ ] Coordinate multimodal input processing
+  - [ ] Manage input prioritization and batching
+- [ ] Implement `vision_processor.py`
+  - [ ] Image preprocessing for Gemma 3n (resize, normalize)
+  - [ ] Support multiple resolutions based on task complexity
+  - [ ] Encode images to 256 tokens per image
+  - [ ] Handle real-time snapshot capture for goal assessment
+- [ ] Implement `audio_processor.py`
+  - [ ] Audio preprocessing for Gemma 3n (6.25 tokens/second)
+  - [ ] Direct audio encoding bypassing traditional ASR
+  - [ ] Handle environmental sound analysis
+  - [ ] Support multi-speaker scenario processing
 
 ### 7.2 World State Serialization
 - [ ] Implement `world_state_serializer.py`
@@ -838,88 +915,116 @@
   ```
 - [ ] Test serialization performance (<10ms)
 
-### 7.3 LLM Interface Node
-- [ ] Implement `nanollm_interface.py`
-  - [ ] ROS2 node structure
-  - [ ] Subscribe to `/audio/transcribed_text`
+### 7.3 Gemma 3n Interface Node
+- [ ] Implement `gemma_3n_multimodal_interface.py`
+  - [ ] Load Gemma 3n E2B model with HuggingFace Transformers
+  - [ ] Subscribe to `/audio/transcribed_text` (text input)
+  - [ ] Subscribe to `/audio/raw` (direct audio for complex scenarios)
+  - [ ] Subscribe to `/camera/snapshot` (visual input)
   - [ ] Subscribe to world state from serializer
-  - [ ] Lazy load LLM on first complex command
-  - [ ] Build prompt with system message + world state + user query
-  - [ ] Run inference with NanoLLM
-  - [ ] Parse JSON output (structured intent)
-  - [ ] Publish intent to `/cognitive/intent` (custom msg)
+  - [ ] Implement multimodal prompt construction
+  - [ ] Run multimodal inference with 32K context
+  - [ ] Parse structured JSON output (enhanced intent format)
+  - [ ] Publish intent to `/cognitive/multimodal_intent` (custom msg)
   - [ ] Publish natural language response to `/audio/tts_request`
-  - [ ] Implement model unloading on idle (5 minutes)
-- [ ] Design prompt template:
+  - [ ] Implement goal assessment capabilities
+  - [ ] Support real-time strategy evaluation
+- [ ] Design enhanced multimodal prompt template:
   ```
-  You are an AI robot assistant. Parse user commands and output JSON.
-  Current state: {world_state}
+  You are an AI robot assistant with multimodal capabilities.
+  Current robot state: {world_state}
+  Current image: <image>
+  Audio context: <audio>
   User command: {transcribed_text}
-  Output format: {"action": "...", "target": "...", "parameters": {...}}
-  ```
-- [ ] Test prompt engineering for accuracy
-- [ ] Implement conversation history (last 3 exchanges)
 
-### 7.4 Intent Message Definition
-- [ ] Create custom ROS2 message: `cognitive_msgs/Intent`
+  Task: Provide structured intent and assess current situation.
+  Output format: {
+    "action": "...", "target": "...", "parameters": {...},
+    "visual_confirmation": true/false,
+    "goal_assessment": "...",
+    "strategy_evaluation": "..."
+  }
+  ```
+- [ ] Implement mode switching:
+  - [ ] Text-only mode for simple commands (fast inference)
+  - [ ] Multimodal mode for complex scene understanding
+- [ ] Test conversation history integration (last 3 exchanges)
+
+### 7.4 Enhanced Intent Message Definition
+- [ ] Create custom ROS2 message: `cognitive_msgs/MultimodalIntent`
   ```
   string action  # navigate, pickup, search, stop, etc.
   string target  # object name or location
   string[] parameters  # additional parameters
-  float32 confidence  # LLM confidence (0-1)
+  float32 confidence  # Gemma 3n confidence (0-1)
+  bool visual_confirmation  # visual goal verification available
+  string audio_context  # environmental audio analysis
+  string strategy_assessment  # navigation/approach evaluation
+  string goal_status  # completion assessment
   ```
-- [ ] Test message serialization
+- [ ] Test message serialization and ROS2 integration
 
-### 7.5 LLM Testing
-- [ ] Create test dataset of commands (50+ examples):
-  - Simple: "go forward", "stop", "turn left"
-  - Complex: "find the red ball and bring it here"
-  - Ambiguous: "get that thing over there"
-- [ ] Test LLM command understanding:
-  - [ ] Accuracy (target: >90% for clear commands)
+### 7.5 Multimodal Testing
+- [ ] Create test dataset of multimodal commands (100+ examples):
+  - Text-only: "go forward", "stop", "find the red ball"
+  - Visual: "are the lights on?", "what do you see?", "am I close to the target?"
+  - Audio context: "is there background noise?", "who is speaking?"
+  - Complex multimodal: "navigate to the person who just called my name"
+- [ ] Test Gemma 3n multimodal understanding:
+  - [ ] Text command accuracy (target: >95% for clear commands)
+  - [ ] Visual scene understanding (target: >85% object recognition)
+  - [ ] Audio context analysis (target: >80% environmental classification)
+  - [ ] Goal assessment capabilities (target: >90% completion verification)
   - [ ] JSON output format compliance
-  - [ ] Context awareness (uses world state)
+  - [ ] Context awareness (uses world state + visual + audio)
 - [ ] Test conversational abilities:
-  - [ ] Multi-turn dialogue
-  - [ ] Clarification questions
-  - [ ] Status updates
-- [ ] Benchmark performance:
-  - [ ] Inference time (target: <3s)
-  - [ ] RAM usage (target: <2.5 GB when loaded)
-  - [ ] Loading time (target: <5s)
+  - [ ] Multi-turn dialogue with visual context
+  - [ ] Clarification questions with scene understanding
+  - [ ] Status updates with visual confirmation
+- [ ] Benchmark multimodal performance:
+  - [ ] Text-only inference (target: <2s)
+  - [ ] Multimodal inference (target: <4s)
+  - [ ] Memory footprint (constant 2GB VRAM)
+  - [ ] Model loading time (target: <30s)
 
-### 7.6 Memory Management Integration
-- [ ] Implement `model_manager.py`
+### 7.6 Simplified Memory Management
+- [ ] Implement `selective_memory_manager.py`
   - [ ] Monitor system RAM usage
-  - [ ] Trigger LLM loading/unloading
-  - [ ] Coordinate with perception models
-  - [ ] Implement model swapping strategy:
-    * Unload YOLO/Depth when loading LLM if RAM >85%
-    * Reload perception after LLM response
-- [ ] Test memory management:
-  - [ ] Simulate high memory pressure
-  - [ ] Verify graceful model swapping
-  - [ ] Measure swapping time (target: <10s)
-- [ ] Create `config/memory_management.yaml`:
+  - [ ] Manage Gemma 3n model loading (constant 2GB footprint)
+  - [ ] Coordinate with perception models for optimal performance
+  - [ ] Implement intelligent model prioritization:
+    - Keep Gemma 3n loaded during complex tasks
+    - Temporarily reduce perception model frequency if needed
+    - Maintain constant memory usage for predictable performance
+- [ ] Test simplified memory management:
+  - [ ] Verify stable 2GB Gemma 3n footprint
+  - [ ] Test concurrent operation with perception models
+  - [ ] Measure overall system stability
+- [ ] Update `config/memory_management.yaml`:
   ```yaml
+  gemma_3n:
+    constant_footprint: 2GB  # Predictable memory usage
+    loading_timeout: 30s     # Maximum model load time
+
   thresholds:
-    warning: 0.80  # 80% RAM usage
+    warning: 0.75   # 75% RAM usage (improved margin)
     critical: 0.85  # 85% RAM usage
-    emergency: 0.90  # 90% RAM usage
+    emergency: 0.90 # 90% RAM usage
 
   strategies:
     warning: log_warning
-    critical: unload_llm
-    emergency: unload_all_except_motors
+    critical: reduce_perception_frequency
+    emergency: emergency_mode_motors_only
   ```
 
 **Deliverables**:
-- Working NanoLLM integration
-- World state serialization
-- Intent message definition
-- LLM command understanding (>90% accuracy)
-- Memory management system
-- Lazy loading/unloading tested
+- Working Gemma 3n E2B multimodal integration
+- Multimodal data pipeline (text, audio, vision)
+- Enhanced intent message with multimodal context
+- Goal assessment and strategy evaluation capabilities
+- Simplified memory management (constant 2GB footprint)
+- Comprehensive multimodal testing (>90% accuracy)
+- Visual scene understanding and audio context analysis
 
 ---
 
@@ -932,16 +1037,22 @@
 - [ ] Create blackboard data structure
 - [ ] Test basic behavior tree execution
 
-### 8.2 Command Router
-- [ ] Implement `command_router.py`
+### 8.2 Enhanced Multimodal Command Router
+- [ ] Implement `adaptive_command_router.py`
   - [ ] Subscribe to `/audio/transcribed_text`
-  - [ ] Classify command complexity:
-    * Simple: direct motor commands (stop, forward, backward, turn)
-    * Complex: requires LLM (find X, bring me Y, what do you see?)
-  - [ ] Route simple commands directly to behavior tree
-  - [ ] Route complex commands to LLM (`/cognitive/llm_request`)
-  - [ ] Log routing decisions
-- [ ] Create simple command mapping:
+  - [ ] Subscribe to `/audio/raw` (for direct audio context)
+  - [ ] Subscribe to `/camera/snapshot` (for visual context)
+  - [ ] Classify command complexity and modality requirements:
+    - Simple: direct motor commands (stop, forward, backward, turn)
+    - Text-only complex: requires Gemma 3n text processing (find X, navigate to Y)
+    - Multimodal: requires visual/audio analysis (what do you see?, are lights on?, navigate to the person speaking)
+  - [ ] Route commands intelligently:
+    - Simple commands → directly to behavior tree
+    - Text-only complex → Gemma 3n text mode
+    - Multimodal commands → Gemma 3n multimodal mode
+  - [ ] Coordinate multimodal data collection before routing
+  - [ ] Log routing decisions and modality selection
+- [ ] Create enhanced command mapping:
   ```python
   SIMPLE_COMMANDS = {
     "stop": {"action": "stop"},
@@ -950,13 +1061,19 @@
     "turn right": {"action": "turn", "direction": "right"},
     "go back": {"action": "move", "direction": "backward"}
   }
-  ```
-- [ ] Test command classification accuracy
 
-### 8.3 Blackboard Implementation
-- [ ] Implement blackboard manager
-- [ ] Define blackboard schema:
+  MULTIMODAL_TRIGGERS = [
+    "what do you see", "are the lights", "is the", "check if",
+    "look at", "find the person", "navigate to the", "am I close"
+  ]
   ```
+- [ ] Test multimodal command classification accuracy
+
+### 8.3 Enhanced Multimodal Blackboard Implementation
+- [ ] Implement enhanced blackboard manager
+- [ ] Define enhanced blackboard schema with multimodal context:
+  ```
+  # Traditional robot state
   - robot_pose (geometry_msgs/PoseStamped)
   - robot_orientation (from IMU)
   - semantic_map (list of objects with poses)
@@ -966,13 +1083,23 @@
   - audio_status (enum: listening, processing, speaking)
   - system_health (dict: CPU, GPU, RAM, temperature)
   - error_log (list of recent errors)
+
+  # NEW: Multimodal context
+  - visual_scene_state (latest Gemma 3n image analysis)
+  - audio_environment_state (ambient sound analysis)
+  - goal_completion_status (visual verification results)
+  - strategy_assessment (navigation approach evaluation)
+  - multimodal_confidence_scores (reliability per modality)
+  - scene_change_detection (environmental change notifications)
   ```
-- [ ] Implement blackboard update subscribers:
+- [ ] Implement enhanced blackboard update subscribers:
   - [ ] Subscribe to `/odom` → update robot_pose
   - [ ] Subscribe to `/imu/data` → update orientation
   - [ ] Subscribe to `/perception/objects` → update semantic_map
-  - [ ] Subscribe to `/cognitive/intent` → update current_mission
-- [ ] Test blackboard updates (latency <10ms)
+  - [ ] Subscribe to `/cognitive/multimodal_intent` → update current_mission
+  - [ ] Subscribe to Gemma 3n multimodal analysis results
+  - [ ] Update multimodal context in real-time
+- [ ] Test enhanced blackboard updates (latency <10ms)
 
 ### 8.4 Core Behavior Tree Design
 - [ ] Design main behavior tree structure:
@@ -1059,18 +1186,45 @@
   ```
 - [ ] Test stuck detection and recovery
 
-### 8.7 Dialogue Manager
-- [ ] Implement `dialogue_manager.py`
-  - [ ] Subscribe to `/cognitive/intent` and blackboard
-  - [ ] Generate status updates:
-    * "Navigating to red ball"
-    * "I'm stuck, trying to recover"
-    * "I found the object"
-  - [ ] Generate clarification questions:
-    * "Which object do you mean?"
-    * "I can't find that. Can you be more specific?"
-  - [ ] Publish to `/audio/tts_request`
-  - [ ] Implement dialogue state machine:
+### 8.7 Enhanced Multimodal Dialogue Manager
+- [ ] Implement `multimodal_dialogue_manager.py`
+  - [ ] Subscribe to `/cognitive/multimodal_intent` and enhanced blackboard
+  - [ ] Generate contextually aware status updates:
+    - "I can see the red ball, navigating toward it"
+    - "I hear background noise, but I'm continuing"
+    - "I've reached the target - visual confirmation successful"
+  - [ ] Generate multimodal clarification questions:
+    - "I see multiple objects, which one do you mean?" (with visual context)
+    - "I can't see that clearly, should I move closer?"
+    - "There's a lot of noise, can you repeat that?"
+  - [ ] Publish enhanced responses to `/audio/tts_request`
+  - [ ] Implement multimodal dialogue state machine with goal assessment
+
+### 8.8 Multimodal Behavior Tree Nodes
+- [ ] Implement enhanced multimodal behavior nodes:
+  - [ ] `VisualGoalVerification` - Use Gemma 3n to verify task completion
+  - [ ] `SceneAssessment` - Analyze current visual scene for navigation
+  - [ ] `StrategyEvaluator` - Evaluate current approach using vision
+  - [ ] `AudioContextMonitor` - Monitor environmental audio changes
+  - [ ] `MultimodalStuckDetection` - Visual confirmation of stuck state
+  - [ ] `GoalProgressMonitor` - Continuous visual progress assessment
+- [ ] Create multimodal behavior tree templates:
+  ```xml
+  <BehaviorTree ID="MultimodalNavigation">
+    <Sequence>
+      <VisualGoalVerification/>
+      <SceneAssessment/>
+      <StrategyEvaluator/>
+      <Parallel>
+        <NavigateToTarget/>
+        <GoalProgressMonitor/>
+        <AudioContextMonitor/>
+      </Parallel>
+      <VisualGoalVerification final="true"/>
+    </Sequence>
+  </BehaviorTree>
+  ```
+- [ ] Test multimodal behavior integration
     * Idle → Command Received → Executing → Report Status → Idle
 - [ ] Design response templates:
   ```python
@@ -1108,12 +1262,14 @@
   - Emergency stop
 
 **Deliverables**:
-- Working behavior tree system
-- Command routing (simple vs complex)
-- Navigation behaviors with stuck detection
-- Dialogue management
-- Behavior tree executor node
-- Integration tests passing
+- Working multimodal behavior tree system
+- Enhanced command routing (simple vs text-only vs multimodal)
+- Multimodal navigation behaviors with visual goal verification
+- Enhanced dialogue management with multimodal context
+- Goal assessment and strategy evaluation capabilities
+- Behavior tree executor with multimodal node support
+- Comprehensive integration tests with visual and audio context
+- Real-time scene monitoring and adaptive behavior
 
 ---
 
@@ -1158,16 +1314,18 @@
 - [ ] Implement `system_monitor.py`
   - [ ] Monitor CPU usage (per core)
   - [ ] Monitor GPU usage and memory
-  - [ ] Monitor RAM usage
+  - [ ] Monitor RAM usage (with Gemma 3n constant 2GB tracking)
   - [ ] Monitor temperatures (CPU, GPU, thermal zones)
   - [ ] Monitor disk usage
   - [ ] Monitor network stats
+  - [ ] Monitor Gemma 3n model performance metrics
   - [ ] Publish to `/system/metrics` topic (10 Hz)
 - [ ] Implement `node_monitor.py`
   - [ ] Track active ROS2 nodes
-  - [ ] Monitor topic publication rates
+  - [ ] Monitor multimodal topic publication rates
   - [ ] Detect node failures
   - [ ] Log node restarts
+  - [ ] Monitor Gemma 3n cognitive core health
   - [ ] Publish to `/system/node_status` topic
 - [ ] Create custom messages:
   ```python
@@ -1181,10 +1339,14 @@
   float32 cpu_temp
   float32 gpu_temp
   float32 disk_percent
+  float32 gemma_3n_vram_mb  # Should be constant ~2048MB
+  float32 gemma_3n_inference_latency_ms
+  float32 multimodal_processing_fps
 
   # monitoring_msgs/NodeStatus.msg
   string[] active_nodes
   string[] failed_nodes
+  bool gemma_3n_cognitive_core_healthy
   diagnostic_msgs/DiagnosticArray diagnostics
   ```
 
@@ -1197,6 +1359,8 @@
   - [ ] Map visualization panel
   - [ ] System metrics panel
   - [ ] Audio status panel
+  - [ ] Multimodal interaction panel
+  - [ ] Gemma 3n cognitive status panel
   - [ ] Command input panel
   - [ ] Log viewer panel
 - [ ] Implement CSS styling (`style.css`)
@@ -1204,12 +1368,15 @@
   - [ ] Dark theme (easier on eyes)
   - [ ] Status indicators (colors for health)
   - [ ] Animation for live updates
+  - [ ] Multimodal processing indicators
 - [ ] Implement JavaScript functionality (`app.js`)
   - [ ] WebSocket connection management
   - [ ] Real-time data updates
   - [ ] Camera feed display (MJPEG stream)
   - [ ] Interactive map rendering (Canvas/SVG)
   - [ ] System metrics charts (Chart.js)
+  - [ ] Gemma 3n performance metrics
+  - [ ] Multimodal interaction visualization
   - [ ] Command input and submission
   - [ ] Log scrolling and filtering
   - [ ] Connection status indicator
@@ -1221,6 +1388,8 @@ class RobotDashboard {
   - connectWebSocket()
   - updateCameraFeed()
   - updateSystemMetrics()
+  - updateGemma3nStatus()
+  - updateMultimodalProcessing()
   - updateRobotPose()
   - updatePerceptionData()
   - updateAudioStatus()
@@ -1244,6 +1413,11 @@ class RobotDashboard {
 - [ ] Implement depth map visualization
   - [ ] Convert depth to colormap (JET/TURBO)
   - [ ] Optional toggle on camera feed
+- [ ] Implement multimodal processing visualization
+  - [ ] Show current modalities being processed (text/audio/vision)
+  - [ ] Display Gemma 3n context window usage (32K tokens)
+  - [ ] Show multimodal token encoding rates
+  - [ ] Visualize cross-modal attention patterns
 - [ ] Implement 2D map visualization
   - [ ] Render occupancy grid from RTAB-Map
   - [ ] Show robot pose (arrow/triangle)
@@ -1256,14 +1430,18 @@ class RobotDashboard {
   - [ ] GPU usage over time
   - [ ] Temperature over time
   - [ ] RAM usage gauge
+  - [ ] Gemma 3n VRAM usage (constant 2GB indicator)
+  - [ ] Multimodal processing latency charts
 
 ### 9.5 Control Interface
-- [ ] Implement text command input
+- [ ] Implement multimodal command input
   - [ ] Text input field
+  - [ ] Audio recording button (voice commands)
+  - [ ] Image upload for visual queries
   - [ ] Submit button
   - [ ] Command history (last 10 commands)
   - [ ] Send to `/api/command` endpoint
-  - [ ] Display robot response
+  - [ ] Display robot response (multimodal)
 - [ ] Implement emergency stop button
   - [ ] Large red button (prominent)
   - [ ] Confirmation dialog
@@ -1281,11 +1459,14 @@ class RobotDashboard {
   - [ ] Adjust data refresh rates
   - [ ] Camera feed quality settings
   - [ ] Log verbosity settings
+  - [ ] Gemma 3n model parameters
+  - [ ] Multimodal processing preferences
   - [ ] Save settings to browser localStorage
 - [ ] Implement system controls
   - [ ] Start/stop specific nodes (via ROS2 lifecycle)
-  - [ ] Enable/disable LLM loading
+  - [ ] Enable/disable Gemma 3n cognitive core
   - [ ] Enable/disable perception models
+  - [ ] Switch multimodal processing modes
   - [ ] Trigger map save/load
 
 ### 9.7 Logging and Diagnostics
@@ -1346,17 +1527,19 @@ class RobotDashboard {
 
 **Deliverables**:
 - Working web server (FastAPI + WebSocket)
-- System monitoring node
+- System monitoring node with Gemma 3n tracking
 - Complete web dashboard with:
   - Live camera feed with overlays
   - Interactive 2D map
   - System metrics visualization
-  - Command input interface
+  - Multimodal command input interface (text/audio/image)
+  - Gemma 3n cognitive status panel
+  - Multimodal processing visualization
   - Emergency stop button
   - Real-time logs
 - Mobile-responsive design
 - Performance optimized (<200 MB RAM)
-- Documentation for web interface usage
+- Documentation for multimodal web interface usage
 
 ---
 
@@ -1365,23 +1548,24 @@ class RobotDashboard {
 ### 9.1 Full System Launch
 - [ ] Create `launch/full_system_launch.py`
   - [ ] Launch all perception nodes
-  - [ ] Launch audio pipeline nodes
+  - [ ] Launch multimodal audio pipeline nodes
   - [ ] Launch localization and SLAM
-  - [ ] Launch cognitive core (lazy loaded)
-  - [ ] Launch behavioral architecture
-  - [ ] Launch web interface
+  - [ ] Launch Gemma 3n cognitive core (lazy loaded)
+  - [ ] Launch enhanced multimodal behavioral architecture
+  - [ ] Launch web interface with multimodal support
   - [ ] Launch monitoring nodes
 - [ ] Create launch configuration options:
   - [ ] `--minimal` - motors + wake word only (emergency mode)
-  - [ ] `--no-llm` - skip LLM loading (simple commands only)
+  - [ ] `--no-gemma` - skip Gemma 3n loading (simple commands only)
   - [ ] `--no-web` - disable web interface (save RAM)
   - [ ] `--perception-only` - camera + perception for testing
+  - [ ] `--text-only` - disable multimodal (text commands only)
 - [ ] Test full system startup (<30 seconds)
 - [ ] Test graceful shutdown (all nodes stop cleanly)
 - [ ] Test web interface access during startup
 
 ### 9.2 End-to-End Testing
-- [ ] Create test scenarios:
+- [ ] Create multimodal test scenarios:
 
   **Scenario 1: Simple Navigation**
   - [ ] User says wake word
@@ -1389,60 +1573,81 @@ class RobotDashboard {
   - [ ] Robot moves forward for 1 meter
   - [ ] Robot stops and says "Done"
 
-  **Scenario 2: Object Finding**
+  **Scenario 2: Object Finding with Multimodal Input**
   - [ ] User says wake word
-  - [ ] User says "find the red ball"
+  - [ ] User says "find the red ball" OR shows image of red ball
   - [ ] Robot rotates to scan environment
   - [ ] Robot detects ball with YOLO
   - [ ] Robot navigates to ball
   - [ ] Robot says "I found the red ball"
 
-  **Scenario 3: Complex Command**
+  **Scenario 3: Complex Multimodal Command**
   - [ ] User says wake word
-  - [ ] User says "bring me that cup on the table"
-  - [ ] LLM interprets command
+  - [ ] User says "bring me that cup on the table" with image upload
+  - [ ] Gemma 3n processes text+vision input (multimodal)
   - [ ] Robot navigates to table
   - [ ] Robot stops near cup
   - [ ] Robot says "I'm at the cup, but I can't pick it up yet"
 
-  **Scenario 4: Stuck Recovery**
+  **Scenario 4: Visual Question Answering**
+  - [ ] User says wake word
+  - [ ] User asks "what do you see?" while pointing camera at objects
+  - [ ] Gemma 3n processes camera feed (vision tokens)
+  - [ ] Robot describes visible objects
+  - [ ] Robot provides contextual information
+
+  **Scenario 5: Audio-Visual Context**
+  - [ ] User plays audio while robot sees environment
+  - [ ] User asks "relate what you hear to what you see"
+  - [ ] Gemma 3n processes audio+vision simultaneously
+  - [ ] Robot provides contextual multimodal response
+
+  **Scenario 6: Stuck Recovery**
   - [ ] Robot encounters obstacle while navigating
   - [ ] Stuck detector triggers after 3 seconds
   - [ ] Robot backs up and rotates
   - [ ] Robot retries navigation
   - [ ] Robot says "I got stuck but found another way"
 
-  **Scenario 5: Clarification**
+  **Scenario 7: Multimodal Clarification**
   - [ ] User says wake word
-  - [ ] User says "go to the ball"
+  - [ ] User says "go to the ball" with ambiguous image
   - [ ] Multiple balls detected
   - [ ] Robot asks "Which ball? The red one or the blue one?"
-  - [ ] User responds "the red one"
-  - [ ] Robot navigates to red ball
+  - [ ] User responds with text OR points in image
+  - [ ] Robot navigates to specified ball
 
 - [ ] Test each scenario 5+ times
 - [ ] Measure success rate (target: >80%)
+- [ ] Test multimodal context window efficiency (32K tokens)
+- [ ] Verify Gemma 3n constant 2GB VRAM usage
 - [ ] Document failure modes
 - [ ] Monitor via web interface during tests
-- [ ] Verify web interface shows correct real-time data
+- [ ] Verify web interface shows correct real-time multimodal data
 
 ### 9.3 Performance Profiling
 - [ ] Profile full system under load:
   - [ ] CPU usage per core (target: <80% average)
   - [ ] GPU usage (target: <90%)
   - [ ] RAM usage (target: <7.5 GB)
+  - [ ] Gemma 3n VRAM usage (should be constant 2GB)
   - [ ] Temperature (target: <80°C sustained)
-- [ ] Measure latencies:
+- [ ] Measure multimodal latencies:
   - [ ] Wake word to ASR complete (<3 seconds)
-  - [ ] ASR to LLM response (<5 seconds for complex)
-  - [ ] LLM response to TTS start (<1 second)
+  - [ ] ASR to Gemma 3n text processing (<2 seconds)
+  - [ ] Image processing to Gemma 3n vision tokens (<1 second)
+  - [ ] Audio encoding to Gemma 3n audio tokens (<0.5 seconds)
+  - [ ] Multimodal context processing (<3 seconds for 32K tokens)
+  - [ ] Gemma 3n response generation (<5 seconds for complex)
+  - [ ] Response to TTS start (<1 second)
   - [ ] Command to motor action (<2 seconds for simple)
   - [ ] Object detection to navigation start (<5 seconds)
 - [ ] Profile individual nodes:
-  - [ ] Identify bottlenecks
-  - [ ] Optimize hot paths
+  - [ ] Identify multimodal processing bottlenecks
+  - [ ] Optimize hot paths in Gemma 3n pipeline
   - [ ] Reduce memory allocations
-- [ ] Create performance dashboard
+  - [ ] Monitor token encoding efficiency
+- [ ] Create multimodal performance dashboard
 
 ### 9.4 Stress Testing
 - [ ] Run system for extended periods:
@@ -1617,55 +1822,57 @@ class RobotDashboard {
 - [ ] Document any remaining known issues
 
 **Deliverables**:
-- Optimized system (20-30% performance improvement)
-- Complete documentation (user + developer)
-- Deployment package (Docker + systemd)
-- Final validation report
-- Video demonstrations
-- Ready for production use
+- Optimized multimodal system (20-30% performance improvement)
+- Complete documentation (user + developer) with Gemma 3n guides
+- Deployment package (Docker + systemd) with multimodal support
+- Final validation report with multimodal performance metrics
+- Video demonstrations showcasing multimodal capabilities
+- Ready for production use with revolutionary AI assistant features
 
 ---
 
-## Phase 12: Advanced Features & Polish (Weeks 18-19) [OPTIONAL]
+## Phase 12: Advanced Multimodal Features & Polish (Weeks 18-19) [OPTIONAL]
 
-### 11.1 Advanced Navigation
-- [ ] Implement path planning with obstacle avoidance
-- [ ] Add dynamic replanning
-- [ ] Implement wall following
-- [ ] Add exploration mode (autonomous mapping)
-- [ ] Test in complex environments
+### 11.1 Advanced Navigation with Multimodal Guidance
+- [ ] Implement path planning with visual obstacle recognition
+- [ ] Add dynamic replanning with multimodal feedback
+- [ ] Implement wall following with audio cues
+- [ ] Add exploration mode with multimodal environment description
+- [ ] Test in complex environments with multimodal command handling
 
-### 11.2 Improved Dialogue
-- [ ] Add conversation history (last 5 exchanges)
-- [ ] Implement context-aware responses
-- [ ] Add personality to robot responses
-- [ ] Support multi-turn conversations
-- [ ] Add emotion detection from voice tone
+### 11.2 Enhanced Multimodal Dialogue
+- [ ] Add multimodal conversation history (text+audio+vision)
+- [ ] Implement cross-modal context awareness
+- [ ] Add personality to robot responses across modalities
+- [ ] Support multi-turn multimodal conversations
+- [ ] Add emotion detection from voice tone and facial expressions
 
-### 11.3 Object Manipulation (Future Work)
-- [ ] Design gripper interface (placeholder)
-- [ ] Add object grasping behaviors to tree
-- [ ] Implement approach and align behaviors
-- [ ] Document integration points for future hardware
+### 11.3 Advanced Multimodal Object Interaction (Future Work)
+- [ ] Design gripper interface with vision-guided grasping (placeholder)
+- [ ] Add multimodal object grasping behaviors to tree
+- [ ] Implement visual approach and alignment behaviors
+- [ ] Add voice-guided manipulation commands
+- [ ] Document integration points for future multimodal hardware
 
-### 12.4 Web Interface Enhancements
-- [ ] Add interactive map view with zoom/pan
-- [ ] Add manual control interface (teleoperation)
-- [ ] Add configuration editor (modify YAML files from web)
-- [ ] Add mission replay (recorded sessions playback)
-- [ ] Add performance graphs and statistics
-- [ ] Add mobile app using same API (React Native/Flutter)
+### 12.4 Web Interface Multimodal Enhancements
+- [ ] Add interactive map view with multimodal annotations
+- [ ] Add multimodal control interface (text/voice/visual commands)
+- [ ] Add configuration editor for Gemma 3n parameters
+- [ ] Add multimodal mission replay (recorded sessions with all modalities)
+- [ ] Add Gemma 3n performance graphs and token usage statistics
+- [ ] Add mobile app with multimodal input capabilities (React Native/Flutter)
 
-### 12.5 Multi-Robot Support (Future Work)
-- [ ] Design multi-robot communication protocol
-- [ ] Add robot discovery mechanism
-- [ ] Implement task coordination
-- [ ] Test with 2 robots (if available)
+### 12.5 Multi-Robot Multimodal Coordination (Future Work)
+- [ ] Design multimodal communication protocol between robots
+- [ ] Add robot discovery with visual/audio identification
+- [ ] Implement multimodal task coordination
+- [ ] Test collaborative multimodal behaviors with 2 robots (if available)
 
 **Deliverables**:
-- Advanced features implemented
-- Enhanced user experience
-- Foundation for future extensions
+- Advanced multimodal features implemented
+- Revolutionary AI assistant user experience
+- Foundation for future multimodal extensions
+- Showcase of Gemma 3n capabilities on edge devices
 
 ---
 
@@ -1708,35 +1915,39 @@ class RobotDashboard {
 
 ### High-Risk Items
 1. **RAM Budget Exceeded**
-   - **Mitigation**: Aggressive model quantization (INT8/INT4), lazy loading, model swapping
-   - **Contingency**: Use smaller models (Phi-2 instead of LLaMA-2, Whisper Tiny only)
+   - **Mitigation**: Gemma 3n's constant 2GB VRAM footprint eliminates model swapping complexity
+   - **Contingency**: Use lighter perception models, reduce web interface functionality
 
-2. **Visual Odometry Failure**
+2. **Multimodal Processing Latency**
+   - **Mitigation**: Optimize token encoding pipelines, async processing, efficient context management
+   - **Contingency**: Fallback to text-only mode, reduce multimodal context window
+
+3. **Visual Odometry Failure**
    - **Mitigation**: Multiple fallback modes (IMU-only, dead reckoning)
    - **Contingency**: Add wheel encoders to Wave Rover (hardware modification)
 
-3. **Audio Latency Too High**
-   - **Mitigation**: Optimize each pipeline stage, use faster-whisper, optimize TTS
-   - **Contingency**: Accept higher latency, set user expectations
+4. **Gemma 3n Context Window Overflow**
+   - **Mitigation**: Intelligent context pruning, sliding window management, token compression
+   - **Contingency**: Reset context periodically, prioritize recent interactions
 
-4. **LLM Inference Too Slow**
-   - **Mitigation**: INT4 quantization, smaller model (Phi-2), optimize prompts
-   - **Contingency**: Cloud-based LLM fallback (requires internet)
-
-5. **Thermal Throttling**
-   - **Mitigation**: Optimize workloads, reduce model sizes, add cooling
-   - **Contingency**: Reduce frame rates, disable web interface, active cooling fan
+5. **Thermal Throttling with Multimodal Processing**
+   - **Mitigation**: Balance workloads across modalities, efficient scheduling, thermal monitoring
+   - **Contingency**: Reduce multimodal complexity, disable vision processing, active cooling fan
 
 ### Medium-Risk Items
-1. **TensorRT Conversion Issues**
-   - **Mitigation**: Use ONNX as fallback, extensive testing
-   - **Contingency**: Run models in ONNX Runtime (slower but functional)
+1. **HuggingFace Transformers Compatibility**
+   - **Mitigation**: Use tested versions (4.53.0+), extensive integration testing
+   - **Contingency**: Pin dependencies, maintain known-working configuration
 
-2. **SLAM Drift Accumulation**
+2. **Multimodal Token Encoding Efficiency**
+   - **Mitigation**: Optimize preprocessing pipelines, batch processing where possible
+   - **Contingency**: Reduce token resolution, simplify modality interactions
+
+3. **SLAM Drift Accumulation**
    - **Mitigation**: Frequent loop closure, semantic landmarks
    - **Contingency**: Periodic manual recalibration, external localization (markers)
 
-3. **USB Device Reliability**
+4. **USB Device Reliability**
    - **Mitigation**: Health monitoring, auto-reconnection
    - **Contingency**: Use Jetson built-in audio (if available)
 
@@ -1792,6 +2003,7 @@ class RobotDashboard {
 ### Minimum Viable Product (MVP)
 - [ ] Robot responds to wake word (>95% detection rate)
 - [ ] Robot understands simple voice commands (>90% accuracy)
+- [ ] Robot processes basic visual inputs (image uploads via web interface)
 - [ ] Robot can navigate to visible objects (>80% success)
 - [ ] Robot provides voice feedback for status
 - [ ] System runs for 1+ hour without crashes
@@ -1799,14 +2011,16 @@ class RobotDashboard {
 - [ ] Safe operation (emergency stop works, no collisions)
 
 ### Full System Goals
-- [ ] Complex command understanding with LLM (>90% accuracy)
+- [ ] Multimodal command understanding with Gemma 3n (>90% accuracy)
+- [ ] Simultaneous text, audio, and vision processing
+- [ ] Cross-modal context awareness and reasoning
 - [ ] Semantic SLAM with object tracking
 - [ ] Stuck detection and recovery (>80% success)
-- [ ] Multi-turn conversations
+- [ ] Multi-turn multimodal conversations
 - [ ] 8+ hour continuous operation
-- [ ] RAM usage <7.5 GB
+- [ ] RAM usage <7.5 GB (with constant 2GB Gemma 3n VRAM)
 - [ ] Temperature <80°C sustained
-- [ ] User satisfaction rating >4/5
+- [ ] User satisfaction rating >4.5/5 for multimodal interactions
 
 ### Performance Targets
 | Metric | Target | Critical Threshold |
