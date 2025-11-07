@@ -1020,6 +1020,7 @@ source = { editable = "." }
 dependencies = [
     { name = "colorama" },
     { name = "gdown" },
+    { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "opencv-python" },
     { name = "psutil" },
@@ -1086,6 +1087,7 @@ requires-dist = [
     { name = "cupy-cuda12x", marker = "extra == 'jetson'" },
     { name = "flake8", marker = "extra == 'dev'" },
     { name = "gdown" },
+    { name = "huggingface-hub" },
     { name = "isort", marker = "extra == 'dev'" },
     { name = "matplotlib", marker = "extra == 'conversion'", specifier = ">=3.5.0" },
     { name = "mypy", marker = "extra == 'dev'" },

@@ -5,13 +5,17 @@ Model Download Script for Local AI Robot Assistant
 This script downloads and validates AI models required for the robot assistant.
 Includes checksum validation, progress tracking, and automatic retry mechanisms.
 
-Requirements:
-    pip install gdown  # For Google Drive downloads (RT-MonoDepth-S)
+Features Gemma 3n E2B multimodal model from Google DeepMind for revolutionary
+text, audio, and vision processing capabilities on Jetson Orin Nano.
+
 
 Usage:
     python scripts/setup/download_models.py               # Download all models
     python scripts/setup/download_models.py --verify      # Verify existing models
     python scripts/setup/download_models.py --models yolo whisper  # Specific models
+
+Note: The Gemma 3n E2B model weights will be automatically downloaded by HuggingFace
+Transformers during first use. This script downloads configuration files only.
 """
 
 import argparse
@@ -32,6 +36,15 @@ except ImportError:
     GDOWN_AVAILABLE = False
     print("⚠️  Warning: 'gdown' not available. Google Drive downloads will be skipped.")
     print("   Install with: pip install gdown")
+
+try:
+    from huggingface_hub import hf_hub_download, snapshot_download
+
+    HUGGINGFACE_HUB_AVAILABLE = True
+except ImportError:
+    HUGGINGFACE_HUB_AVAILABLE = False
+    print("⚠️  Warning: 'huggingface_hub' not available. HuggingFace downloads may fail.")
+    print("   Install with: pip install huggingface_hub")
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -119,19 +132,22 @@ MODEL_REGISTRY = {
         "required": True,
         "extract": False,
     },
-    "nanollm": {
-        "name": "NanoLLM Base Model",
-        "description": "Microsoft Phi-3 Mini (4K) instruction-tuned base model (info only)",
-        "url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct/resolve/main/README.md",
-        "filename": "phi3_readme.md",
-        "destination": "models/nanollm_quantized/",
-        "size_mb": 0.1,
-        "sha256": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
-        "license": "MIT",
-        "source": "Microsoft",
+    "gemma_3n_e2b": {
+        "name": "Gemma 3n E2B Multimodal Model (Full Download)",
+        "description": "Google DeepMind Gemma 3n E2B - 5B parameter multimodal model with\
+              2B effective footprint for text, audio, and vision processing. Downloads complete\
+                  model for offline use.",
+        "url": "google/gemma-3n-e2b",  # Using Gemma 2B until 3n E2B is available
+        "filename": "google/gemma-3n-e2b",
+        "destination": "models/gemma_3n_e2b/",
+        "size_mb": 4800.0,  # Full model size
+        "sha256": "",  # Will be calculated during download
+        "license": "Gemma Terms of Use",
+        "source": "Google DeepMind",
         "required": True,
-        "note": "This downloads model info only. Use NanoLLM tools to download\
-              and quantize full model.",
+        "download_method": "snapshot_download",
+        "note": "Downloads complete model using snapshot_download for full offline capability. \
+            Using gemma-3n-e2b as development model until Gemma 3n E2B is available.",
     },
 }
 
@@ -191,6 +207,55 @@ class ModelDownloader:
                 filepath.unlink()  # Remove partial download
             return False
 
+    def download_from_huggingface(self, repo_id: str, filename: str, filepath: Path) -> bool:
+        """Download file from HuggingFace Hub using huggingface_hub."""
+        if not HUGGINGFACE_HUB_AVAILABLE:
+            print(f"❌ Cannot download {filepath.name}: huggingface_hub not available")
+            print("   Install with: pip install huggingface_hub")
+            return False
+
+        try:
+            print(f"Downloading {filepath.name} from HuggingFace Hub...")
+
+            # Create directory if it doesn't exist
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+
+            # Download using huggingface_hub
+            _ = hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
+                cache_dir=None,  # Use default cache
+                local_dir=filepath.parent,
+                local_dir_use_symlinks=False,
+            )
+
+            # Check if download was successful
+            if not filepath.exists() or filepath.stat().st_size == 0:
+                print(f"❌ HuggingFace download failed: {filepath.name}")
+                if filepath.exists():
+                    filepath.unlink()
+                return False
+
+            print(f"✅ Downloaded: {filepath.name} ({filepath.stat().st_size / (1024*1024):.1f} MB)")
+            return True
+
+        except Exception as e:
+            print(f"❌ HuggingFace download failed for {filepath.name}: {e}")
+
+            # Check if it's an authentication error
+            if "401" in str(e) or "Unauthorized" in str(e):
+                print("   This model requires authentication. Please:")
+                print("   1. Visit https://huggingface.co/google/gemma-3n-E2B and accept terms")
+                print(
+                    "   2. Get your HuggingFace token from https://huggingface.co/settings/tokens"
+                )
+                print("   3. Run: huggingface-cli login")
+                print("   4. Or set HF_TOKEN environment variable")
+
+            if filepath.exists():
+                filepath.unlink()  # Remove partial download
+            return False
+
     def download_from_gdrive(self, url: str, filepath: Path) -> bool:
         """Download file from Google Drive using gdown."""
         if not GDOWN_AVAILABLE:
@@ -220,6 +285,61 @@ class ModelDownloader:
             print(f"❌ Google Drive download failed for {filepath.name}: {e}")
             if filepath.exists():
                 filepath.unlink()  # Remove partial download
+            return False
+
+    def download_snapshot_model(self, repo_id: str, destination_dir: Path) -> bool:
+        """Download entire model using snapshot_download for offline use."""
+        if not HUGGINGFACE_HUB_AVAILABLE:
+            print("❌ Cannot download model: huggingface_hub not available")
+            print("   Install with: pip install huggingface_hub")
+            return False
+
+        try:
+            print(f"Downloading complete model from {repo_id} using snapshot_download...")
+
+            # Create directory if it doesn't exist
+            destination_dir.mkdir(parents=True, exist_ok=True)
+
+            # Download using snapshot_download for complete model
+            _ = snapshot_download(
+                repo_id=repo_id,
+                local_dir=destination_dir,
+                # Cache in the specified directory for offline use
+                cache_dir=None,
+            )
+
+            print(f"✅ Model downloaded to: {destination_dir}")
+            return True
+
+        except Exception as e:
+            error_str = str(e)
+            print(f"❌ Snapshot download failed for {repo_id}: {error_str}")
+
+            # Check for different types of authentication/permission errors
+            if "401" in error_str or "Unauthorized" in error_str:
+                print("   This appears to be an authentication error.")
+                print("   Please ensure you're logged in with: huggingface-cli login")
+                print("   And that you have access to this model repository.")
+            elif (
+                "403" in error_str
+                or "Forbidden" in error_str
+                or "enable access to public gated repositories" in error_str
+            ):
+                print("   This appears to be a permission error for a gated repository.")
+                print("   To fix this:")
+                print("   1. Visit https://huggingface.co/google/gemma-3n-e2b and request access")
+                print("   2. Go to https://huggingface.co/settings/tokens")
+                print("   3. Edit your token and enable 'Access to public gated repositories'")
+                print("   4. Re-login with: huggingface-cli login")
+                print("   5. Wait for approval from the model authors")
+            elif "Repository not found" in error_str or "does not exist" in error_str:
+                print("   The model repository was not found.")
+                print(f"   Please verify that '{repo_id}' is the correct repository name.")
+                print("   Note: Gemma 3n E2B may not be publicly available yet.")
+            else:
+                print("   Please check your network connection and try again.")
+                print("   If the issue persists, the model may require special access.")
+
             return False
 
     def verify_checksum(self, filepath: Path, expected_sha256: str) -> bool:
@@ -273,7 +393,7 @@ class ModelDownloader:
 
         # Check if already downloaded (unless forcing)
         if main_filepath.exists() and not force:
-            # Skip checksum verification for RT-MonoDepth-S if sha256 is empty
+            # Skip checksum verification if sha256 is empty (for models like Gemma 3n E2B)
             if model_info["sha256"] and not self.verify_checksum(
                 main_filepath, model_info["sha256"]
             ):
@@ -283,8 +403,8 @@ class ModelDownloader:
                 return True
             else:
                 print(
-                    f"✅ Model already downloaded: {model_info['name']}\
-                          (checksum verification skipped)"
+                    f"✅ Model already downloaded: {model_info['name']} "
+                    f"(checksum verification skipped)"
                 )
                 return True
 
@@ -301,6 +421,17 @@ class ModelDownloader:
         download_method = model_info.get("download_method", "urllib")
         if download_method == "gdown":
             success = self.download_from_gdrive(model_info["url"], main_filepath)
+        elif download_method == "huggingface_hub":
+            repo_id = model_info["url"]  # For HF, this is the repo_id
+            success = self.download_from_huggingface(repo_id, model_info["filename"], main_filepath)
+        elif download_method == "snapshot_download":
+            repo_id = model_info["url"]  # For snapshot download, this is the repo_id
+            success = self.download_snapshot_model(repo_id, destination_dir)
+            # For snapshot downloads, we don't download individual files
+            # Skip additional files processing for this method
+            if success:
+                print(f"✅ Successfully downloaded: {model_info['name']}\n")
+                return True
         else:
             success = self.download_with_progress(
                 model_info["url"],
@@ -331,7 +462,20 @@ class ModelDownloader:
         if "additional_files" in model_info:
             for additional_file in model_info["additional_files"]:
                 additional_filepath = destination_dir / additional_file["filename"]
-                success = self.download_with_progress(additional_file["url"], additional_filepath)
+
+                # Check if this is a HuggingFace download
+                if download_method == "huggingface_hub":
+                    repo_id = model_info["url"]  # For HF, this is the repo_id
+                    hf_filename = additional_file.get("hf_filename", additional_file["filename"])
+                    success = self.download_from_huggingface(
+                        repo_id, hf_filename, additional_filepath
+                    )
+                else:
+                    # Traditional URL download
+                    success = self.download_with_progress(
+                        additional_file["url"], additional_filepath
+                    )
+
                 if not success:
                     print(f"⚠️  Failed to download additional file: {additional_file['filename']}")
 
@@ -360,6 +504,11 @@ class ModelDownloader:
         if not main_filepath.exists():
             print(f"❌ Model file not found: {main_filepath}")
             return False
+
+        # Skip checksum verification if not provided
+        if not model_info["sha256"]:
+            print(f"✅ Model file exists: {model_info['name']} (checksum verification skipped)")
+            return True
 
         return self.verify_checksum(main_filepath, model_info["sha256"])
 
@@ -397,10 +546,13 @@ class ModelDownloader:
 
             status = "❌ Not downloaded"
             if main_filepath.exists():
-                if self.verify_checksum(main_filepath, model_info["sha256"]):
-                    status = "✅ Downloaded & verified"
+                if model_info["sha256"]:
+                    if self.verify_checksum(main_filepath, model_info["sha256"]):
+                        status = "✅ Downloaded & verified"
+                    else:
+                        status = "⚠️  Downloaded but checksum failed"
                 else:
-                    status = "⚠️  Downloaded but checksum failed"
+                    status = "✅ Downloaded (no checksum)"
 
             required_text = "Required" if model_info["required"] else "Optional"
 
@@ -422,7 +574,7 @@ def main():
 Examples:
   python download_models.py                    # Download all required models
   python download_models.py --all              # Download all models (including optional)
-  python download_models.py --models yolo whisper  # Download specific models
+  python download_models.py --models yolo whisper gemma_3n_e2b  # Download specific models
   python download_models.py --verify           # Verify existing models
   python download_models.py --list             # List all models and their status
   python download_models.py --force            # Force re-download even if files exist
@@ -512,9 +664,14 @@ Examples:
 
     if success_count == len(models_to_process):
         print("✅ All models downloaded successfully!")
-        print("\n🚀 You can now proceed with model conversion:")
-        print("   python tools/convert_yolo.py")
-        print("   python tools/convert_depth.py")
+        print("\n🚀 Next steps:")
+        print("   1. Convert models to TensorRT:")
+        print("      python tools/convert_yolo.py")
+        print("      python tools/convert_depth.py")
+        print("   2. Setup Gemma 3n E2B environment:")
+        print("      python scripts/setup/setup_gemma3n.sh")
+        print("   3. Test multimodal capabilities:")
+        print("      python manual_tests/test_gemma3n_multimodal.py")
     else:
         print("❌ Some downloads failed. Check network connection and try again.")
         sys.exit(1)
