@@ -1034,6 +1034,7 @@ dependencies = [
     { name = "torchvision" },
     { name = "tqdm" },
     { name = "transformers" },
+    { name = "ultralytics" },
 ]
 
 [package.optional-dependencies]
@@ -1118,6 +1119,7 @@ requires-dist = [
     { name = "torchvision", specifier = ">=0.13.0" },
     { name = "tqdm", specifier = ">=4.64.0" },
     { name = "transformers", specifier = ">=4.20.0" },
+    { name = "ultralytics" },
     { name = "ultralytics", marker = "extra == 'conversion'", specifier = ">=8.0.0" },
     { name = "unittest-xml-reporting", marker = "extra == 'test'" },
     { name = "webrtcvad", marker = "extra == 'audio'", specifier = ">=2.0.0" },
