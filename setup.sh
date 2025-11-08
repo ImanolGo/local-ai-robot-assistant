@@ -168,28 +168,22 @@ direnv allow || true
 if [ -f pyproject.toml ]; then
     echo "📦 Installing project dependencies from pyproject.toml..."
 
-    # Install PyTorch for Jetson first (if available)
+    # Install PyTorch for Jetson using dedicated script
     echo "🔥 Installing PyTorch for Jetson..."
 
-    # Check if we're on Jetson and try to install optimized PyTorch
+    # Check if we're on Jetson and run specialized setup
     if [ -f /etc/nv_tegra_release ]; then
-        echo "   Detected Jetson - attempting to install optimized PyTorch..."
-
-        # Try to install PyTorch for Jetson (user should check latest wheels at forums)
-        # Note: These URLs may need to be updated for latest versions
-        TORCH_WHEEL_URL="https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.1.0a0+41361538.nv23.06-cp310-cp310-linux_aarch64.whl"
-
-        if curl --output /dev/null --silent --head --fail "$TORCH_WHEEL_URL"; then
-            echo "   Installing PyTorch wheel for Jetson..."
-            uv pip install "$TORCH_WHEEL_URL"
+        echo "   Detected Jetson - running specialized PyTorch setup..."
+        if [ -f scripts/setup/setup_pytorch_jetson.sh ]; then
+            ./scripts/setup/setup_pytorch_jetson.sh
         else
-            echo "   ⚠️  Jetson PyTorch wheel not available, falling back to pip install"
+            echo "   ⚠️  PyTorch setup script not found, using fallback installation..."
+
+            # Fallback: simple installation
+            uv pip uninstall torch torchvision torchaudio || true
+            echo "   Installing standard PyTorch (may not have CUDA support)..."
             uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
         fi
-
-        # Install ONNX Runtime for Jetson
-        echo "   Installing ONNX Runtime GPU for Jetson..."
-        uv pip install onnxruntime-gpu || uv pip install onnxruntime
     else
         echo "   Installing standard PyTorch..."
         uv pip install torch torchvision
@@ -208,6 +202,21 @@ if [ -f pyproject.toml ]; then
     if [ -f tools/test_tensorrt.py ]; then
         .venv/bin/python tools/test_tensorrt.py || echo "⚠️  TensorRT test failed - some dependencies may be missing"
     fi
+
+    # Test PyTorch CUDA installation
+    echo "🧪 Testing PyTorch CUDA installation..."
+    .venv/bin/python -c "
+import torch
+print(f'PyTorch version: {torch.__version__}')
+print(f'CUDA available: {torch.cuda.is_available()}')
+print(f'CUDA version: {torch.version.cuda if torch.cuda.is_available() else \"N/A\"}')
+print(f'Device count: {torch.cuda.device_count()}')
+if torch.cuda.is_available():
+    print(f'Device name: {torch.cuda.get_device_name(0)}')
+    print(f'Device capability: {torch.cuda.get_device_capability(0)}')
+else:
+    print('❌ CUDA not available - check PyTorch installation')
+" || echo "⚠️  PyTorch CUDA test failed"
 
 else
     echo "⚠️  No pyproject.toml found. Creating a minimal one..."
@@ -247,12 +256,13 @@ echo "✅ Setup complete!"
 echo "========================================="
 echo
 echo "Next steps:"
-echo "1. Test model conversion tools: python3 tools/overview.py"
-echo "2. Convert models: python3 tools/conversion/convert_yolo.py --help"
-echo "3. Download models: ./scripts/setup/download_models.sh"
-echo "4. Calibrate camera: python3 hardware_tests/calibrate_camera.py"
-echo "5. Test hardware: python3 hardware_tests/test_*.py"
-echo "6. Launch system: ros2 launch launch/full_system_launch.py"
+echo "1. Fix PyTorch CUDA: ./scripts/setup/setup_pytorch_jetson.sh"
+echo "2. Test model conversion tools: python3 tools/overview.py"
+echo "3. Convert models: python3 tools/conversion/convert_yolo.py --help"
+echo "4. Download models: ./scripts/setup/download_models.sh"
+echo "5. Calibrate camera: python3 hardware_tests/calibrate_camera.py"
+echo "6. Test hardware: python3 hardware_tests/test_*.py"
+echo "7. Launch system: ros2 launch launch/full_system_launch.py"
 echo
 echo "Model conversion commands:"
 echo "• YOLO: python3 tools/conversion/convert_yolo.py --model YOLOv11n --output-dir ./models/yolo_trt"
