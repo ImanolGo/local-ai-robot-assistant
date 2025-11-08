@@ -22,7 +22,7 @@ dependencies = [
     "colorama>=0.4.4",
     "pyyaml>=6.0",
     "gdown",
-    "huggingface_hub",
+    "timm",
 ]
 
 [build-system]

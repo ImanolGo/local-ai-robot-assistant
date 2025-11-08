@@ -28,23 +28,9 @@ import zipfile
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-try:
-    import gdown
-
-    GDOWN_AVAILABLE = True
-except ImportError:
-    GDOWN_AVAILABLE = False
-    print("⚠️  Warning: 'gdown' not available. Google Drive downloads will be skipped.")
-    print("   Install with: pip install gdown")
-
-try:
-    from huggingface_hub import hf_hub_download, snapshot_download
-
-    HUGGINGFACE_HUB_AVAILABLE = True
-except ImportError:
-    HUGGINGFACE_HUB_AVAILABLE = False
-    print("⚠️  Warning: 'huggingface_hub' not available. HuggingFace downloads may fail.")
-    print("   Install with: pip install huggingface_hub")
+import gdown
+import torch
+from transformers import AutoProcessor, Gemma3nForConditionalGeneration
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -137,17 +123,17 @@ MODEL_REGISTRY = {
         "description": "Google DeepMind Gemma 3n E2B - 5B parameter multimodal model with\
               2B effective footprint for text, audio, and vision processing. Downloads complete\
                   model for offline use.",
-        "url": "google/gemma-3n-e2b",  # Using Gemma 2B until 3n E2B is available
-        "filename": "google/gemma-3n-e2b",
+        "url": "google/gemma-3n-e2b",  # HuggingFace model ID
+        "filename": "config.json",  # Main indicator file
         "destination": "models/gemma_3n_e2b/",
         "size_mb": 4800.0,  # Full model size
         "sha256": "",  # Will be calculated during download
         "license": "Gemma Terms of Use",
         "source": "Google DeepMind",
         "required": True,
-        "download_method": "snapshot_download",
-        "note": "Downloads complete model using snapshot_download for full offline capability. \
-            Using gemma-3n-e2b as development model until Gemma 3n E2B is available.",
+        "download_method": "transformers_offline",
+        "note": "Downloads complete model and processor using transformers for full offline \
+            capability. Includes model weights, tokenizer, and all required files.",
     },
 }
 
@@ -207,61 +193,8 @@ class ModelDownloader:
                 filepath.unlink()  # Remove partial download
             return False
 
-    def download_from_huggingface(self, repo_id: str, filename: str, filepath: Path) -> bool:
-        """Download file from HuggingFace Hub using huggingface_hub."""
-        if not HUGGINGFACE_HUB_AVAILABLE:
-            print(f"❌ Cannot download {filepath.name}: huggingface_hub not available")
-            print("   Install with: pip install huggingface_hub")
-            return False
-
-        try:
-            print(f"Downloading {filepath.name} from HuggingFace Hub...")
-
-            # Create directory if it doesn't exist
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-
-            # Download using huggingface_hub
-            _ = hf_hub_download(
-                repo_id=repo_id,
-                filename=filename,
-                cache_dir=None,  # Use default cache
-                local_dir=filepath.parent,
-                local_dir_use_symlinks=False,
-            )
-
-            # Check if download was successful
-            if not filepath.exists() or filepath.stat().st_size == 0:
-                print(f"❌ HuggingFace download failed: {filepath.name}")
-                if filepath.exists():
-                    filepath.unlink()
-                return False
-
-            print(f"✅ Downloaded: {filepath.name} ({filepath.stat().st_size / (1024*1024):.1f} MB)")
-            return True
-
-        except Exception as e:
-            print(f"❌ HuggingFace download failed for {filepath.name}: {e}")
-
-            # Check if it's an authentication error
-            if "401" in str(e) or "Unauthorized" in str(e):
-                print("   This model requires authentication. Please:")
-                print("   1. Visit https://huggingface.co/google/gemma-3n-E2B and accept terms")
-                print(
-                    "   2. Get your HuggingFace token from https://huggingface.co/settings/tokens"
-                )
-                print("   3. Run: huggingface-cli login")
-                print("   4. Or set HF_TOKEN environment variable")
-
-            if filepath.exists():
-                filepath.unlink()  # Remove partial download
-            return False
-
     def download_from_gdrive(self, url: str, filepath: Path) -> bool:
         """Download file from Google Drive using gdown."""
-        if not GDOWN_AVAILABLE:
-            print(f"❌ Cannot download {filepath.name}: gdown not available")
-            print("   Install with: pip install gdown")
-            return False
 
         try:
             print(f"Downloading {filepath.name} from Google Drive...")
@@ -287,58 +220,59 @@ class ModelDownloader:
                 filepath.unlink()  # Remove partial download
             return False
 
-    def download_snapshot_model(self, repo_id: str, destination_dir: Path) -> bool:
-        """Download entire model using snapshot_download for offline use."""
-        if not HUGGINGFACE_HUB_AVAILABLE:
-            print("❌ Cannot download model: huggingface_hub not available")
-            print("   Install with: pip install huggingface_hub")
-            return False
+    def download_transformers_offline(self, repo_id: str, destination_dir: Path) -> bool:
+        """Download complete model and processor using transformers for offline use."""
 
         try:
-            print(f"Downloading complete model from {repo_id} using snapshot_download...")
+            print(f"Downloading complete model and processor from {repo_id}...")
+            print("   This may take several minutes for large models...")
 
             # Create directory if it doesn't exist
             destination_dir.mkdir(parents=True, exist_ok=True)
 
-            # Download using snapshot_download for complete model
-            _ = snapshot_download(
-                repo_id=repo_id,
-                local_dir=destination_dir,
-                # Cache in the specified directory for offline use
-                cache_dir=None,
+            # Download and save model
+            print("   Downloading model weights...")
+            model = Gemma3nForConditionalGeneration.from_pretrained(
+                repo_id,
+                torch_dtype=torch.bfloat16,
+                # Don't load to GPU during download
+                device_map=None,
             )
+            model.save_pretrained(destination_dir)
 
-            print(f"✅ Model downloaded to: {destination_dir}")
+            # Download and save processor
+            print("   Downloading processor (tokenizer, etc.)...")
+            processor = AutoProcessor.from_pretrained(repo_id)
+            processor.save_pretrained(destination_dir)
+
+            print(f"✅ Model and processor saved to {destination_dir}")
             return True
 
         except Exception as e:
-            error_str = str(e)
-            print(f"❌ Snapshot download failed for {repo_id}: {error_str}")
+            print(f"❌ Transformers download failed for {repo_id}: {e}")
 
-            # Check for different types of authentication/permission errors
-            if "401" in error_str or "Unauthorized" in error_str:
-                print("   This appears to be an authentication error.")
-                print("   Please ensure you're logged in with: huggingface-cli login")
-                print("   And that you have access to this model repository.")
-            elif (
-                "403" in error_str
-                or "Forbidden" in error_str
-                or "enable access to public gated repositories" in error_str
+            # Check for common error types
+            if (
+                "401" in str(e)
+                or "Unauthorized" in str(e)
+                or "403" in str(e)
+                or "Forbidden" in str(e)
             ):
-                print("   This appears to be a permission error for a gated repository.")
-                print("   To fix this:")
-                print("   1. Visit https://huggingface.co/google/gemma-3n-e2b and request access")
-                print("   2. Go to https://huggingface.co/settings/tokens")
-                print("   3. Edit your token and enable 'Access to public gated repositories'")
-                print("   4. Re-login with: huggingface-cli login")
-                print("   5. Wait for approval from the model authors")
-            elif "Repository not found" in error_str or "does not exist" in error_str:
-                print("   The model repository was not found.")
-                print(f"   Please verify that '{repo_id}' is the correct repository name.")
-                print("   Note: Gemma 3n E2B may not be publicly available yet.")
-            else:
-                print("   Please check your network connection and try again.")
-                print("   If the issue persists, the model may require special access.")
+                print("   This appears to be an authentication error.")
+                print("   Please ensure you:")
+                print(
+                    "   1. Have accepted the model terms at: \
+                        https://huggingface.co/google/gemma-3n-e2b"
+                )
+                print("   2. Are logged in with: huggingface-cli login")
+                print(
+                    "   3. Have enabled 'Read access to contents of gated repos'\
+                          in your token settings"
+                )
+                print("      at: https://huggingface.co/settings/tokens")
+            elif "not found" in str(e).lower() or "repository" in str(e).lower():
+                print(f"   Model {repo_id} may not be available yet.")
+                print("   Please check the repository exists and you have access.")
 
             return False
 
@@ -421,14 +355,12 @@ class ModelDownloader:
         download_method = model_info.get("download_method", "urllib")
         if download_method == "gdown":
             success = self.download_from_gdrive(model_info["url"], main_filepath)
-        elif download_method == "huggingface_hub":
-            repo_id = model_info["url"]  # For HF, this is the repo_id
-            success = self.download_from_huggingface(repo_id, model_info["filename"], main_filepath)
-        elif download_method == "snapshot_download":
-            repo_id = model_info["url"]  # For snapshot download, this is the repo_id
-            success = self.download_snapshot_model(repo_id, destination_dir)
-            # For snapshot downloads, we don't download individual files
-            # Skip additional files processing for this method
+
+        elif download_method == "transformers_offline":
+            repo_id = model_info["url"]  # For transformers, this is the repo_id
+            success = self.download_transformers_offline(repo_id, destination_dir)
+            # For transformers downloads, we don't download individual files
+            # Skip additional files and checksum processing for this method
             if success:
                 print(f"✅ Successfully downloaded: {model_info['name']}\n")
                 return True
