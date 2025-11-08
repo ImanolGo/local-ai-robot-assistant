@@ -30,9 +30,9 @@ def print_available_tools():
         {
             "name": "YOLO Conversion",
             "script": "conversion/convert_yolo.py",
-            "description": "Convert YOLOv8 models to TensorRT FP16",
+            "description": "Convert YOLOv11 models to TensorRT FP16",
             "usage": "python3 tools/conversion/convert_yolo.py\
-                  --model yolov8n --output-dir ./models/yolo_trt",
+                  --model YOLOv11n --output-dir ./models/yolo_trt",
         },
         {
             "name": "FastDepth Conversion",
@@ -125,7 +125,7 @@ def print_quick_start():
     print()
     print("3. Convert your first model (YOLO):")
     print("   python3 tools/conversion/convert_yolo.py \\")
-    print("     --model yolov8n \\")
+    print("     --model YOLOv11n \\")
     print("     --output-dir ./models/yolo_trt \\")
     print("     --input-size 640 480")
     print()

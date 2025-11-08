@@ -44,7 +44,7 @@ This document summarizes the implementation of Section 2.4 "Configuration Manage
 - **Status**: Was empty, now populated with complete configuration
 - **Content**: AI perception models configuration for TensorRT optimization
 - **Features**:
-  - Object detection (YOLOv8n) settings
+  - Object detection (YOLOv11n) settings
   - Depth estimation (FastDepth) configuration
   - Point cloud generation parameters
   - Performance targets and optimization settings

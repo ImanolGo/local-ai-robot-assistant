@@ -230,7 +230,7 @@ class ModelProfiler:
             "yolo": {
                 "fps": 20.0,
                 "resolution": (640, 480),
-                "description": "YOLOv8n object detection",
+                "description": "YOLOv11n object detection",
             },
             "depth": {
                 "fps": 15.0,

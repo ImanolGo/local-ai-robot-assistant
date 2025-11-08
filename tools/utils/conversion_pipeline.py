@@ -582,7 +582,7 @@ def create_sample_config(model_type: str, output_dir: str = "./models") -> Conve
     """
     configs = {
         "yolo": ConversionConfig(
-            model_name="yolov8n",
+            model_name="YOLOv11n",
             model_type="yolo",
             input_shape=(1, 3, 640, 480),
             output_dir=os.path.join(output_dir, "yolo_trt"),

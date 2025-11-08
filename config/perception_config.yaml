@@ -1,13 +1,13 @@
 # Perception Configuration for Local AI Robot Assistant
 # TensorRT-optimized AI models for NVIDIA Jetson Orin Nano
 
-# Object Detection (YOLOv8n)
+# Object Detection (YOLOv11n)
 object_detection:
   model:
-    name: "yolov8n"
+    name: "YOLOv11n"
     type: "tensorrt"
-    engine_path: "/models/yolov8n.engine"
-    onnx_path: "/models/yolov8n.onnx"
+    engine_path: "/models/YOLOv11n.engine"
+    onnx_path: "/models/YOLOv11n.onnx"
     input_shape: [1, 3, 640, 640]
 
   # Inference settings

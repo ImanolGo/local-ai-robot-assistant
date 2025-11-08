@@ -116,7 +116,7 @@ torch.save(model.state_dict(), "model.pt")
 #### From Ultralytics (YOLO)
 ```python
 from ultralytics import YOLO
-model = YOLO("yolov8n.pt")
+model = YOLO("YOLOv11n.pt")
 # Model automatically downloaded and ready for export
 ```
 
@@ -217,14 +217,14 @@ with open("model_fp16.trt", 'wb') as f:
 #### Conversion Command
 ```bash
 python3 tools/conversion/convert_yolo.py \
-    --model yolov8n \
+    --model YOLOv11n \
     --output-dir ./models/yolo_trt \
     --input-size 640 480 \
     --precision fp16
 ```
 
 #### Optimization Tips
-- Use YOLOv8n (nano) for best performance on Jetson
+- Use YOLOv11n (nano) for best performance on Jetson
 - Input size 640x480 balances accuracy and speed
 - Consider 416x416 for higher FPS if needed
 - Enable NMS (Non-Maximum Suppression) optimization in TensorRT
@@ -545,9 +545,9 @@ def print_memory_usage():
 ```
 models/
 ├── yolo_trt/
-│   ├── yolov8n_fp16.trt
-│   ├── yolov8n_metadata.json
-│   └── yolov8n_benchmark.json
+│   ├── YOLOv11n_fp16.trt
+│   ├── YOLOv11n_metadata.json
+│   └── YOLOv11n_benchmark.json
 ├── depth_trt/
 │   ├── fastdepth_fp16.trt
 │   ├── fastdepth_metadata.json

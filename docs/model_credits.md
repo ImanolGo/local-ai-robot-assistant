@@ -8,7 +8,7 @@ All models are used in compliance with their respective licenses. This project i
 
 ## Vision Models
 
-### YOLOv8n Object Detection
+### YOLOv11n Object Detection
 
 - **Source**: Ultralytics
 - **Repository**: https://github.com/ultralytics/ultralytics
@@ -209,7 +209,7 @@ The system supports multiple LLM options depending on requirements:
 
 ### Commercial Use
 
-- **YOLOv8**: GPL-3.0 license requires derivative works to be open source
+- **YOLOv11**: GPL-3.0 license requires derivative works to be open source
 - **FastDepth**: MIT license allows commercial use with attribution
 - **Whisper**: MIT license allows commercial use with attribution
 - **Piper**: MIT license allows commercial use with attribution
@@ -224,7 +224,7 @@ When distributing this software or derivatives:
 
 1. Include this credits file in any distribution
 2. Maintain original copyright notices for all models
-3. Include license texts for GPL-licensed components (YOLOv8)
+3. Include license texts for GPL-licensed components (YOLOv11)
 4. Provide clear attribution for all models used
 
 ### Research and Educational Use
@@ -241,7 +241,7 @@ All models are approved for research and educational purposes. This project serv
 
 ### Inference Benchmarks on NVIDIA Jetson Orin Nano
 
-- **YOLOv8n**: <50ms per frame (640x480 input)
+- **YOLOv11n**: <50ms per frame (640x480 input)
 - **FastDepth**: <70ms per frame (640x480 input)
 - **Whisper Tiny**: Real-time factor <0.3x (faster than real-time)
 - **Piper TTS**: <500ms for 20-word synthesis

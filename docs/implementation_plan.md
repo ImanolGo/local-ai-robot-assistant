@@ -298,7 +298,7 @@
 ## Phase 3: Model Conversion & Optimization (Week 5)
 
 ### 3.1 Model Acquisition
-- [x] Download YOLOv8n PyTorch model from Ultralytics
+- [x] Download YOLOv11n PyTorch model from Ultralytics
 - [x] Download RT-MonoDepth-S PyTorch model
 - [x] Download Whisper Tiny model from OpenAI
 - [x] Download Piper TTS model and voice files
@@ -309,11 +309,11 @@
 
 ### 3.2 Vision Model Conversion (TensorRT)
 - [ ] Implement `tools/convert_yolo.py`
-  - [ ] Export YOLOv8n to ONNX format
+  - [ ] Export YOLOv11n to ONNX format
   - [ ] Convert ONNX to TensorRT engine (FP16)
   - [ ] Validate output accuracy (mAP drop <2%)
   - [ ] Benchmark inference time (target: <50ms on Jetson)
-  - [ ] Save engine to `models/yolo_trt/yolov8n_fp16.engine`
+  - [ ] Save engine to `models/yolo_trt/YOLOv11n_fp16.engine`
 - [ ] Implement `tools/convert_depth.py`
   - [ ] Export RT-MonoDepth-S to ONNX format
   - [ ] Convert ONNX to TensorRT engine (FP16)

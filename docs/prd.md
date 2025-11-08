@@ -136,7 +136,7 @@ Developers, researchers, and makers interested in edge AI robotics, autonomous s
 - **Wake Word**: openWakeWord or Porcupine (< 50MB)
 - **ASR**: Whisper Tiny/Base (< 500MB quantized)
 - **TTS**: Piper (< 100MB per voice)
-- **Object Detection**: YOLOv8n or YOLOv8s (< 20MB TensorRT)
+- **Object Detection**: YOLOv11n or YOLOv11s (< 20MB TensorRT)
 - **Depth Estimation**: FastDepth (< 30MB TensorRT)
 - **LLM**: LLaMA-2 7B or Gemma 2-7B (< 4GB INT4 quantized)
 - **SLAM**: RTAB-Map

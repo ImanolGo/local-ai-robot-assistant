@@ -7,7 +7,7 @@ This directory contains all AI models used by the robot assistant. Models are do
 - `wake_word/` - openWakeWord models for wake word detection
 - `whisper_tiny_trt/` - Whisper Tiny model (TensorRT optimized or faster-whisper)
 - `piper_voice/` - Piper TTS voice models and configuration
-- `yolo_trt/` - YOLOv8n object detection model (TensorRT optimized)
+- `yolo_trt/` - YOLOv11n object detection model (TensorRT optimized)
 - `depth_trt/` - FastDepth depth estimation model (TensorRT optimized)
 - `nanollm_quantized/` - Quantized LLM for cognitive processing
 

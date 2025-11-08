@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 YOLO Model Conversion Script
-Converts YOLOv8 models from PyTorch → ONNX → TensorRT FP16
+Converts YOLOv11 models from PyTorch → ONNX → TensorRT FP16
 
 According to architecture.md:
-- Target: YOLOv8n optimized with TensorRT FP16
+- Target: YOLOv11n optimized with TensorRT FP16
 - Pipeline: DeepStream-based for hardware acceleration
 - Performance Target: 20+ FPS at 640x480 resolution
 """
@@ -40,7 +40,7 @@ class YOLOConverter:
 
     def __init__(
         self,
-        model_name: str = "yolov8n",
+        model_name: str = "YOLOv11n",
         input_shape: Tuple[int, int, int, int] = (1, 3, 640, 480),
         workspace_size: int = 1 << 28,
     ):  # 256MB
@@ -48,7 +48,7 @@ class YOLOConverter:
         Initialize YOLO converter
 
         Args:
-            model_name: YOLO model variant (yolov8n, yolov8s, etc.)
+            model_name: YOLO model variant (YOLOv11n, YOLOv11s, etc.)
             input_shape: Input tensor shape (batch, channels, height, width)
             workspace_size: TensorRT workspace size in bytes
         """
@@ -481,8 +481,8 @@ def main():
     parser.add_argument(
         "--model",
         "-m",
-        default="yolov8n",
-        choices=["yolov8n", "yolov8s", "yolov8m", "yolov8l", "yolov8x"],
+        default="YOLOv11n",
+        choices=["YOLOv11n", "YOLOv11s", "YOLOv11m", "YOLOv11l", "YOLOv11x"],
         help="YOLO model variant to convert",
     )
     parser.add_argument(

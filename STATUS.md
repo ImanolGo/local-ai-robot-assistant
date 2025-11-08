@@ -207,7 +207,7 @@
 
 - ✅ Set up TensorRT optimization pipeline (modern TensorRT 10.x API)
 - ✅ Create YOLO model conversion script (`tools/conversion/convert_yolo.py`)
-  - ✅ YOLOv8n/s/m/l/x model support with dynamic input sizing
+  - ✅ YOLOv11n/s/m/l/x model support with dynamic input sizing
   - ✅ TensorRT FP16 optimization with memory pool configuration
   - ✅ Export validation and performance benchmarking
   - ✅ Jetson-optimized workspace memory allocation
@@ -239,7 +239,7 @@
 
 ### 3.2 YOLO Object Detection (0% Complete ⏳)
 
-- ⏳ Download and convert YOLOv8n model to TensorRT
+- ⏳ Download and convert YOLOv11n model to TensorRT
 - ⏳ Implement object_detection_node.py
 - ⏳ Create ROS2 node for real-time object detection
 - ⏳ Test detection accuracy and speed (target: 20+ FPS)
@@ -320,7 +320,7 @@
 ## Recent Updates
 
 - **2 Nov 2025**: Completed Model Conversion Tools Setup (Phase 0.5) - comprehensive TensorRT 10.x conversion pipeline
-- **2 Nov 2025**: Implemented YOLOv8 to TensorRT conversion with FP16 optimization and dynamic input sizing
+- **2 Nov 2025**: Implemented YOLOv11 to TensorRT conversion with FP16 optimization and dynamic input sizing
 - **2 Nov 2025**: Created FastDepth to TensorRT conversion script with depth estimation optimization
 - **2 Nov 2025**: Implemented Whisper to faster-whisper conversion with CTranslate2 optimization
 - **2 Nov 2025**: Created performance profiling utilities with GPU monitoring and thermal management

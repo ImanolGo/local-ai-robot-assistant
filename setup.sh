@@ -255,7 +255,7 @@ echo "5. Test hardware: python3 hardware_tests/test_*.py"
 echo "6. Launch system: ros2 launch launch/full_system_launch.py"
 echo
 echo "Model conversion commands:"
-echo "• YOLO: python3 tools/conversion/convert_yolo.py --model yolov8n --output-dir ./models/yolo_trt"
+echo "• YOLO: python3 tools/conversion/convert_yolo.py --model YOLOv11n --output-dir ./models/yolo_trt"
 echo "• Depth: python3 tools/conversion/convert_depth.py --output-dir ./models/depth_trt"
 echo "• Whisper: python3 tools/conversion/convert_whisper.py --model-size tiny"
 echo

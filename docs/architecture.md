@@ -122,7 +122,7 @@ This layer provides real-time environmental understanding and localization, runn
   - **Dead Reckoning Mode**: Short-term backup during sensor failures
 
 #### Real-time Object Detection (YOLO)
-- **Model**: YOLOv8n optimized with **TensorRT FP16**
+- **Model**: YOLOv11n optimized with **TensorRT FP16**
 - **Pipeline**: DeepStream-based for hardware acceleration
 - **Performance**: 20+ FPS at 640x480 resolution
 - **Output**: Published to `/perception/objects` with:
@@ -926,7 +926,7 @@ model = torch.compile(model, mode="reduce-overhead")
 **AI Models**:
 
 *Tier 1 - Continuous Perception*:
-- **YOLO**: YOLOv8n (TensorRT FP16)
+- **YOLO**: YOLOv11n (TensorRT FP16)
 - **Depth**: RT-MonoDepth-S (TensorRT FP16)
 - **SLAM**: RTAB-Map
 - **Localization**: robot_localization (EKF)
@@ -1319,7 +1319,7 @@ robot_assistant_project/
 │   │   ├── en_US-lessac-medium.onnx
 │   │   └── en_US-lessac-medium.onnx.json
 │   ├── yolo_trt/
-│   │   └── yolov8n.engine (TensorRT FP16)
+│   │   └── YOLOv11n.engine (TensorRT FP16)
 │   ├── depth_trt/
 │   │   └── rt_monodepth_s.engine (TensorRT FP16)
 │   └── gemma_3n_e2b/ (NEW)
