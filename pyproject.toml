@@ -86,5 +86,5 @@ jetson = [
     # - tensorrt (JetPack-optimized wheels)
     # - onnxruntime-gpu (JetPack-optimized wheels)
     # - pycuda (installed via apt/manual compilation)
-    "cupy-cuda12x",  # Can be installed normally
+    "cupy-cuda12x",  # Can be installed normally,
 ]

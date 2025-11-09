@@ -88,12 +88,17 @@ if [ "$JETPACK_MAJOR" = "6" ]; then
 
     # Create temp directory
     TEMP_DIR=$(mktemp -d)
+    echo "   📁 Created temp directory: $TEMP_DIR"
 
     # Download and install PyTorch
     TORCH_WHEEL_FILE=$(basename "$TORCH_WHEEL_URL")
-    if wget --quiet "$TORCH_WHEEL_URL" -O "$TEMP_DIR/$TORCH_WHEEL_FILE"; then
-        echo "   ✅ Downloaded PyTorch wheel"
+    echo "   📥 Downloading PyTorch wheel (this may take several minutes)..."
+    echo "      URL: $TORCH_WHEEL_URL"
+    if wget --progress=bar:force --timeout=300 "$TORCH_WHEEL_URL" -O "$TEMP_DIR/$TORCH_WHEEL_FILE"; then
+        echo "   ✅ Downloaded PyTorch wheel ($(du -h "$TEMP_DIR/$TORCH_WHEEL_FILE" | cut -f1))"
+        echo "   📦 Installing PyTorch..."
         uv pip install "$TEMP_DIR/$TORCH_WHEEL_FILE"
+        echo "   ✅ PyTorch installed successfully"
     else
         echo "   ❌ PyTorch download failed, trying backup..."
         # Fallback to NVIDIA wheel
@@ -102,23 +107,31 @@ if [ "$JETPACK_MAJOR" = "6" ]; then
 
     # Download and install torchvision
     TORCHVISION_WHEEL_FILE=$(basename "$TORCHVISION_WHEEL_URL")
-    if wget --quiet "$TORCHVISION_WHEEL_URL" -O "$TEMP_DIR/$TORCHVISION_WHEEL_FILE"; then
-        echo "   ✅ Downloaded torchvision wheel"
+    echo "   📥 Downloading torchvision wheel..."
+    echo "      URL: $TORCHVISION_WHEEL_URL"
+    if wget --progress=bar:force --timeout=300 "$TORCHVISION_WHEEL_URL" -O "$TEMP_DIR/$TORCHVISION_WHEEL_FILE"; then
+        echo "   ✅ Downloaded torchvision wheel ($(du -h "$TEMP_DIR/$TORCHVISION_WHEEL_FILE" | cut -f1))"
+        echo "   📦 Installing torchvision..."
         uv pip install "$TEMP_DIR/$TORCHVISION_WHEEL_FILE"
+        echo "   ✅ torchvision installed successfully"
     else
         echo "   ❌ torchvision download failed, will build from source"
         # Build torchvision from source as fallback
-        echo "   Building torchvision from source..."
+        echo "   🔨 Building torchvision from source..."
         uv pip install torchvision --no-deps
         PYTORCH_VERSION=$(python3 -c "import torch; print(torch.__version__)")
-        echo "   Built torchvision for PyTorch $PYTORCH_VERSION"
+        echo "   ✅ Built torchvision for PyTorch $PYTORCH_VERSION"
     fi
 
     # Download and install TensorRT Python bindings
     TENSORRT_WHEEL_FILE=$(basename "$TENSORRT_WHEEL_URL")
-    if wget --quiet "$TENSORRT_WHEEL_URL" -O "$TEMP_DIR/$TENSORRT_WHEEL_FILE"; then
-        echo "   ✅ Downloaded TensorRT wheel"
+    echo "   📥 Downloading TensorRT wheel..."
+    echo "      URL: $TENSORRT_WHEEL_URL"
+    if wget --progress=bar:force --timeout=300 "$TENSORRT_WHEEL_URL" -O "$TEMP_DIR/$TENSORRT_WHEEL_FILE"; then
+        echo "   ✅ Downloaded TensorRT wheel ($(du -h "$TEMP_DIR/$TENSORRT_WHEEL_FILE" | cut -f1))"
+        echo "   📦 Installing TensorRT..."
         uv pip install "$TEMP_DIR/$TENSORRT_WHEEL_FILE"
+        echo "   ✅ TensorRT installed successfully"
     else
         echo "   ⚠️  TensorRT wheel download failed, using system TensorRT"
     fi
@@ -150,16 +163,21 @@ uv pip install 'numpy<2'  # Fix numpy compatibility
 if [ "$JETPACK_MAJOR" = "6" ] && [ -n "$ONNX_WHEEL_URL" ]; then
     # Try Jetson-optimized ONNX Runtime wheel
     ONNX_WHEEL_FILE=$(basename "$ONNX_WHEEL_URL")
-    if wget --quiet "$ONNX_WHEEL_URL" -O "$TEMP_DIR/$ONNX_WHEEL_FILE" 2>/dev/null; then
-        echo "   ✅ Installing ONNX Runtime GPU wheel"
+    echo "   📥 Downloading ONNX Runtime GPU wheel..."
+    echo "      URL: $ONNX_WHEEL_URL"
+    if wget --progress=bar:force --timeout=300 "$ONNX_WHEEL_URL" -O "$TEMP_DIR/$ONNX_WHEEL_FILE" 2>/dev/null; then
+        echo "   ✅ Downloaded ONNX Runtime GPU wheel ($(du -h "$TEMP_DIR/$ONNX_WHEEL_FILE" | cut -f1))"
+        echo "   📦 Installing ONNX Runtime GPU..."
         uv pip install "$TEMP_DIR/$ONNX_WHEEL_FILE"
+        echo "   ✅ ONNX Runtime GPU installed successfully"
     else
-        echo "   ⚠️  Using standard ONNX Runtime"
+        echo "   ⚠️  ONNX Runtime GPU wheel download failed, using standard version"
         uv pip install onnxruntime
     fi
 else
-    echo "   Installing standard ONNX Runtime"
+    echo "   📦 Installing standard ONNX Runtime..."
     uv pip install onnxruntime
+    echo "   ✅ Standard ONNX Runtime installed"
 fi
 
 # Clean up temp directory
