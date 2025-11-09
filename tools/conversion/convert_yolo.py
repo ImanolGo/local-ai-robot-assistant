@@ -128,13 +128,26 @@ class YOLOConverter:
         if NVML_AVAILABLE:
             try:
                 nvml.nvmlInit()
-                self.gpu_available = True
+                self.nvml_available = True
             except Exception:
-                self.gpu_available = False
+                self.nvml_available = False
                 logger.warning("NVIDIA ML initialization failed - GPU monitoring disabled")
         else:
-            self.gpu_available = False
+            self.nvml_available = False
             logger.warning("NVIDIA ML not available - GPU monitoring disabled")
+
+        # Check GPU availability using PyTorch (more reliable than NVML)
+        try:
+            import torch
+
+            self.gpu_available = torch.cuda.is_available()
+            if self.gpu_available:
+                logger.info(f"CUDA GPU detected: {torch.cuda.get_device_name(0)}")
+            else:
+                logger.warning("No CUDA GPU detected")
+        except ImportError:
+            self.gpu_available = False
+            logger.warning("PyTorch not available - falling back to CPU")
 
     def convert_to_tensorrt(
         self,
@@ -320,7 +333,7 @@ class YOLOConverter:
                 }
             )
 
-        if self.gpu_available and NVML_AVAILABLE:
+        if self.gpu_available and self.nvml_available:
             try:
                 handle = nvml.nvmlDeviceGetHandleByIndex(0)
                 gpu_memory = nvml.nvmlDeviceGetMemoryInfo(handle)

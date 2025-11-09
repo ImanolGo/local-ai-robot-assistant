@@ -33,9 +33,15 @@ sudo apt-get install -y \
     python3-vcstool
 
 # --- Install audio + vision deps ---
-echo "🎧 Installing audio + vision dependencies..."
+echo "🎧 Installing audio + vision dependencies (system packages only)..."
 sudo apt-get install -y \
-    portaudio19-dev alsa-utils libopencv-dev python3-opencv
+    portaudio19-dev alsa-utils libopencv-dev
+
+# Remove any conflicting system OpenCV Python packages
+echo "🧹 Removing conflicting system OpenCV Python packages..."
+sudo apt-get remove -y python3-opencv python3-opencv-contrib || true
+
+# Note: opencv-python will be installed via PyTorch setup script for optimal Jetson compatibility
 
 # Optional: Install audio feedback tools
 sudo apt-get install -y espeak beep
@@ -54,15 +60,16 @@ echo "🔍 Installing DeepStream SDK..."
 sudo apt-get install -y deepstream-7.1
 
 # --- Install TensorRT and Model Conversion Dependencies ---
-echo "🚀 Installing TensorRT and model conversion tools..."
+echo "🚀 Installing TensorRT system packages and model conversion tools..."
 
-# Install TensorRT system packages
+# Install TensorRT system packages (Python bindings will be installed via setup_pytorch_jetson.sh)
 sudo apt-get install -y \
     libnvinfer-dev \
     libnvinfer-plugin-dev \
     libnvonnxparsers-dev \
-    python3-libnvinfer-dev \
-    tensorrt
+    python3-libnvinfer-dev
+
+# Note: tensorrt Python package will be installed via PyTorch setup script for compatibility
 
 # Install additional build dependencies for model conversion
 sudo apt-get install -y \
@@ -79,9 +86,9 @@ sudo apt-get install -y \
     libsndfile1-dev \
     libasound2-dev
 
-echo "   ✅ TensorRT and conversion dependencies installed"
+echo "   ✅ TensorRT system packages and conversion dependencies installed"
 
-# Verify TensorRT installation
+# Verify system TensorRT installation
 if command -v trtexec &> /dev/null; then
     echo "   ✅ trtexec found and ready"
 else
@@ -168,25 +175,26 @@ direnv allow || true
 if [ -f pyproject.toml ]; then
     echo "📦 Installing project dependencies from pyproject.toml..."
 
-    # Install PyTorch for Jetson using dedicated script
-    echo "🔥 Installing PyTorch for Jetson..."
+    # Install PyTorch, OpenCV, and TensorRT for Jetson using dedicated script
+    echo "🔥 Installing PyTorch, OpenCV, and TensorRT for Jetson..."
 
     # Check if we're on Jetson and run specialized setup
     if [ -f /etc/nv_tegra_release ]; then
-        echo "   Detected Jetson - running specialized PyTorch setup..."
+        echo "   Detected Jetson - running specialized PyTorch/OpenCV/TensorRT setup..."
         if [ -f scripts/setup/setup_pytorch_jetson.sh ]; then
             ./scripts/setup/setup_pytorch_jetson.sh
         else
             echo "   ⚠️  PyTorch setup script not found, using fallback installation..."
 
             # Fallback: simple installation
-            uv pip uninstall torch torchvision torchaudio || true
-            echo "   Installing standard PyTorch (may not have CUDA support)..."
+            uv pip uninstall torch torchvision torchaudio opencv-python tensorrt || true
+            echo "   Installing standard PyTorch and OpenCV (may not have CUDA support)..."
             uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+            uv pip install opencv-python
         fi
     else
-        echo "   Installing standard PyTorch..."
-        uv pip install torch torchvision
+        echo "   Installing standard PyTorch and OpenCV..."
+        uv pip install torch torchvision opencv-python
     fi
 
     # Install remaining dependencies
@@ -218,10 +226,19 @@ else:
     print('❌ CUDA not available - check PyTorch installation')
 " || echo "⚠️  PyTorch CUDA test failed"
 
+    # Test OpenCV installation
+    echo "🧪 Testing OpenCV installation..."
+    .venv/bin/python -c "
+import cv2
+print(f'OpenCV version: {cv2.__version__}')
+print('✅ OpenCV installed successfully')
+" || echo "⚠️  OpenCV test failed"
+
 else
     echo "⚠️  No pyproject.toml found. Creating a minimal one..."
     uv init --app
-    uv add numpy opencv-python rospkg
+    uv add numpy rospkg
+    # Note: OpenCV and TensorRT would be installed via setup_pytorch_jetson.sh if needed
 fi
 
 # --- Initialize rosdep ---

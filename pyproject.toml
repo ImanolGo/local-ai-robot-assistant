@@ -6,11 +6,11 @@ requires-python = ">=3.10"
 dependencies = [
     # Core scientific computing
     "numpy<2.0",
-    "opencv-python",
+    # "opencv-python",  # Installed via setup_pytorch_jetson.sh for Jetson compatibility
     "scipy>=1.9.0",
-    # Core ML frameworks - Jetson-optimized versions installed via setup.sh
-    # "torch>=1.12.0",  # Comment out - will be installed via setup.sh for Jetson
-    # "torchvision>=0.13.0",  # Comment out - will be installed via setup.sh for Jetson
+    # Core ML frameworks - Jetson-optimized versions installed via setup_pytorch_jetson.sh
+    # "torch>=1.12.0",  # Installed via setup_pytorch_jetson.sh for Jetson
+    # "torchvision>=0.13.0",  # Installed via setup_pytorch_jetson.sh for Jetson
     "transformers>=4.20.0",
     # ROS2 and robotics
     "pyaudio",
@@ -63,8 +63,9 @@ test = [
 conversion = [
     # Model conversion specific dependencies
     "onnx>=1.12.0",
-    "onnxruntime>=1.12.0",
-    "ultralytics>=8.0.0",
+    # "onnxruntime>=1.12.0",  # Installed via setup_pytorch_jetson.sh for Jetson compatibility
+    "onnxslim>=0.1.71",
+    "ultralytics>=8.3.0",
     "ctranslate2>=3.0.0",
     # Profiling and benchmarking
     "nvidia-ml-py3>=7.0.0",
@@ -77,9 +78,13 @@ audio = [
     "webrtcvad>=2.0.0"
 ]
 jetson = [
-    # Jetson-specific dependencies that need manual installation
-    # These will be installed via setup.sh script
-    # "tensorrt" - installed via apt
-    # "pycuda" - installed via apt/manual compilation
-    "cupy-cuda12x",
+    # Jetson-specific dependencies installed via setup_pytorch_jetson.sh
+    # These packages require special wheels and are handled by the setup script:
+    # - torch (JetPack-optimized wheels)
+    # - torchvision (JetPack-optimized wheels)
+    # - opencv-python (JetPack-optimized wheels)
+    # - tensorrt (JetPack-optimized wheels)
+    # - onnxruntime-gpu (JetPack-optimized wheels)
+    # - pycuda (installed via apt/manual compilation)
+    "cupy-cuda12x",  # Can be installed normally
 ]
