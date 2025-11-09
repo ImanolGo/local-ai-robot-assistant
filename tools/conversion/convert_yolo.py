@@ -53,6 +53,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import numpy as np
+
 # Optional imports with fallbacks
 try:
     import nvidia_ml_py3 as nvml
@@ -93,6 +95,21 @@ except ImportError:
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles numpy data types."""
+
+    def default(self, obj):
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 
 class YOLOConverter:
@@ -238,6 +255,139 @@ class YOLOConverter:
             logger.error("2. Proper CUDA environment")
             logger.error("3. Ultralytics package with TensorRT support")
             raise
+
+    def validate_accuracy(
+        self,
+        original_model_path: str,
+        engine_path: str,
+        validation_data: Optional[str] = None,
+        imgsz: int = 640,
+    ) -> Dict[str, Any]:
+        """
+        Validate converted model accuracy against original PyTorch model
+
+        Args:
+            original_model_path: Path to original PyTorch model
+            engine_path: Path to TensorRT engine
+            validation_data: Path to validation dataset (uses COCO val if None)
+            imgsz: Image size for validation
+
+        Returns:
+            Dictionary with accuracy comparison results
+        """
+        logger.info("Validating converted model accuracy...")
+
+        try:
+            # Load original PyTorch model
+            original_model = YOLO(original_model_path)
+            logger.info(f"Loaded original model: {original_model_path}")
+
+            # Load TensorRT model
+            trt_model = YOLO(engine_path)
+            logger.info(f"Loaded TensorRT model: {engine_path}")
+
+            # Use COCO val dataset if no validation data provided
+            if validation_data is None:
+                # Download COCO val sample for validation (small subset)
+                validation_data = "coco8.yaml"  # Small COCO subset for quick validation
+                logger.info("Using COCO8 dataset for quick validation")
+
+            # Validate original model
+            logger.info("Validating original PyTorch model...")
+            original_results = original_model.val(
+                data=validation_data,
+                imgsz=imgsz,
+                verbose=False,
+                save=False,
+                plots=False,
+            )
+
+            # Validate TensorRT model
+            logger.info("Validating TensorRT model...")
+            trt_results = trt_model.val(
+                data=validation_data,
+                imgsz=imgsz,
+                verbose=False,
+                save=False,
+                plots=False,
+            )
+
+            # Extract mAP metrics
+            original_map50 = original_results.box.map50
+            original_map50_95 = original_results.box.map
+
+            trt_map50 = trt_results.box.map50
+            trt_map50_95 = trt_results.box.map
+
+            # Calculate accuracy drop
+            map50_drop = abs(original_map50 - trt_map50)
+            map50_95_drop = abs(original_map50_95 - trt_map50_95)
+
+            # Check if accuracy drop is within acceptable range (2%)
+            accuracy_acceptable = map50_95_drop <= 0.02
+
+            validation_results = {
+                "original_map50": float(original_map50),
+                "original_map50_95": float(original_map50_95),
+                "trt_map50": float(trt_map50),
+                "trt_map50_95": float(trt_map50_95),
+                "map50_drop": float(map50_drop),
+                "map50_95_drop": float(map50_95_drop),
+                "accuracy_acceptable": bool(accuracy_acceptable),
+                "validation_dataset": validation_data,
+                "image_size": int(imgsz),
+            }
+
+            # Display results
+            self._display_accuracy_results(validation_results)
+
+            return validation_results
+
+        except Exception as e:
+            logger.error(f"Accuracy validation failed: {e}")
+            logger.warning("Skipping accuracy validation - continuing with conversion")
+            return {
+                "error": str(e),
+                "accuracy_acceptable": None,
+                "validation_skipped": True,
+            }
+
+    def _display_accuracy_results(self, results: Dict[str, Any]) -> None:
+        """Display accuracy validation results"""
+        if results.get("validation_skipped"):
+            print("\n⚠️ Accuracy validation was skipped due to error")
+            return
+
+        data = [
+            ["Metric", "Original PyTorch", "TensorRT", "Drop"],
+            [
+                "mAP@0.5",
+                f"{results['original_map50']:.4f}",
+                f"{results['trt_map50']:.4f}",
+                f"{results['map50_drop']:.4f}",
+            ],
+            [
+                "mAP@0.5:0.95",
+                f"{results['original_map50_95']:.4f}",
+                f"{results['trt_map50_95']:.4f}",
+                f"{results['map50_95_drop']:.4f}",
+            ],
+        ]
+
+        print("\n" + "=" * 60)
+        print("ACCURACY VALIDATION RESULTS")
+        print("=" * 60)
+        print(tabulate(data, headers="firstrow", tablefmt="grid"))
+
+        if results["accuracy_acceptable"]:
+            print(
+                f"\n✅ Accuracy validation passed: mAP drop {results['map50_95_drop']:.4f} <= 0.02"
+            )
+        else:
+            print(
+                f"\n⚠️ Accuracy validation warning: mAP drop {results['map50_95_drop']:.4f} > 0.02"
+            )
+            print("Consider using higher precision or adjusting conversion parameters")
 
     def benchmark_model(
         self,
@@ -386,6 +536,8 @@ class YOLOConverter:
 
         # Performance assessment against architecture requirements
         target_fps = 20.0  # From architecture.md requirements
+        target_inference_ms = 50.0  # Target: <50ms inference time on Jetson
+
         if results["fps"] >= target_fps:
             print(f"\n✅ Performance target met: {results['fps']:.1f} FPS >= {target_fps} FPS")
         else:
@@ -394,6 +546,17 @@ class YOLOConverter:
             print("- Reducing input resolution")
             print("- Using INT8 quantization")
             print("- Optimizing TensorRT workspace size")
+
+        if results["avg_inference_time_ms"] <= target_inference_ms:
+            print(
+                f"✅ Inference time target met: {results['avg_inference_time_ms']:.1f}ms <=\
+                      {target_inference_ms}ms"
+            )
+        else:
+            print(
+                f"⚠️ Inference time above target: {results['avg_inference_time_ms']:.1f}ms >\
+                      {target_inference_ms}ms"
+            )
 
     def convert_with_multiple_precisions(
         self,
@@ -441,7 +604,7 @@ class YOLOConverter:
         # Save comparison results
         output_path = Path(output_dir)
         with open(output_path / f"{self.model_name}_precision_comparison.json", "w") as f:
-            json.dump(benchmark_results, f, indent=2)
+            json.dump(benchmark_results, f, indent=2, cls=NumpyEncoder)
 
         # Display comparison table
         self._display_precision_comparison(benchmark_results)
@@ -576,6 +739,16 @@ Examples:
         action="store_true",
         help="Convert and compare FP16 and INT8 precisions",
     )
+    parser.add_argument(
+        "--validate-accuracy",
+        action="store_true",
+        help="Validate accuracy against original model (requires validation dataset)",
+    )
+    parser.add_argument(
+        "--validation-data",
+        type=str,
+        help="Path to validation dataset YAML (default: coco8.yaml for quick validation)",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
@@ -639,11 +812,25 @@ Examples:
                 num_iterations=args.benchmark_iterations,
             )
 
+            # Validate accuracy if requested
+            validation_results = {}
+            if args.validate_accuracy:
+                logger.info("🔄 Validating model accuracy...")
+                original_model_path = f"{args.model}.pt"
+                validation_results = converter.validate_accuracy(
+                    original_model_path=original_model_path,
+                    engine_path=engine_path,
+                    validation_data=args.validation_data,
+                )
+
+                # Combine results
+                benchmark_results["accuracy_validation"] = validation_results
+
             # Save benchmark results
             output_dir = Path(args.output_dir)
             benchmark_file = output_dir / f"{args.model}_{args.precision}_benchmark.json"
             with open(benchmark_file, "w") as f:
-                json.dump(benchmark_results, f, indent=2)
+                json.dump(benchmark_results, f, indent=2, cls=NumpyEncoder)
 
             print("\n" + "=" * 60)
             print("CONVERSION COMPLETED SUCCESSFULLY")

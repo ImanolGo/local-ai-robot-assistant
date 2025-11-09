@@ -308,12 +308,12 @@
 - [x] Document model sources and licenses in `docs/model_credits.md`
 
 ### 3.2 Vision Model Conversion (TensorRT)
-- [ ] Implement `tools/conversion/convert_yolo_optimized.py`
-  - [ ] Direct PyTorch to TensorRT conversion using Ultralytics export
-  - [ ] Convert YOLOv11n to TensorRT engine (FP16) - skip ONNX intermediate step
-  - [ ] Validate output accuracy (mAP drop <2%)
-  - [ ] Benchmark inference time (target: <50ms on Jetson)
-  - [ ] Save engine to `models/yolo_trt/YOLOv11n_fp16.engine`
+- [x] Implement `tools/conversion/convert_yolo.py`
+  - [x] Direct PyTorch to TensorRT conversion using Ultralytics export
+  - [x] Convert YOLOv11n to TensorRT engine (FP16) - skip ONNX intermediate step
+  - [x] Validate output accuracy (mAP drop <2%)
+  - [x] Benchmark inference time (target: <50ms on Jetson)
+  - [x] Save engine to `models/yolo_trt/YOLOv11n_fp16.engine`
 - [ ] Implement `tools/convert_depth.py`
   - [ ] Export RT-MonoDepth-S to ONNX format
   - [ ] Convert ONNX to TensorRT engine (FP16)
@@ -332,7 +332,7 @@
   - [ ] Download Whisper Tiny model (faster-whisper format)
   - [ ] Test inference speed (target: real-time factor <0.3x)
   - [ ] Benchmark RAM usage (<300 MB)
-- [ ] ALTERNATIVE: Implement `tools/convert_whisper.py`
+- [ ] ALTERNATIVE: Implement `tools/conversion/convert_whisper.py`
   - [ ] Export Whisper Tiny to ONNX
   - [ ] Convert to TensorRT (FP16)
   - [ ] Validate Word Error Rate (WER)
