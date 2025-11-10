@@ -197,24 +197,6 @@ if [ -f pyproject.toml ]; then
         uv pip install torch torchvision opencv-python
     fi
 
-    # Install torch2trt after TensorRT is available
-    echo "   Installing torch2trt for TensorRT optimization..."
-    if [ -f /etc/nv_tegra_release ]; then
-        echo "     Cloning and installing torch2trt for Jetson..."
-        cd /tmp
-        if [ -d "torch2trt" ]; then
-            rm -rf torch2trt
-        fi
-        git clone https://github.com/NVIDIA-AI-IOT/torch2trt
-        cd torch2trt
-        ../../../.venv/bin/python -m pip install --no-build-isolation .
-        cd ../..
-        rm -rf /tmp/torch2trt
-        echo "     ✅ torch2trt installed successfully"
-    else
-        echo "     ⚠️  Skipping torch2trt installation (not on Jetson)"
-    fi
-
     # Install remaining dependencies
     echo "   Installing remaining project dependencies..."
     uv sync
