@@ -12,7 +12,7 @@ text, audio, and vision processing capabilities on Jetson Orin Nano.
 Usage:
     python scripts/setup/download_models.py               # Download all models
     python scripts/setup/download_models.py --verify      # Verify existing models
-    python scripts/setup/download_models.py --models yolo whisper  # Specific models
+    python scripts/setup/download_models.py --models yolo depth_anything_v2  # Specific models
 
 Note: The Gemma 3n E2B model weights will be automatically downloaded by HuggingFace
 Transformers during first use. This script downloads configuration files only.
@@ -50,20 +50,22 @@ MODEL_REGISTRY = {
         "source": "Ultralytics",
         "required": True,
     },
-    "rt_monodepth": {
-        "name": "RT-MonoDepth-S Monocular Depth Estimation",
-        "description": "RT-MonoDepth-S lightweight encoder-decoder for real-time monocular\
-              depth estimation",
-        "url": "https://drive.google.com/file/d/1Jf5K3m0DfAqVcVCE6y0cKufEKIHu86sz/view?usp=drive_link",  # noqa E501
-        "filename": "weights_rtmonodepth.zip",
+    "depth_anything_v2": {
+        "name": "Depth Anything V2 Small Monocular Depth Estimation",
+        "description": "Depth Anything V2 Small with DPT architecture and DINOv2 backbone for \
+state-of-the-art monocular depth estimation. Trained on 595K synthetic labeled + 62M+ real \
+unlabeled images for superior fine-grained details and robustness.",
+        "url": "depth-anything/Depth-Anything-V2-Small-hf",  # HuggingFace model ID
+        "filename": "config.json",  # Main indicator file
         "destination": "models/depth_trt/",
-        "size_mb": 232.5,  # Actual downloaded size
-        "sha256": "44c87fa550e6ce8b44cb4115e37f53f872e1a1a1cd576e58aa270c3c45176739",
-        "license": "Academic Research",
-        "source": "RT-MonoDepth Research",
+        "size_mb": 95.0,  # Estimated size for Depth Anything V2 Small
+        "sha256": "",  # Will be calculated during download
+        "license": "Apache-2.0",
+        "source": "TikTok/Depth-Anything",
         "required": True,
-        "extract": True,
-        "download_method": "gdown",
+        "download_method": "transformers_offline",
+        "note": "Downloads complete model using transformers for offline capability. \
+Includes model weights, config, and all required files for TensorRT conversion.",
     },
     "whisper": {
         "name": "Whisper Tiny Speech Recognition",
@@ -230,20 +232,50 @@ class ModelDownloader:
             # Create directory if it doesn't exist
             destination_dir.mkdir(parents=True, exist_ok=True)
 
-            # Download and save model
-            print("   Downloading model weights...")
-            model = Gemma3nForConditionalGeneration.from_pretrained(
-                repo_id,
-                torch_dtype=torch.bfloat16,
-                # Don't load to GPU during download
-                device_map=None,
-            )
-            model.save_pretrained(destination_dir)
+            # Determine model type based on repo_id
+            if "gemma" in repo_id.lower():
+                # Download and save Gemma 3n model
+                print("   Downloading Gemma 3n model weights...")
+                model = Gemma3nForConditionalGeneration.from_pretrained(
+                    repo_id,
+                    torch_dtype=torch.bfloat16,
+                    # Don't load to GPU during download
+                    device_map=None,
+                )
+                model.save_pretrained(destination_dir)
 
-            # Download and save processor
-            print("   Downloading processor (tokenizer, etc.)...")
-            processor = AutoProcessor.from_pretrained(repo_id)
-            processor.save_pretrained(destination_dir)
+                # Download and save processor
+                print("   Downloading processor (tokenizer, etc.)...")
+                processor = AutoProcessor.from_pretrained(repo_id)
+                processor.save_pretrained(destination_dir)
+
+            elif "depth-anything" in repo_id.lower():
+                # Download and save Depth Anything V2 model
+                print("   Downloading Depth Anything V2 model weights...")
+                from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+
+                model = AutoModelForDepthEstimation.from_pretrained(
+                    repo_id,
+                    torch_dtype=torch.float32,  # Depth models typically use float32
+                    device_map=None,
+                )
+                model.save_pretrained(destination_dir)
+
+                # Download and save image processor
+                print("   Downloading image processor...")
+                processor = AutoImageProcessor.from_pretrained(repo_id)
+                processor.save_pretrained(destination_dir)
+
+            else:
+                # Generic model download
+                print("   Downloading generic model...")
+                from transformers import AutoModel, AutoProcessor
+
+                model = AutoModel.from_pretrained(repo_id, device_map=None)
+                model.save_pretrained(destination_dir)
+
+                processor = AutoProcessor.from_pretrained(repo_id)
+                processor.save_pretrained(destination_dir)
 
             print(f"✅ Model and processor saved to {destination_dir}")
             return True
@@ -506,7 +538,7 @@ def main():
 Examples:
   python download_models.py                    # Download all required models
   python download_models.py --all              # Download all models (including optional)
-  python download_models.py --models yolo whisper gemma_3n_e2b  # Download specific models
+  python download_models.py --models yolo depth_anything_v2 gemma_3n_e2b  # Download specific models
   python download_models.py --verify           # Verify existing models
   python download_models.py --list             # List all models and their status
   python download_models.py --force            # Force re-download even if files exist

@@ -24,7 +24,7 @@ The system consists of six primary layers organized around a two-tier perception
 
 2. **Tier 1 - Continuous Perception Layer**: Real-time processing at 20-30 FPS
    - Object detection (YOLO)
-   - Depth estimation (RT-MonoDepth-S)
+   - Depth estimation (Depth Anything V2 Small)
    - SLAM and localization
    - Semantic object tracking
 
@@ -54,7 +54,7 @@ graph TD
     C --> D[Gemma 3n Cognitive Core]
 
     E[Camera 30 FPS] --> F[YOLO 20 FPS]
-    E --> G[RT-MonoDepth 30 FPS]
+    E --> G[Depth Anything V2 20 FPS]
     F --> H[Semantic Object Tracker]
     G --> I[RTAB-Map SLAM]
     J[IMU 50 Hz] --> I
@@ -133,8 +133,8 @@ This layer provides real-time environmental understanding and localization, runn
 **Role**: Continuous object tracking for reactive navigation, obstacle avoidance, and semantic map updates
 
 #### Monocular Depth Estimation
-- **Model**: **RT-MonoDepth-S** converted to **TensorRT FP16 engine**
-- **Performance**: 30+ FPS at 320x240 resolution
+- **Model**: **Depth Anything V2 Small** with **DPT architecture and DINOv2 backbone**
+- **Performance**: 20+ FPS at 518x518 resolution with TensorRT optimization
 - **Output**: Per-pixel depth maps published to `/perception/depth`
 - **Integration**: Fused with YOLO detections for 3D object localization
 
@@ -345,7 +345,7 @@ The primary decision-making engine using Behavior Trees, orchestrating the two-t
 - Semantic object map with real-time positions
   - Format: `{object_id: "red_ball_id=5", class: "ball", position: [x, y, z], last_seen: timestamp}`
 - IMU-derived motion state
-- Obstacle map (from depth estimation)
+- Obstacle map (from Depth Anything V2 depth estimation)
 - System health metrics
 
 **Tier 2 Strategic Data** (Updated on-demand):
@@ -427,7 +427,7 @@ The primary decision-making engine using Behavior Trees, orchestrating the two-t
 - Receives target object ID from Gemma 3n
 - Subscribes to real-time YOLO tracking updates
 - Continuously adjusts path as object position updates
-- Uses RT-MonoDepth for obstacle avoidance
+- Uses Depth Anything V2 for obstacle avoidance
 - Smooth, reactive navigation at 10 Hz command rate
 
 **VisualGoalVerification** (NEW):
@@ -471,7 +471,7 @@ T=0.1s: User: "Go to the red ball"
 
         [Tier 1 Continuous Perception - Already Running]
         → YOLO tracking: red_ball_id=5 at position (2.3m, 1.1m, 0°)
-        → RT-MonoDepth: Depth map shows clear path
+        → Depth Anything V2: Depth map shows clear path
         → RTAB-Map: Robot at origin (0, 0, 0°)
 
 T=1.6s: Audio capture complete
@@ -509,7 +509,7 @@ T=4.4s: Behavior Tree executes NavigateWithTracking
 T=4.5s: Navigation begins
         [Tier 1 - Continuous Loop at 20-30 FPS]
         → YOLO: Tracking red_ball_id=5 position
-        → RT-MonoDepth: Depth map for obstacles
+        → Depth Anything V2: Depth map for obstacles
         → Semantic Tracker: Updates ball position continuously
         → SLAM: Robot odometry from visual-IMU fusion
 
@@ -582,7 +582,7 @@ T=11.7s: System ready for next command
 ┌─────────────────────────────────────────────────────┐
 │ TIER 1: Continuous Perception (Always Running)     │
 │ - YOLO: 20 FPS object detection & tracking         │
-│ - RT-MonoDepth: 30 FPS depth estimation            │
+│ - Depth Anything V2: 20 FPS depth estimation      │
 │ - RTAB-Map SLAM: 10-30 Hz localization             │
 │ - Semantic Tracker: Real-time object positions     │
 │ → Feeds semantic map to Behavior Tree               │
@@ -606,7 +606,7 @@ T=11.7s: System ready for next command
 │ - YOLO: Continuous tracking of red_ball_id=5       │
 │ - Semantic Tracker: Updates position 20x/second    │
 │ - Behavior Tree: Adjusts path in real-time         │
-│ - RT-MonoDepth: Obstacle avoidance                 │
+│ - Depth Anything V2: Obstacle avoidance           │
 │ - Motor Controller: Smooth differential drive      │
 │ → Robot navigates smoothly, adapts to ball motion  │
 └─────────────────────────────────────────────────────┘
@@ -681,7 +681,7 @@ T=11.5s: Response complete, ready for next command
 - RAM: ~3.5 GB
 - CPU: 40-60%
 - GPU: 60-80%
-- Components: YOLO, RT-MonoDepth, SLAM, Semantic Tracker
+- Components: YOLO, Depth Anything V2, SLAM, Semantic Tracker
 
 **Tier 2 Active** (+ Gemma 3n reasoning):
 - RAM: ~5.5 GB (peak)
@@ -705,7 +705,7 @@ T=11.5s: Response complete, ready for next command
 | System/ROS2 | 1.0 GB | 1.2 GB | 1.2 GB | Base OS + ROS2 nodes |
 | RTAB-Map SLAM | - | 1.2 GB | 1.2 GB | Visual-IMU odometry |
 | YOLO TensorRT | - | 600 MB | 600 MB | Object detection (20 FPS) |
-| RT-MonoDepth-S | - | 300 MB | 300 MB | Depth estimation (30 FPS) |
+| Depth Anything V2 Small | - | 400 MB | 400 MB | Depth estimation (20 FPS) |
 | Semantic Tracker | - | 200 MB | 200 MB | Persistent object IDs |
 | Wake Word (openWakeWord) | 100 MB | 100 MB | 100 MB | Always active |
 | Audio Buffer | - | 50 MB | 50 MB | VAD + encoding |
@@ -715,8 +715,8 @@ T=11.5s: Response complete, ready for next command
 | Multimodal Buffers | - | - | 300 MB | Image/audio preprocessing |
 | Web Server (optional) | - | 200 MB | 200 MB | Can be disabled |
 | Buffers/Other | 500 MB | 650 MB | 850 MB | System overhead |
-| **Total Usage** | **1.8 GB** | **4.5 GB** | **7.2 GB** | |
-| **Available Buffer** | **6.2 GB** | **3.5 GB** | **0.8 GB** | **Safe operation** |
+| **Total Usage** | **1.8 GB** | **4.6 GB** | **7.3 GB** | |
+| **Available Buffer** | **6.2 GB** | **3.4 GB** | **0.7 GB** | **Safe operation** |
 
 ### 4.2. Dynamic Model Loading Strategy
 
@@ -839,7 +839,7 @@ class Gemma3nManager:
 
 ### 5.1. Model Format Pipeline
 
-**Vision Models** (YOLO, RT-MonoDepth-S):
+**Vision Models** (YOLO, Depth Anything V2 Small):
 ```
 PyTorch → ONNX → TensorRT FP16 Engine
 ```
@@ -874,7 +874,7 @@ HuggingFace Transformers → bfloat16 → (Optional: torch.compile())
 
 **Provided Scripts**:
 - `tools/convert_yolo.py` - YOLO → TensorRT FP16
-- `tools/convert_depth.py` - RT-MonoDepth-S → TensorRT FP16
+- `tools/convert_depth.py` - Depth Anything V2 Small → TensorRT FP16
 - `tools/benchmark_gemma3n.py` - Test Gemma 3n performance on Jetson
 - `tools/profile_model.py` - General model benchmarking
 
@@ -919,7 +919,7 @@ model = torch.compile(model, mode="reduce-overhead")
 
 **Deep Learning Frameworks**:
 - PyTorch 2.0+ (for Gemma 3n)
-- TensorRT (for YOLO, RT-MonoDepth-S)
+- TensorRT (for YOLO, Depth Anything V2)
 - HuggingFace Transformers 4.53.0+
 - CUDA, cuDNN (via JetPack)
 
@@ -927,7 +927,7 @@ model = torch.compile(model, mode="reduce-overhead")
 
 *Tier 1 - Continuous Perception*:
 - **YOLO**: YOLOv11n (TensorRT FP16)
-- **Depth**: RT-MonoDepth-S (TensorRT FP16)
+- **Depth**: Depth Anything V2 Small (TensorRT FP16)
 - **SLAM**: RTAB-Map
 - **Localization**: robot_localization (EKF)
 
@@ -1080,7 +1080,7 @@ def stuck_recovery_with_vision(self):
 - **75°C**: Log warning, no action
 - **80°C**: Reduce inference frequency
   - YOLO: 20 FPS → 15 FPS
-  - RT-MonoDepth: 30 FPS → 20 FPS
+  - Depth Anything V2: 20 FPS → 15 FPS
   - Gemma 3n: Increase cooldown between inferences
 - **85°C**: Emergency thermal throttling
   - Disable Gemma 3n
@@ -1166,14 +1166,14 @@ Additional degradation triggers: Thermal throttling, low battery
 
 **Metrics to Measure**:
 - **YOLO**: FPS, detection latency, accuracy (mAP)
-- **RT-MonoDepth**: FPS, depth accuracy (RMSE)
+- **Depth Anything V2**: FPS, depth accuracy (RMSE)
 - **Gemma 3n**: Inference time, token throughput, memory usage
 - **End-to-End**: Command-to-action latency
 - **SLAM**: Pose accuracy, map quality, loop closure time
 
 **Performance Targets**:
 - YOLO: 20+ FPS at 640x480
-- RT-MonoDepth: 30+ FPS at 320x240
+- Depth Anything V2: 20+ FPS at 518x518
 - Gemma 3n command understanding: < 3 seconds
 - Gemma 3n goal verification: < 2 seconds
 - Total command-to-action: < 5 seconds
@@ -1248,7 +1248,7 @@ robot_assistant_project/
 │   │       ├── camera_driver.py
 │   │       ├── image_undistort_node.py
 │   │       ├── yolo_detector_node.py (TensorRT DeepStream)
-│   │       ├── depth_estimator_node.py (RT-MonoDepth-S TensorRT)
+│   │       ├── depth_estimator_node.py (Depth Anything V2 TensorRT)
 │   │       └── semantic_object_tracker_node.py (NEW)
 │   │
 │   ├── localization_nodes/
@@ -1330,7 +1330,7 @@ robot_assistant_project/
 │
 ├── tools/
 │   ├── convert_yolo.py (YOLO → TensorRT)
-│   ├── convert_depth.py (RT-MonoDepth-S → TensorRT)
+│   ├── convert_depth.py (Depth Anything V2 → TensorRT)
 │   ├── calibrate_camera.py (fisheye calibration with checkerboard)
 │   ├── benchmark_perception.py (YOLO/Depth FPS testing)
 │   ├── benchmark_gemma3n.py (NEW - LLM inference timing)
@@ -1471,16 +1471,17 @@ robot_assistant_project/
 - **Minimal Overhead**: Efficient JSON parsing keeps CPU usage low despite higher rate
 - **Fallback Reliability**: More accurate IMU data when visual odometry fails
 
-### 11.7. RT-MonoDepth-S Over FastDepth
+### 11.7. Depth Anything V2 Small Over RT-MonoDepth-S
 
-**Decision**: Use RT-MonoDepth-S for monocular depth estimation
+**Decision**: Use Depth Anything V2 Small for monocular depth estimation
 
 **Rationale**:
-- **Superior Performance**: 30.5 FPS vs. 15 FPS on Jetson platforms
-- **Lower Memory**: ~300 MB vs. ~400 MB
-- **Optimized Architecture**: Shared encoder-decoder designed for embedded systems
-- **Real-time Suitable**: Consistently above 30 FPS for SLAM integration
-- **Proven Track Record**: Demonstrated performance on Jetson Nano (similar hardware)
+- **State-of-the-art Performance**: Trained on 595K synthetic labeled + 62M+ real unlabeled images
+- **Superior Quality**: More fine-grained details and robustness than Depth Anything V1
+- **Efficient Architecture**: DPT with DINOv2 backbone, 10x faster than SD-based models
+- **Transformers Compatible**: Seamless integration with HuggingFace ecosystem
+- **Edge Optimized**: Designed for deployment on edge devices like Jetson Orin
+- **Real-time Capability**: 20+ FPS at 518x518 resolution with TensorRT optimization
 
 ### 11.8. Visual Goal Verification
 
@@ -1541,7 +1542,7 @@ robot_assistant_project/
 
 **Tasks**:
 1. Convert and deploy YOLO TensorRT engine
-2. Convert and deploy RT-MonoDepth-S TensorRT engine
+2. Convert and deploy Depth Anything V2 TensorRT engine
 3. Implement semantic object tracker
 4. Set up RTAB-Map SLAM
 5. Configure robot_localization EKF fusion
@@ -1672,7 +1673,7 @@ robot_assistant_project/
 | Metric | Target | Notes |
 |--------|--------|-------|
 | YOLO Detection | 20+ FPS | At 640x480 resolution |
-| RT-MonoDepth | 30+ FPS | At 320x240 resolution |
+| Depth Anything V2 | 20+ FPS | At 518x518 resolution |
 | SLAM Pose Updates | 10-30 Hz | Variable based on scene |
 | IMU Polling | 50 Hz | Consistent rate |
 | Semantic Tracker | 20 Hz | Matches YOLO rate |
