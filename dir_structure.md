@@ -240,7 +240,7 @@ local-ai-robot-assistant/
 │   │   ├── yolov11n.engine
 │   │   └── .gitkeep
 │   ├── depth_trt/
-│   │   ├── rt_monodepth_s.engine
+│   │   ├── depth_anything_v2_s.engine
 │   │   └── .gitkeep
 │   └── gemma_3n_e2b/                   #  replaces nanollm_quantized/
 │       ├── config.json                 # Gemma 3n E2B configuration

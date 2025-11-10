@@ -1,9 +1,9 @@
 # Model Registry for Local AI Robot Assistant
 # This file contains metadata for all AI models used in the system
 
-version: "1.1"
-updated: "2025-11-07"
-description: "Registry of AI models with metadata, sources, and requirements. Updated to use RT-MonoDepth-S and YOLO11n."
+version: "1.2"
+updated: "2025-11-10"
+description: "Registry of AI models with metadata, sources, and requirements. Updated to use Depth Anything V2 Small and YOLO11n."
 
 models:
   vision:
@@ -36,33 +36,39 @@ models:
         script: "tools/convert_yolo.py"
         precision: "fp16"
 
-    rt_monodepth:
-      name: "RT-MonoDepth-S Monocular Depth Estimation"
+    depth_anything_v2:
+      name: "Depth Anything V2 Small Monocular Depth Estimation"
       type: "depth_estimation"
-      framework: "pytorch"
+      framework: "transformers"
       runtime: "tensorrt"
-      size_mb: 232.5
-      input_resolution: [640, 192]
+      size_mb: 95.0
+      input_resolution: [518, 518]
       output_format: "depth_map"
       performance_targets:
-        fps: 30
-        latency_ms: 35
+        fps: 20
+        latency_ms: 50
       memory_usage:
-        ram_mb: 200
-        vram_mb: 300
+        ram_mb: 250
+        vram_mb: 400
       source:
-        provider: "RT-MonoDepth Research"
-        url: "https://github.com/rt-monodepth/rt-monodepth"
-        license: "Academic Research"
-        commercial_use: false
+        provider: "TikTok/Depth-Anything"
+        url: "https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf"
+        license: "Apache-2.0"
+        commercial_use: true
       files:
-        archive: "weights_rtmonodepth.zip"
-        pytorch: "weights/RTMonoDepth/s/m_640_192/"
-        tensorrt: "rt_monodepth_s_fp16.engine"
+        transformers: "config.json"
+        pytorch: "pytorch_model.bin"
+        tensorrt: "depth_anything_v2_small_fp16.engine"
       conversion:
         required: true
         script: "tools/convert_depth.py"
         precision: "fp16"
+      features:
+        - "DPT architecture with DINOv2 backbone"
+        - "Trained on 595K synthetic + 62M+ real images"
+        - "Superior fine-grained details vs V1"
+        - "10x faster than SD-based models"
+        - "State-of-the-art robustness"
 
   audio:
     whisper:
@@ -304,7 +310,7 @@ dependencies:
     - "cuda>=11.4"
     - "tensorrt>=8.6"
     - "opencv>=4.5"
-    - "gdown>=5.0"  # Required for RT-MonoDepth-S Google Drive downloads
+    - "gdown>=5.0"  # Required for various model downloads
 
   python_packages:
     - "torch>=2.0"

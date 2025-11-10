@@ -299,7 +299,7 @@
 
 ### 3.1 Model Acquisition
 - [x] Download YOLOv11n PyTorch model from Ultralytics
-- [x] Download RT-MonoDepth-S PyTorch model
+- [x] Download Depth Anything V2 Small PyTorch model
 - [x] Download Whisper Tiny model from OpenAI
 - [x] Download Piper TTS model and voice files
 - [x] Download openWakeWord models
@@ -315,11 +315,11 @@
   - [x] Benchmark inference time (target: <50ms on Jetson)
   - [x] Save engine to `models/yolo_trt/YOLOv11n_fp16.engine`
 - [ ] Implement `tools/convert_depth.py`
-  - [ ] Export RT-MonoDepth-S to ONNX format
+  - [ ] Export Depth Anything V2 Small to ONNX format
   - [ ] Convert ONNX to TensorRT engine (FP16)
   - [ ] Validate depth map quality
   - [ ] Benchmark inference time (target: <35ms for 30+ FPS)
-  - [ ] Save engine to `models/depth_trt/rt_monodepth_s_fp16.engine`
+  - [ ] Save engine to `models/depth_trt/depth_anything_v2_s_fp16.engine`
 - [ ] Document conversion process in `docs/guides/model_conversion.md`
 
 ### 3.3 Audio Model Setup
@@ -409,7 +409,7 @@
 
 ### 4.2 Depth Estimation Node
 - [ ] Implement `depth_estimator.py`
-  - [ ] Load RT-MonoDepth-S TensorRT engine from Phase 3.2
+  - [ ] Load Depth Anything V2 Small TensorRT engine from Phase 3.2
   - [ ] Subscribe to `/camera/undistorted`
   - [ ] Run inference using TensorRT runtime
   - [ ] Publish depth maps to `/perception/depth`

@@ -1321,7 +1321,7 @@ robot_assistant_project/
 │   ├── yolo_trt/
 │   │   └── YOLOv11n.engine (TensorRT FP16)
 │   ├── depth_trt/
-│   │   └── rt_monodepth_s.engine (TensorRT FP16)
+│   │   └── depth_anything_vs_s.engine (TensorRT FP16)
 │   └── gemma_3n_e2b/ (NEW)
 │       ├── config.json
 │       ├── model.safetensors
