@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
@@ -76,4 +76,15 @@ audio = [
     # Audio processing dependencies
     "sounddevice>=0.4.0",
     "webrtcvad>=2.0.0"
+]
+jetson = [
+    # Jetson-specific dependencies installed via setup_pytorch_jetson.sh
+    # These packages require special wheels and are handled by the setup script:
+    # - torch (JetPack-optimized wheels)
+    # - torchvision (JetPack-optimized wheels)
+    # - opencv-python (JetPack-optimized wheels)
+    # - tensorrt (JetPack-optimized wheels)
+    # - onnxruntime-gpu (JetPack-optimized wheels)
+    # - pycuda (installed via apt/manual compilation)
+    "cupy-cuda12x",  # Can be installed normally,
 ]

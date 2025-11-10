@@ -28,31 +28,15 @@ local-ai-robot-assistant/
 │   │   │   ├── camera_driver.py
 │   │   │   ├── image_undistort_node.py
 │   │   │   ├── object_detector.py
-│   │   │   ├── depth_estimator.py
-│   │   │   │
-│   │   │   └── depth/
-│   │   │       ├── __init__.py
-│   │   │       ├── rt_monodepth_model.py
-│   │   │       ├── rt_monodepth_preprocessing.py
-│   │   │       ├── rt_monodepth_inference.py
-│   │   │       ├── convert_to_tensorrt.py
-│   │   │       ├── networks/               # Copied from RT-MonoDepth repo
-│   │   │       │   ├── __init__.py
-│   │   │       │   ├── rtmonodepth.py
-│   │   │       │   └── [other network files]
-│   │   │       ├── layers.py               # Copied from RT-MonoDepth repo
-│   │   │       └── options.py              # Copied from RT-MonoDepth repo
-│   │   │
+│   │   │   └── depth_estimator.py
 │   │   ├── test/
 │   │   │   ├── test_camera_driver.py
 │   │   │   ├── test_image_undistort.py
 │   │   │   ├── test_object_detector.py
-│   │   │   ├── test_depth_estimator.py
-│   │   │   └── test_depth/
-│   │   │       ├── __init__.py
-│   │   │       ├── test_rt_monodepth_model.py
-│   │   │       ├── test_rt_monodepth_preprocessing.py
-│   │   │       └── test_rt_monodepth_inference.py
+│   │   │   └── test_depth_estimator.py
+│   │   ├── package.xml
+│   │   ├── setup.py
+│   │   └── README.md
 │   │
 │   ├── localization_nodes/
 │   │   ├── localization_nodes/
@@ -217,7 +201,6 @@ local-ai-robot-assistant/
 │   ├── audio_config.yaml
 │   ├── uart_config.yaml
 │   ├── perception_config.yaml
-│   ├── depth_config.yaml
 │   ├── behavioral_config.yaml
 │   ├── web_interface_config.yaml
 │   ├── gemma3n_config.yaml
@@ -231,13 +214,12 @@ local-ai-robot-assistant/
 │   ├── tier2_cognitive_launch.py
 │   ├── audio_pipeline_launch.py
 │   ├── perception_launch.py
-│   ├── depth_estimation_launch.py
 │   ├── actuation_launch.py
 │   ├── web_interface_launch.py
 │   ├── monitoring_launch.py
-│   ├── minimal_system_launch.py
-│   ├── simulation_launch.py
-│   └── debug_system_launch.py
+│   ├── minimal_system_launch.py         #  emergency mode (motors + wake word)
+│   ├── simulation_launch.py             #  Gazebo simulation testing
+│   └── debug_system_launch.py           #  verbose logging and diagnostics
 │
 ├── models/
 │   ├── README.md                        #  Gemma 3n download instructions
@@ -279,27 +261,25 @@ local-ai-robot-assistant/
 │   ├── test_yolo_realtime.py
 │   ├── test_depth_accuracy.py
 │   ├── test_wake_word_accuracy.py
-│   ├── test_stt_accuracy.py
+│   ├── test_stt_accuracy.py             # KEPT for fallback testing
 │   ├── test_tts_naturalness.py
 │   ├── test_slam_accuracy.py
 │   ├── test_localization_accuracy.py
-│   ├── test_gemma3n_multimodal.py
-│   ├── test_audio_encoding.py
-│   ├── test_vision_processing.py
-│   ├── test_multimodal_conversation.py
-│   ├── test_goal_verification.py
-│   ├── test_rt_monodepth_quality.py
-│   └── test_web_interface_multimodal.py
+│   ├── test_gemma3n_multimodal.py       #  replaces test_llm_reasoning.py
+│   ├── test_audio_encoding.py           #  6.25 tokens/sec validation
+│   ├── test_vision_processing.py        #  256 tokens/image validation
+│   ├── test_multimodal_conversation.py  #  cross-modal interaction
+│   ├── test_goal_verification.py        #  multimodal verification
+│   └── test_web_interface_multimodal.py #  multimodal web features
 │
 ├── integration_tests/
-│   ├── test_voice_to_action.py
+│   ├── test_voice_to_action.py          #  multimodal voice commands
 │   ├── test_navigation.py
 │   ├── test_perception_to_action.py
-│   ├── test_depth_perception_flow.py
-│   ├── test_multimodal_pipeline.py
-│   ├── test_goal_verification_flow.py
-│   ├── test_system_degradation.py
-│   └── test_full_system_multimodal.py
+│   ├── test_multimodal_pipeline.py      #  end-to-end multimodal flow
+│   ├── test_goal_verification_flow.py   #  multimodal goal verification
+│   ├── test_system_degradation.py       #  memory management testing
+│   └── test_full_system_multimodal.py   #  complete multimodal system
 │
 ├── scripts/
 │   ├── setup/
@@ -334,7 +314,6 @@ local-ai-robot-assistant/
 │   ├── benchmark_audio.py
 │   ├── benchmark_gemma3n.py
 │   ├── benchmark_multimodal.py
-│   ├── benchmark_depth.py
 │   ├── benchmark_memory_usage.py
 │   ├── benchmark_system_integration.py
 │   └── benchmark_system.py

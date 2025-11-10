@@ -185,18 +185,6 @@ if [[ -n "${TEMP_DIR:-}" && -d "$TEMP_DIR" ]]; then
     rm -rf "$TEMP_DIR"
 fi
 
-# Install CuPy for GPU-accelerated computing
-echo "🔢 Installing CuPy for CUDA..."
-if [ "$JETPACK_MAJOR" = "6" ]; then
-    echo "   📦 Installing CuPy for CUDA 12.x..."
-    uv pip install cupy-cuda12x
-    echo "   ✅ CuPy installed successfully"
-elif [ "$JETPACK_MAJOR" = "5" ]; then
-    echo "   📦 Installing CuPy for CUDA 11.x..."
-    uv pip install cupy-cuda11x
-    echo "   ✅ CuPy installed successfully"
-fi
-
     echo ""
     echo "🧪 Testing installations..."
     echo "========================================="
@@ -255,19 +243,6 @@ try:
         print('   ℹ️  CPU provider only')
 except Exception as e:
     print(f'⚠️  ONNX Runtime: {e}')
-"
-
-# Test CuPy
-python3 -c "
-try:
-    import cupy as cp
-    print(f'✅ CuPy {cp.__version__}')
-    # Test GPU array operation
-    x = cp.array([1, 2, 3])
-    print(f'   Device: {cp.cuda.Device()}')
-    print('   ✅ CuPy GPU operations working')
-except Exception as e:
-    print(f'⚠️  CuPy: {e}')
 "
 
     echo "========================================="
