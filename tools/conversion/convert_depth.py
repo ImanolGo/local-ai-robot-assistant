@@ -49,7 +49,7 @@ class DepthAnythingV2Converter:
 
         Args:
             model_name: HuggingFace model name/path
-            models_base_dir: Base directory for models (default: <script_dir>/../models)
+            models_base_dir: Base directory for models (default: <repo_root>/models)
         """
         self.model_name = model_name
 
@@ -58,10 +58,11 @@ class DepthAnythingV2Converter:
 
         # Setup directory structure
         if models_base_dir is None:
-            models_base_dir = Path(__file__).parent.parent / "models"
+            models_base_dir = Path(__file__).parent.parent.parent / "models"
 
         self.models_dir = Path(models_base_dir)
-        self.local_model_path = self.models_dir / "depth_anything_v2_small"
+        # Use depth_trt as the single directory for all model files
+        self.local_model_path = self.models_dir / "depth_trt"
         self.depth_trt_path = self.models_dir / "depth_trt"
         self.onnx_path = self.depth_trt_path / "depth_anything_v2_small.onnx"
         self.engine_path = self.depth_trt_path / "depth_anything_v2_small.trt"
@@ -71,7 +72,6 @@ class DepthAnythingV2Converter:
         self.batch_size = 1
 
         # Create directories
-        self.local_model_path.mkdir(parents=True, exist_ok=True)
         self.depth_trt_path.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Initialized converter for {model_name}")
@@ -196,7 +196,7 @@ class DepthAnythingV2Converter:
             logger.error(f"✗ ONNX verification failed: {e}")
             raise
 
-    def convert_to_tensorrt(self, workspace_size_mb: int = 2048) -> None:
+    def convert_to_tensorrt(self, workspace_size_mb: int = 256) -> None:
         """
         Convert ONNX model to TensorRT engine on Jetson
 
@@ -333,7 +333,7 @@ class DepthAnythingV2Converter:
         logger.info(f"✓ Preprocessor configuration saved to: {preprocessor_path}")
 
     def full_conversion_pipeline(
-        self, skip_tensorrt: bool = False, workspace_size_mb: int = 2048
+        self, skip_tensorrt: bool = False, workspace_size_mb: int = 256
     ) -> None:
         """
         Run the complete model conversion pipeline
@@ -412,14 +412,14 @@ def main():
         "--models-dir",
         type=Path,
         default=None,
-        help="Base directory for models (default: <script_dir>/../models)",
+        help="Base directory for models (default: <repo_root>/models)",
     )
     parser.add_argument(
         "--workspace-size",
         type=int,
-        default=2048,
-        help="TensorRT workspace memory pool size in MB (for --memPoolSize=workspace:N,\
-              default optimized for Jetson)",
+        default=256,
+        help="TensorRT workspace memory pool size in MB (for --memPoolSize=workspace:N, \
+            default optimized for Jetson Orin Nano)",
     )
     parser.add_argument(
         "--skip-download",
