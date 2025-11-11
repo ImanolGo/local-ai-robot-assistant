@@ -6,11 +6,8 @@ requires-python = ">=3.10"
 dependencies = [
     # Core scientific computing
     "numpy<2.0",
-    # "opencv-python",  # Installed via setup_pytorch_jetson.sh for Jetson compatibility
     "scipy>=1.9.0",
     # Core ML frameworks - Jetson-optimized versions installed via setup_pytorch_jetson.sh
-    # "torch>=1.12.0",  # Installed via setup_pytorch_jetson.sh for Jetson
-    # "torchvision>=0.13.0",  # Installed via setup_pytorch_jetson.sh for Jetson
     "transformers>=4.20.0",
     # ROS2 and robotics
     "pyaudio",
@@ -65,6 +62,7 @@ conversion = [
     "onnx>=1.12.0",
     # "onnxruntime>=1.12.0",  # Installed via setup_pytorch_jetson.sh for Jetson compatibility
     "onnxslim>=0.1.71",
+    "accelerate",
     "ultralytics>=8.3.0",
     "ctranslate2>=3.0.0",
     # Profiling and benchmarking

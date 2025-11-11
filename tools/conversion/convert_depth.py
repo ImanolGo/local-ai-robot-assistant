@@ -1,737 +1,469 @@
 #!/usr/bin/env python3
 """
-FastDepth Model Conversion Script
-Converts FastDepth monocular depth estimation models to TensorRT FP16
+Depth Anything V2 Model Conversion Script
 
-According to architecture.md:
-- Model: FastDepth converted to TensorRT FP16 engine
-- Input: Undistorted color images
-- Output: Per-pixel depth maps published to /perception/depth
-- Performance Target: 15+ FPS at 320x240 resolution
+Converts Depth Anything V2 Small monocular depth estimation model to TensorRT FP16
+for deployment on NVIDIA Jetson Orin Nano Super.
+
+Features:
+- Downloads model from HuggingFace Hub
+- Exports to ONNX format with verification
+- Converts to TensorRT FP16 engine
+- Creates configuration files for deployment
+- Performance: 20+ FPS at 518x518 resolution target
 """
 
 import argparse
+import json
 import logging
-import os
+import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional
 
 import numpy as np
-import nvidia_ml_py3 as nvml
-import onnx
-import onnxruntime as ort
-import psutil
-import tensorrt as trt
 import torch
-import torch.nn as nn
-import torchvision.transforms as transforms
-from PIL import Image
-from tabulate import tabulate
+from huggingface_hub import snapshot_download
+from transformers import AutoImageProcessor, AutoModelForDepthEstimation
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-class FastDepthModel(nn.Module):
+class DepthAnythingV2Converter:
     """
-    FastDepth model implementation for monocular depth estimation
+    Depth Anything V2 model converter for Jetson Orin Nano
 
-    Based on the FastDepth architecture optimized for mobile deployment
-    Reference: https://github.com/dwofk/fast-depth
-    """
-
-    def __init__(self, pretrained: bool = True):
-        super(FastDepthModel, self).__init__()
-
-        # Use MobileNet as encoder (lightweight for Jetson)
-        self.encoder = self._create_encoder()
-
-        # Decoder for depth estimation
-        self.decoder = self._create_decoder()
-
-        if pretrained:
-            self._load_pretrained_weights()
-
-    def _create_encoder(self):
-        """Create MobileNet-based encoder"""
-        import torchvision.models as models
-
-        # Use MobileNetV2 as base encoder
-        mobilenet = models.mobilenet_v2(pretrained=True)
-
-        # Remove classifier and adapt for depth estimation
-        features = mobilenet.features
-
-        return features
-
-    def _create_decoder(self):
-        """Create decoder for depth estimation"""
-        decoder = nn.Sequential(
-            # Upsample and decode
-            nn.ConvTranspose2d(1280, 512, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 1, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),  # Ensure positive depth values
-        )
-
-        return decoder
-
-    def _load_pretrained_weights(self):
-        """Load pretrained weights if available"""
-        # Note: In a real implementation, you would load actual FastDepth weights
-        # For this demo, we'll use the MobileNet pretrained weights for encoder
-        logger.info("Using MobileNetV2 pretrained weights for encoder")
-
-    def forward(self, x):
-        """Forward pass"""
-        # Encode
-        features = self.encoder(x)
-
-        # Decode to depth
-        depth = self.decoder(features)
-
-        return depth
-
-
-class FastDepthConverter:
-    """
-    Converts FastDepth models to TensorRT optimized engines
-
-    Supports the conversion pipeline: PyTorch → ONNX → TensorRT FP16
-    Optimized for NVIDIA Jetson Orin Nano deployment
+    Handles download, ONNX export, and TensorRT conversion of Depth Anything V2 Small
     """
 
     def __init__(
         self,
-        input_shape: Tuple[int, int, int, int] = (1, 3, 240, 320),
-        workspace_size: int = 1 << 28,
-    ):  # 256MB
+        model_name: str = "depth-anything/Depth-Anything-V2-Small-hf",
+        models_base_dir: Optional[Path] = None,
+    ):
         """
-        Initialize FastDepth converter
+        Initialize converter
 
         Args:
-            input_shape: Input tensor shape (batch, channels, height, width)
-            workspace_size: TensorRT workspace size in bytes
+            model_name: HuggingFace model name/path
+            models_base_dir: Base directory for models (default: <script_dir>/../models)
         """
-        self.input_shape = input_shape
-        self.workspace_size = workspace_size
+        self.model_name = model_name
 
-        # Initialize NVIDIA ML for GPU monitoring
+        # Use CPU for export to avoid memory issues during conversion
+        self.device = "cpu"
+
+        # Setup directory structure
+        if models_base_dir is None:
+            models_base_dir = Path(__file__).parent.parent / "models"
+
+        self.models_dir = Path(models_base_dir)
+        self.local_model_path = self.models_dir / "depth_anything_v2_small"
+        self.depth_trt_path = self.models_dir / "depth_trt"
+        self.onnx_path = self.depth_trt_path / "depth_anything_v2_small.onnx"
+        self.engine_path = self.depth_trt_path / "depth_anything_v2_small.trt"
+
+        # Model configuration
+        self.input_size = (518, 518)  # Standard size for Depth Anything V2
+        self.batch_size = 1
+
+        # Create directories
+        self.local_model_path.mkdir(parents=True, exist_ok=True)
+        self.depth_trt_path.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Initialized converter for {model_name}")
+        logger.info(f"Models directory: {self.models_dir}")
+        logger.info(f"Device: {self.device}")
+
+    def download_model(self) -> None:
+        """Download Depth Anything V2 Small model from HuggingFace"""
+        logger.info(f"Downloading model: {self.model_name}")
+
         try:
-            nvml.nvmlInit()
-            self.gpu_available = True
-        except Exception:
-            self.gpu_available = False
-            logger.warning("NVIDIA ML not available - GPU monitoring disabled")
-
-        # TensorRT logger
-        self.trt_logger = trt.Logger(trt.Logger.WARNING)
-
-        # Image preprocessing
-        self.transform = transforms.Compose(
-            [
-                transforms.Resize((self.input_shape[2], self.input_shape[3])),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ]
-        )
-
-    def create_model(self, output_path: str) -> str:
-        """
-        Create and save FastDepth PyTorch model
-
-        Args:
-            output_path: Path to save PyTorch model
-
-        Returns:
-            Path to the saved model
-        """
-        logger.info("Creating FastDepth PyTorch model...")
-
-        # Create model
-        model = FastDepthModel(pretrained=True)
-        model.eval()
-
-        # Save model
-        torch.save(model.state_dict(), output_path)
-
-        logger.info(f"FastDepth model saved to: {output_path}")
-        return output_path
-
-    def convert_to_onnx(
-        self,
-        pytorch_model_path: str,
-        onnx_output_path: str,
-        dynamic_batch: bool = False,
-    ) -> str:
-        """
-        Convert PyTorch FastDepth model to ONNX format
-
-        Args:
-            pytorch_model_path: Path to PyTorch model
-            onnx_output_path: Output path for ONNX model
-            dynamic_batch: Whether to use dynamic batch size
-
-        Returns:
-            Path to ONNX model
-        """
-        logger.info("Converting PyTorch FastDepth model to ONNX...")
-
-        # Load model
-        model = FastDepthModel(pretrained=False)
-        model.load_state_dict(torch.load(pytorch_model_path, map_location="cpu"))
-        model.eval()
-
-        # Create dummy input
-        dummy_input = torch.randn(self.input_shape)
-
-        # Define dynamic axes if needed
-        dynamic_axes = None
-        if dynamic_batch:
-            dynamic_axes = {"input": {0: "batch_size"}, "output": {0: "batch_size"}}
-
-        # Export to ONNX
-        torch.onnx.export(
-            model,
-            dummy_input,
-            onnx_output_path,
-            export_params=True,
-            opset_version=11,
-            do_constant_folding=True,
-            input_names=["input"],
-            output_names=["depth"],
-            dynamic_axes=dynamic_axes,
-            verbose=False,
-        )
-
-        # Verify ONNX model
-        self._verify_onnx_model(onnx_output_path)
-
-        logger.info(f"ONNX model saved to: {onnx_output_path}")
-        return onnx_output_path
-
-    def _verify_onnx_model(self, onnx_path: str) -> None:
-        """Verify ONNX model integrity and test inference"""
-        try:
-            # Load and check model
-            onnx_model = onnx.load(onnx_path)
-            onnx.checker.check_model(onnx_model)
-            logger.info("✓ ONNX model verification passed")
-
-            # Test ONNX inference
-            session = ort.InferenceSession(onnx_path)
-            dummy_input = np.random.randn(*self.input_shape).astype(np.float32)
-            output = session.run(None, {"input": dummy_input})
-
-            logger.info(f"✓ ONNX inference test passed - output shape: {output[0].shape}")
+            snapshot_download(
+                repo_id=self.model_name,
+                local_dir=self.local_model_path,
+                local_dir_use_symlinks=False,
+                ignore_patterns=["*.git*", "*.md", "*.txt"],
+            )
+            logger.info(f"✓ Model downloaded to: {self.local_model_path}")
 
         except Exception as e:
-            logger.error(f"ONNX model verification failed: {e}")
+            logger.error(f"✗ Failed to download model: {e}")
             raise
 
-    def convert_to_tensorrt(
-        self,
-        onnx_path: str,
-        trt_output_path: str,
-        precision: str = "fp16",
-        max_batch_size: int = 1,
-    ) -> str:
-        """
-        Convert ONNX model to TensorRT engine
+    def export_to_onnx(self) -> None:
+        """Export PyTorch model to ONNX format"""
+        logger.info("Exporting model to ONNX format")
 
-        Args:
-            onnx_path: Path to ONNX model
-            trt_output_path: Output path for TensorRT engine
-            precision: Precision mode (fp32, fp16, int8)
-            max_batch_size: Maximum batch size
-
-        Returns:
-            Path to TensorRT engine
-        """
-        logger.info(f"Converting ONNX FastDepth to TensorRT {precision.upper()}...")
-
-        # Create builder and network
-        builder = trt.Builder(self.trt_logger)
-        network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
-        parser = trt.OnnxParser(network, self.trt_logger)
-
-        # Parse ONNX model
-        with open(onnx_path, "rb") as model_file:
-            if not parser.parse(model_file.read()):
-                error_msg = "Failed to parse ONNX model. Errors:\n"
-                for i in range(parser.num_errors):
-                    error_msg += f"  {parser.get_error(i)}\n"
-                raise RuntimeError(error_msg)
-
-        # Configure builder
-        config = builder.create_builder_config()
-        config.max_workspace_size = self.workspace_size
-
-        # Set precision
-        if precision == "fp16" and builder.platform_has_fast_fp16:
-            config.set_flag(trt.BuilderFlag.FP16)
-            logger.info("✓ FP16 precision enabled")
-        elif precision == "int8" and builder.platform_has_fast_int8:
-            config.set_flag(trt.BuilderFlag.INT8)
-            logger.info("✓ INT8 precision enabled")
-        else:
-            logger.info("Using FP32 precision")
-
-        # Set optimization level
-        config.builder_optimization_level = 5
-
-        # Configure input shape for static batch
-        input_tensor = network.get_input(0)
-        if input_tensor.shape[0] == -1:  # Dynamic batch
-            profile = builder.create_optimization_profile()
-            profile.set_shape(
-                input_tensor.name,
-                (1, *self.input_shape[1:]),  # min
-                (max_batch_size, *self.input_shape[1:]),  # opt
-                (max_batch_size, *self.input_shape[1:]),  # max
+        try:
+            # Load model and processor
+            logger.info("Loading PyTorch model...")
+            model = AutoModelForDepthEstimation.from_pretrained(
+                self.local_model_path,
+                torch_dtype=torch.float32,  # Use float32 for ONNX export
             )
-            config.add_optimization_profile(profile)
+            _ = AutoImageProcessor.from_pretrained(self.local_model_path)
 
-        # Build engine
-        logger.info("Building TensorRT engine (this may take several minutes)...")
-        start_time = time.time()
+            # Move to device and set to eval mode
+            model = model.to(self.device)
+            model.eval()
+            logger.info("✓ Model loaded successfully")
 
-        engine = builder.build_engine(network, config)
-        if engine is None:
-            raise RuntimeError("Failed to build TensorRT engine")
+            # Create dummy input matching expected dimensions
+            dummy_input = torch.randn(
+                self.batch_size,
+                3,
+                self.input_size[0],
+                self.input_size[1],
+                dtype=torch.float32,
+                device=self.device,
+            )
 
-        build_time = time.time() - start_time
-        logger.info(f"✓ Engine built in {build_time:.2f} seconds")
+            logger.info(f"Dummy input shape: {dummy_input.shape}")
 
-        # Serialize and save engine
-        with open(trt_output_path, "wb") as f:
-            f.write(engine.serialize())
+            # Test forward pass to verify model works
+            with torch.no_grad():
+                test_output = model(pixel_values=dummy_input)
+                logger.info(f"Model output shape: {test_output.predicted_depth.shape}")
 
-        logger.info(f"TensorRT engine saved to: {trt_output_path}")
+            # Export to ONNX with dynamic shapes
+            logger.info("Exporting to ONNX...")
+            torch.onnx.export(
+                model,
+                dummy_input,
+                self.onnx_path,
+                export_params=True,
+                opset_version=17,  # Use latest stable opset
+                do_constant_folding=True,
+                input_names=["pixel_values"],
+                output_names=["predicted_depth"],
+                dynamic_axes={
+                    "pixel_values": {0: "batch_size", 2: "height", 3: "width"},
+                    "predicted_depth": {0: "batch_size", 1: "height", 2: "width"},
+                },
+                verbose=False,
+            )
 
-        # Display engine info
-        self._display_engine_info(engine)
+            logger.info(f"✓ ONNX model saved to: {self.onnx_path}")
+            logger.info(f"  File size: {self.onnx_path.stat().st_size / (1024*1024):.1f} MB")
 
-        return trt_output_path
+            # Verify ONNX model
+            self._verify_onnx_model()
 
-    def _display_engine_info(self, engine: trt.ICudaEngine) -> None:
-        """Display TensorRT engine information"""
-        info = []
-        info.append(["Property", "Value"])
-        info.append(["Max Batch Size", engine.max_batch_size])
-        info.append(["Num Bindings", engine.num_bindings])
-        info.append(["Has Implicit Batch", engine.has_implicit_batch_dimension])
+        except Exception as e:
+            logger.error(f"✗ ONNX export failed: {e}")
+            raise
 
-        for i in range(engine.num_bindings):
-            name = engine.get_binding_name(i)
-            shape = engine.get_binding_shape(i)
-            dtype = engine.get_binding_dtype(i)
-            is_input = engine.binding_is_input(i)
-            binding_type = "Input" if is_input else "Output"
-            info.append([f"Binding {i} ({binding_type})", f"{name}: {shape} {dtype}"])
+    def _verify_onnx_model(self) -> None:
+        """Verify ONNX model can be loaded and run"""
+        try:
+            import onnx
+            import onnxruntime as ort
 
-        logger.info("TensorRT Engine Information:")
-        print(tabulate(info, headers="firstrow", tablefmt="grid"))
+            logger.info("Verifying ONNX model...")
 
-    def benchmark_model(
-        self, engine_path: str, num_iterations: int = 100, warmup_iterations: int = 10
-    ) -> Dict[str, Any]:
+            # Load and check ONNX model
+            onnx_model = onnx.load(str(self.onnx_path))
+            onnx.checker.check_model(onnx_model)
+            logger.info("✓ ONNX model structure valid")
+
+            # Test inference with ONNX Runtime
+            ort_session = ort.InferenceSession(
+                str(self.onnx_path),
+                providers=["CPUExecutionProvider"],
+            )
+
+            # Create test input
+            test_input = np.random.randn(
+                self.batch_size, 3, self.input_size[0], self.input_size[1]
+            ).astype(np.float32)
+
+            # Run inference
+            outputs = ort_session.run(None, {"pixel_values": test_input})
+
+            logger.info("✓ ONNX inference successful")
+            logger.info(f"  Output shape: {outputs[0].shape}")
+            logger.info(f"  Output range: [{outputs[0].min():.3f}, {outputs[0].max():.3f}]")
+
+        except ImportError as e:
+            logger.warning(f"⚠ Cannot verify ONNX model: {e}")
+            logger.warning("  Install onnx and onnxruntime for verification")
+        except Exception as e:
+            logger.error(f"✗ ONNX verification failed: {e}")
+            raise
+
+    def convert_to_tensorrt(self, workspace_size_mb: int = 2048) -> None:
         """
-        Benchmark TensorRT engine performance
+        Convert ONNX model to TensorRT engine on Jetson
 
         Args:
-            engine_path: Path to TensorRT engine
-            num_iterations: Number of benchmark iterations
-            warmup_iterations: Number of warmup iterations
-
-        Returns:
-            Dictionary with benchmark results
+            workspace_size_mb: TensorRT workspace memory pool size in MB \
+                (uses --memPoolSize=workspace:N)
         """
-        logger.info(f"Benchmarking FastDepth engine: {engine_path}")
+        logger.info("Converting ONNX to TensorRT engine")
 
-        # Load engine
-        with open(engine_path, "rb") as f:
-            runtime = trt.Runtime(self.trt_logger)
-            engine = runtime.deserialize_cuda_engine(f.read())
+        if not self.onnx_path.exists():
+            raise FileNotFoundError(f"ONNX file not found: {self.onnx_path}")
 
-        context = engine.create_execution_context()
+        # Check if TensorRT is available
+        trtexec_path = Path("/usr/src/tensorrt/bin/trtexec")
+        if not trtexec_path.exists():
+            raise RuntimeError(
+                "trtexec not found. Ensure TensorRT is installed on Jetson.\n"
+                "This step must be run on the Jetson device."
+            )
 
-        # Allocate buffers
-        inputs, outputs, bindings, stream = self._allocate_buffers(engine)
-
-        # Create realistic input data (normalized image)
-        input_data = np.random.randn(*self.input_shape).astype(np.float32)
-        inputs[0].host = input_data.flatten()
-
-        # Warmup
-        logger.info(f"Warming up for {warmup_iterations} iterations...")
-        for _ in range(warmup_iterations):
-            self._do_inference(context, bindings, inputs, outputs, stream)
-
-        # Benchmark
-        logger.info(f"Running benchmark for {num_iterations} iterations...")
-
-        start_time = time.time()
-        for _ in range(num_iterations):
-            outputs_data = self._do_inference(context, bindings, inputs, outputs, stream)
-        end_time = time.time()
-
-        # Calculate metrics
-        total_time = end_time - start_time
-        avg_time = total_time / num_iterations
-        fps = 1.0 / avg_time
-
-        # Analyze output
-        depth_output = outputs_data[0].reshape(1, 1, self.input_shape[2], self.input_shape[3])
-        depth_stats = {
-            "min_depth": float(np.min(depth_output)),
-            "max_depth": float(np.max(depth_output)),
-            "mean_depth": float(np.mean(depth_output)),
-            "std_depth": float(np.std(depth_output)),
-        }
-
-        # Get memory usage
-        memory_info = self._get_memory_info()
-
-        results = {
-            "avg_inference_time_ms": avg_time * 1000,
-            "fps": fps,
-            "total_time_s": total_time,
-            "iterations": num_iterations,
-            "memory_usage_mb": memory_info,
-            "depth_statistics": depth_stats,
-            "input_shape": self.input_shape,
-            "output_shape": depth_output.shape,
-        }
-
-        # Display results
-        self._display_benchmark_results(results)
-
-        return results
-
-    def _allocate_buffers(self, engine: trt.ICudaEngine):
-        """Allocate buffers for TensorRT inference"""
-        import pycuda.autoinit  # noqa F401
-        import pycuda.driver as cuda  # noqa F401
-
-        inputs = []
-        outputs = []
-        bindings = []
-        stream = cuda.Stream()
-
-        for binding in engine:
-            size = trt.volume(engine.get_binding_shape(binding)) * engine.max_batch_size
-            dtype = trt.nptype(engine.get_binding_dtype(binding))
-
-            # Allocate host and device buffers
-            host_mem = cuda.pagelocked_empty(size, dtype)
-            device_mem = cuda.mem_alloc(host_mem.nbytes)
-
-            bindings.append(int(device_mem))
-
-            if engine.binding_is_input(binding):
-                inputs.append({"host": host_mem, "device": device_mem})
-            else:
-                outputs.append({"host": host_mem, "device": device_mem})
-
-        return inputs, outputs, bindings, stream
-
-    def _do_inference(self, context, bindings, inputs, outputs, stream):
-        """Run TensorRT inference"""
-        import pycuda.driver as cuda
-
-        # Transfer input data to device
-        for inp in inputs:
-            cuda.memcpy_htod_async(inp["device"], inp["host"], stream)
-
-        # Run inference
-        context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-
-        # Transfer predictions back
-        for out in outputs:
-            cuda.memcpy_dtoh_async(out["host"], out["device"], stream)
-
-        # Synchronize stream
-        stream.synchronize()
-
-        return [out["host"] for out in outputs]
-
-    def _get_memory_info(self) -> Dict[str, float]:
-        """Get system memory information"""
-        memory = psutil.virtual_memory()
-        info = {
-            "total_mb": memory.total / (1024 * 1024),
-            "available_mb": memory.available / (1024 * 1024),
-            "used_mb": memory.used / (1024 * 1024),
-            "percent": memory.percent,
-        }
-
-        if self.gpu_available:
-            try:
-                handle = nvml.nvmlDeviceGetHandleByIndex(0)
-                gpu_memory = nvml.nvmlDeviceGetMemoryInfo(handle)
-                info.update(
-                    {
-                        "gpu_total_mb": gpu_memory.total / (1024 * 1024),
-                        "gpu_used_mb": gpu_memory.used / (1024 * 1024),
-                        "gpu_free_mb": gpu_memory.free / (1024 * 1024),
-                    }
-                )
-            except Exception:
-                pass
-
-        return info
-
-    def _display_benchmark_results(self, results: Dict[str, Any]) -> None:
-        """Display benchmark results in a formatted table"""
-        data = [
-            ["Metric", "Value"],
-            ["Average Inference Time", f"{results['avg_inference_time_ms']:.2f} ms"],
-            ["Frames Per Second", f"{results['fps']:.2f} FPS"],
-            ["Total Benchmark Time", f"{results['total_time_s']:.2f} s"],
-            ["Number of Iterations", results["iterations"]],
-            ["Input Shape", str(results["input_shape"])],
-            ["Output Shape", str(results["output_shape"])],
+        # TensorRT conversion command optimized for Jetson Orin Nano
+        # Use fixed shapes to reduce memory consumption during optimization
+        cmd = [
+            str(trtexec_path),
+            f"--onnx={self.onnx_path}",
+            f"--saveEngine={self.engine_path}",
+            "--fp16",  # Use FP16 for memory efficiency and speed
+            f"--memPoolSize=workspace:{workspace_size_mb}",  # Reduced workspace memory
+            # Memory optimization flags for Jetson
+            "--builderOptimizationLevel=3",  # Use aggressive optimization
+            "--avgTiming=1",  # Reduce timing iterations to save memory
+            # Use fixed shape instead of dynamic to reduce memory usage
+            f"--shapes=pixel_values:{self.batch_size}x3x{self.input_size[0]}x{self.input_size[1]}",
+            "--verbose",
+            "--useSpinWait",
+            "--noDataTransfers",
+            "--skipInference",  # Skip inference to save time and memory
         ]
 
-        # Add depth statistics
-        depth_stats = results["depth_statistics"]
-        data.extend(
-            [
-                ["Min Depth", f"{depth_stats['min_depth']:.3f}"],
-                ["Max Depth", f"{depth_stats['max_depth']:.3f}"],
-                ["Mean Depth", f"{depth_stats['mean_depth']:.3f}"],
-                ["Depth Std", f"{depth_stats['std_depth']:.3f}"],
-            ]
-        )
+        try:
+            logger.info("Running TensorRT conversion (this may take 5-15 minutes)...")
+            logger.info(f"Command: {' '.join(cmd)}")
 
-        memory = results["memory_usage_mb"]
-        data.append(
-            [
-                "System Memory Used",
-                f"{memory['used_mb']:.1f} MB ({memory['percent']:.1f}%)",
-            ]
-        )
+            # Run conversion
+            result = subprocess.run(
+                cmd,
+                cwd=self.engine_path.parent,
+                capture_output=True,
+                text=True,
+                timeout=1800,  # 30 minute timeout
+            )
 
-        if "gpu_used_mb" in memory:
-            data.append(["GPU Memory Used", f"{memory['gpu_used_mb']:.1f} MB"])
+            if result.returncode != 0:
+                logger.error("✗ TensorRT conversion failed:")
+                logger.error(f"STDOUT:\n{result.stdout}")
+                logger.error(f"STDERR:\n{result.stderr}")
+                raise RuntimeError("TensorRT conversion failed")
 
-        print("\n" + "=" * 60)
-        print("FASTDEPTH BENCHMARK RESULTS")
-        print("=" * 60)
-        print(tabulate(data, headers="firstrow", tablefmt="grid"))
+            logger.info(f"✓ TensorRT engine created: {self.engine_path}")
+            logger.info(f"  Engine size: {self.engine_path.stat().st_size / (1024*1024):.1f} MB")
 
-        # Performance assessment
-        target_fps = 15.0  # From architecture requirements
-        if results["fps"] >= target_fps:
-            print(f"\n✓ Performance target met: {results['fps']:.1f} FPS >= {target_fps} FPS")
-        else:
-            print(f"\n⚠ Performance below target: {results['fps']:.1f} FPS < {target_fps} FPS")
+            # Parse performance metrics from output
+            self._parse_trtexec_output(result.stdout)
 
-    def test_with_sample_image(
-        self, engine_path: str, sample_image_path: Optional[str] = None
-    ) -> np.ndarray:
-        """
-        Test FastDepth engine with a sample image
+        except subprocess.TimeoutExpired:
+            logger.error("✗ TensorRT conversion timed out after 30 minutes")
+            raise
+        except Exception as e:
+            logger.error(f"✗ TensorRT conversion error: {e}")
+            raise
 
-        Args:
-            engine_path: Path to TensorRT engine
-            sample_image_path: Path to test image (optional)
+    def _parse_trtexec_output(self, output: str) -> None:
+        """Parse and log performance metrics from trtexec output"""
+        lines = output.split("\n")
+        for line in lines:
+            if "mean" in line.lower() and "ms" in line.lower():
+                logger.info(f"  Performance: {line.strip()}")
+            elif "throughput" in line.lower():
+                logger.info(f"  {line.strip()}")
 
-        Returns:
-            Predicted depth map as numpy array
-        """
-        logger.info("Testing FastDepth with sample image...")
+    def create_config_files(self) -> None:
+        """Create configuration files for the depth model"""
+        config_dir = self.depth_trt_path
 
-        # Load engine
-        with open(engine_path, "rb") as f:
-            runtime = trt.Runtime(self.trt_logger)
-            engine = runtime.deserialize_cuda_engine(f.read())
-
-        context = engine.create_execution_context()
-        inputs, outputs, bindings, stream = self._allocate_buffers(engine)
-
-        # Prepare input image
-        if sample_image_path and os.path.exists(sample_image_path):
-            # Load and preprocess real image
-            image = Image.open(sample_image_path).convert("RGB")
-            input_tensor = self.transform(image).unsqueeze(0)
-        else:
-            # Use random image for testing
-            input_tensor = torch.randn(self.input_shape)
-            logger.info("Using random test image (no sample image provided)")
-
-        # Convert to numpy and run inference
-        input_data = input_tensor.numpy().astype(np.float32)
-        inputs[0].host = input_data.flatten()
-
-        # Run inference
-        outputs_data = self._do_inference(context, bindings, inputs, outputs, stream)
-
-        # Reshape output to depth map
-        depth_map = outputs_data[0].reshape(1, 1, self.input_shape[2], self.input_shape[3])
-        depth_map = depth_map.squeeze()  # Remove batch and channel dimensions
-
-        logger.info(f"✓ Depth prediction completed - shape: {depth_map.shape}")
-        logger.info(f"Depth range: {depth_map.min():.3f} to {depth_map.max():.3f}")
-
-        return depth_map
-
-    def convert_full_pipeline(self, output_dir: str, skip_existing: bool = True) -> Dict[str, str]:
-        """
-        Run complete conversion pipeline: PyTorch → ONNX → TensorRT
-
-        Args:
-            output_dir: Directory to save all converted models
-            skip_existing: Skip conversion if files already exist
-
-        Returns:
-            Dictionary with paths to converted models
-        """
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Define output paths
-        paths = {
-            "pytorch": output_dir / "fastdepth.pth",
-            "onnx": output_dir / "fastdepth.onnx",
-            "tensorrt": output_dir / "fastdepth_fp16.trt",
+        # Model configuration
+        model_config = {
+            "model_name": "depth_anything_v2_small",
+            "model_type": "depth_estimation",
+            "framework": "tensorrt",
+            "version": "v2",
+            "input_shape": [self.batch_size, 3, self.input_size[0], self.input_size[1]],
+            "output_shape": [self.batch_size, self.input_size[0], self.input_size[1]],
+            "preprocessing": {
+                "resize": self.input_size,
+                "normalize": {
+                    "mean": [0.485, 0.456, 0.406],
+                    "std": [0.229, 0.224, 0.225],
+                },
+                "color_format": "RGB",
+            },
+            "performance": {
+                "target_fps": 20,
+                "max_latency_ms": 50,
+                "memory_limit_mb": 1000,
+            },
+            "files": {
+                "onnx": str(self.onnx_path.name),
+                "tensorrt": str(self.engine_path.name),
+            },
         }
 
-        logger.info("Starting full FastDepth conversion pipeline")
-        logger.info(f"Output directory: {output_dir}")
-        logger.info(f"Target input shape: {self.input_shape}")
+        config_path = config_dir / "config.json"
+        with open(config_path, "w") as f:
+            json.dump(model_config, f, indent=2)
 
-        # Step 1: Create PyTorch model
-        if not paths["pytorch"].exists() or not skip_existing:
-            self.create_model(str(paths["pytorch"]))
-        else:
-            logger.info(f"Skipping model creation - PyTorch model exists: {paths['pytorch']}")
+        logger.info(f"✓ Model configuration saved to: {config_path}")
 
-        # Step 2: Convert to ONNX
-        if not paths["onnx"].exists() or not skip_existing:
-            self.convert_to_onnx(str(paths["pytorch"]), str(paths["onnx"]))
-        else:
-            logger.info(f"Skipping ONNX conversion - file exists: {paths['onnx']}")
-
-        # Step 3: Convert to TensorRT
-        if not paths["tensorrt"].exists() or not skip_existing:
-            self.convert_to_tensorrt(str(paths["onnx"]), str(paths["tensorrt"]))
-        else:
-            logger.info(f"Skipping TensorRT conversion - file exists: {paths['tensorrt']}")
-
-        # Step 4: Benchmark
-        benchmark_results = self.benchmark_model(str(paths["tensorrt"]))
-
-        # Step 5: Test with sample
-        depth_map = self.test_with_sample_image(str(paths["tensorrt"]))
-
-        # Save benchmark results
-        import json
-
-        benchmark_results["sample_depth_stats"] = {
-            "shape": depth_map.shape,
-            "min": float(depth_map.min()),
-            "max": float(depth_map.max()),
-            "mean": float(depth_map.mean()),
-            "std": float(depth_map.std()),
+        # Preprocessor configuration (compatible with transformers)
+        preprocessor_config = {
+            "do_normalize": True,
+            "do_resize": True,
+            "image_mean": [0.485, 0.456, 0.406],
+            "image_std": [0.229, 0.224, 0.225],
+            "keep_aspect_ratio": False,
+            "resample": 3,  # PIL.Image.BICUBIC
+            "size": {"height": self.input_size[0], "width": self.input_size[1]},
+            "size_divisor": 14,  # Patch size for vision transformer
         }
 
-        with open(output_dir / "fastdepth_benchmark.json", "w") as f:
-            json.dump(benchmark_results, f, indent=2)
+        preprocessor_path = config_dir / "preprocessor_config.json"
+        with open(preprocessor_path, "w") as f:
+            json.dump(preprocessor_config, f, indent=2)
 
-        logger.info("✓ Full FastDepth conversion pipeline completed successfully!")
+        logger.info(f"✓ Preprocessor configuration saved to: {preprocessor_path}")
 
-        return {k: str(v) for k, v in paths.items()}
+    def full_conversion_pipeline(
+        self, skip_tensorrt: bool = False, workspace_size_mb: int = 2048
+    ) -> None:
+        """
+        Run the complete model conversion pipeline
+
+        Args:
+            skip_tensorrt: If True, only export to ONNX
+            workspace_size_mb: TensorRT workspace memory pool size in MB
+        """
+        logger.info("=" * 70)
+        logger.info("Starting Depth Anything V2 Conversion Pipeline")
+        logger.info("=" * 70)
+
+        start_time = time.time()
+
+        try:
+            # Step 1: Download model
+            if not (self.local_model_path / "config.json").exists():
+                logger.info("\n[1/4] Downloading model from HuggingFace...")
+                self.download_model()
+            else:
+                logger.info(f"\n[1/4] Model already exists at: {self.local_model_path}")
+
+            # Step 2: Export to ONNX
+            if not self.onnx_path.exists():
+                logger.info("\n[2/4] Exporting to ONNX...")
+                self.export_to_onnx()
+            else:
+                logger.info(f"\n[2/4] ONNX model already exists at: {self.onnx_path}")
+
+            # Step 3: Convert to TensorRT (if on Jetson and requested)
+            if skip_tensorrt:
+                logger.info("\n[3/4] Skipping TensorRT conversion (--onnx-only flag)")
+            elif self.engine_path.exists():
+                logger.info(f"\n[3/4] TensorRT engine already exists at: {self.engine_path}")
+            else:
+                logger.info("\n[3/4] Converting to TensorRT...")
+                if not torch.cuda.is_available():
+                    logger.warning("⚠ CUDA not available - TensorRT conversion skipped")
+                    logger.warning("  Run this script on the Jetson device for TensorRT conversion")
+                else:
+                    self.convert_to_tensorrt(workspace_size_mb)
+
+            # Step 4: Create configuration files
+            logger.info("\n[4/4] Creating configuration files...")
+            self.create_config_files()
+
+            elapsed_time = time.time() - start_time
+
+            logger.info("\n" + "=" * 70)
+            logger.info(f"✓ Conversion pipeline completed in {elapsed_time:.2f} seconds")
+            logger.info("=" * 70)
+            logger.info("\nGenerated files:")
+            logger.info(f"  - Model weights: {self.local_model_path}")
+            logger.info(f"  - ONNX model: {self.onnx_path}")
+            if self.engine_path.exists():
+                logger.info(f"  - TensorRT engine: {self.engine_path}")
+            logger.info(f"  - Config files: {self.depth_trt_path}")
+
+        except Exception as e:
+            logger.error(f"\n✗ Conversion pipeline failed: {e}")
+            raise
 
 
 def main():
-    """Main function for command-line usage"""
+    """Main conversion script entry point"""
     parser = argparse.ArgumentParser(
-        description="Convert FastDepth models to TensorRT optimized engines"
+        description="Convert Depth Anything V2 Small model for Jetson deployment",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--output-dir",
-        "-o",
-        default="./models/depth_trt",
-        help="Output directory for converted models",
+        "--model-name",
+        default="depth-anything/Depth-Anything-V2-Small-hf",
+        help="HuggingFace model name or local path",
     )
     parser.add_argument(
-        "--input-size",
-        nargs=2,
+        "--models-dir",
+        type=Path,
+        default=None,
+        help="Base directory for models (default: <script_dir>/../models)",
+    )
+    parser.add_argument(
+        "--workspace-size",
         type=int,
-        default=[320, 240],
-        metavar=("WIDTH", "HEIGHT"),
-        help="Input image size (width height)",
+        default=2048,
+        help="TensorRT workspace memory pool size in MB (for --memPoolSize=workspace:N,\
+              default optimized for Jetson)",
     )
     parser.add_argument(
-        "--workspace-size", type=int, default=256, help="TensorRT workspace size in MB"
-    )
-    parser.add_argument(
-        "--precision",
-        choices=["fp32", "fp16", "int8"],
-        default="fp16",
-        help="TensorRT precision mode",
-    )
-    parser.add_argument(
-        "--benchmark-iterations",
-        type=int,
-        default=100,
-        help="Number of benchmark iterations",
-    )
-    parser.add_argument("--sample-image", help="Path to sample image for testing")
-    parser.add_argument(
-        "--skip-existing",
+        "--skip-download",
         action="store_true",
-        help="Skip conversion if output files already exist",
+        help="Skip model download if already exists",
     )
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--onnx-only",
+        action="store_true",
+        help="Only export to ONNX, skip TensorRT conversion",
+    )
 
     args = parser.parse_args()
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-
-    # Create converter
-    converter = FastDepthConverter(
-        input_shape=(1, 3, args.input_size[1], args.input_size[0]),  # B,C,H,W
-        workspace_size=args.workspace_size * 1024 * 1024,  # Convert MB to bytes
-    )
-
     try:
-        # Run conversion pipeline
-        paths = converter.convert_full_pipeline(
-            output_dir=args.output_dir, skip_existing=args.skip_existing
-        )
+        # Initialize converter
+        converter = DepthAnythingV2Converter(args.model_name, models_base_dir=args.models_dir)
 
-        print("\n" + "=" * 70)
-        print("FASTDEPTH CONVERSION COMPLETED SUCCESSFULLY")
-        print("=" * 70)
-        print(f"PyTorch model: {paths['pytorch']}")
-        print(f"ONNX model:    {paths['onnx']}")
-        print(f"TensorRT engine: {paths['tensorrt']}")
-        print(f"\nTarget resolution: {args.input_size[0]}x{args.input_size[1]}")
-        print("Files are ready for deployment in ROS2 perception nodes.")
+        if args.onnx_only:
+            # Only run ONNX export
+            if not args.skip_download:
+                converter.download_model()
+            converter.export_to_onnx()
+            converter.create_config_files()
+            logger.info("✓ ONNX export completed successfully!")
+        else:
+            # Run full pipeline with workspace size argument
+            converter.full_conversion_pipeline(
+                skip_tensorrt=False, workspace_size_mb=args.workspace_size
+            )
+            logger.info("✓ Model conversion completed successfully!")
 
-        if args.sample_image:
-            print(f"\nTesting with sample image: {args.sample_image}")
-            _ = converter.test_with_sample_image(paths["tensorrt"], args.sample_image)
+        return 0
 
+    except KeyboardInterrupt:
+        logger.info("\n⚠ Conversion interrupted by user")
+        return 130
     except Exception as e:
-        logger.error(f"Conversion failed: {e}")
-        sys.exit(1)
+        logger.error(f"\n✗ Conversion failed: {e}")
+        import traceback
+
+        logger.debug(traceback.format_exc())
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

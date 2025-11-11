@@ -1,8 +1,44 @@
 #!/bin/bash
 set -e
 
+# Parse command line arguments
+DEV_MODE=true  # Default to dev mode
+PROD_MODE=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dev)
+            DEV_MODE=true
+            PROD_MODE=false
+            shift
+            ;;
+        --prod)
+            DEV_MODE=false
+            PROD_MODE=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--dev|--prod]"
+            echo "  --dev   Install dev, test, and conversion dependencies (default)"
+            echo "  --prod  Install only production dependencies"
+            echo "  --help  Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
 echo "========================================="
 echo " Local AI Robot Assistant - Setup Script "
+if [ "$DEV_MODE" = true ]; then
+    echo " Mode: Development (includes dev/test/conversion dependencies)"
+else
+    echo " Mode: Production (minimal dependencies)"
+fi
 echo "========================================="
 
 # --- Check Jetson ---
@@ -175,6 +211,19 @@ direnv allow || true
 if [ -f pyproject.toml ]; then
     echo "📦 Installing project dependencies from pyproject.toml..."
 
+    # Install remaining dependencies
+    echo "   Installing core project dependencies..."
+    uv sync
+
+    # Install optional dependencies based on mode
+    if [ "$DEV_MODE" = true ]; then
+        echo "   Installing dev, test, and conversion dependencies..."
+        uv sync --extra dev --extra test --extra conversion --extra audio
+    else
+        echo "   Installing minimal audio dependencies for production..."
+        uv sync --extra audio
+    fi
+
     # Install PyTorch, OpenCV, and TensorRT for Jetson using dedicated script
     echo "🔥 Installing PyTorch, OpenCV, and TensorRT for Jetson..."
 
@@ -196,32 +245,6 @@ if [ -f pyproject.toml ]; then
         echo "   Installing standard PyTorch and OpenCV..."
         uv pip install torch torchvision opencv-python
     fi
-
-    # Install torch2trt after TensorRT is available
-    echo "   Installing torch2trt for TensorRT optimization..."
-    if [ -f /etc/nv_tegra_release ]; then
-        echo "     Cloning and installing torch2trt for Jetson..."
-        cd /tmp
-        if [ -d "torch2trt" ]; then
-            rm -rf torch2trt
-        fi
-        git clone https://github.com/NVIDIA-AI-IOT/torch2trt
-        cd torch2trt
-        ../../../.venv/bin/python -m pip install --no-build-isolation .
-        cd ../..
-        rm -rf /tmp/torch2trt
-        echo "     ✅ torch2trt installed successfully"
-    else
-        echo "     ⚠️  Skipping torch2trt installation (not on Jetson)"
-    fi
-
-    # Install remaining dependencies
-    echo "   Installing remaining project dependencies..."
-    uv sync
-
-    # Install optional model conversion dependencies
-    echo "   Installing model conversion tools..."
-    uv sync --extra conversion --extra audio
 
     # Test TensorRT installation
     echo "🧪 Testing TensorRT installation..."
@@ -259,6 +282,7 @@ else
     # Note: OpenCV and TensorRT would be installed via setup_pytorch_jetson.sh if needed
 fi
 
+
 # --- Initialize rosdep ---
 if [ ! -d /etc/ros/rosdep ]; then
     echo "🔧 Initializing rosdep..."
@@ -272,14 +296,6 @@ cd src
 colcon build --symlink-install
 cd ..
 
-# --- Source workspace ---
-echo "🌐 Sourcing workspace..."
-source install/setup.bash
-
-# --- Create directories ---
-echo "📁 Creating required directories..."
-mkdir -p models/{wake_word,whisper_tiny_trt,piper_voice,yolo_trt,depth_trt,nanollm_quantized}
-mkdir -p logs maps calibration_images
 
 # --- Permissions ---
 echo "🔒 Setting permissions..."
@@ -288,21 +304,38 @@ sudo chmod 666 /dev/ttyTHS* /dev/ttyUSB* 2>/dev/null || true
 
 echo "========================================="
 echo "✅ Setup complete!"
+if [ "$DEV_MODE" = true ]; then
+    echo "✅ Development dependencies installed"
+else
+    echo "✅ Production setup (minimal dependencies)"
+fi
 echo "========================================="
 echo
-echo "Next steps:"
-echo "1. Fix PyTorch CUDA: ./scripts/setup/setup_pytorch_jetson.sh"
-echo "2. Test model conversion tools: python3 tools/overview.py"
-echo "3. Convert models: python3 tools/conversion/convert_yolo.py --help"
-echo "4. Download models: ./scripts/setup/download_models.sh"
-echo "5. Calibrate camera: python3 hardware_tests/calibrate_camera.py"
-echo "6. Test hardware: python3 hardware_tests/test_*.py"
-echo "7. Launch system: ros2 launch launch/full_system_launch.py"
+echo "Setup completed with mode: $([ "$DEV_MODE" = true ] && echo "Development" || echo "Production")"
 echo
-echo "Model conversion commands:"
-echo "• YOLO: python3 tools/conversion/convert_yolo.py --model YOLOv11n --output-dir ./models/yolo_trt"
-echo "• Depth: python3 tools/conversion/convert_depth.py --output-dir ./models/depth_trt"
-echo "• Whisper: python3 tools/conversion/convert_whisper.py --model-size tiny"
+echo "Next steps:"
+if [ "$DEV_MODE" = true ]; then
+    echo "1. Test model conversion tools: python3 tools/overview.py"
+    echo "2. Convert models: python3 tools/conversion/convert_yolo.py --help"
+    echo "3. Download models: ./scripts/setup/download_models.sh"
+    echo "4. Calibrate camera: python3 hardware_tests/calibrate_camera.py"
+    echo "5. Test hardware: python3 hardware_tests/test_*.py"
+    echo "6. Launch system: ros2 launch launch/full_system_launch.py"
+    echo
+    echo "Model conversion commands:"
+    echo "• YOLO: python3 tools/conversion/convert_yolo.py --model YOLOv11n --output-dir ./models/yolo_trt"
+    echo "• Depth: python3 tools/conversion/convert_depth.py --output-dir ./models/depth_trt"
+    echo "• Whisper: python3 tools/conversion/convert_whisper.py --model-size tiny"
+else
+    echo "1. Download pre-converted models: ./scripts/setup/download_models.sh"
+    echo "2. Calibrate camera: python3 hardware_tests/calibrate_camera.py"
+    echo "3. Test hardware: python3 hardware_tests/test_*.py"
+    echo "4. Launch system: ros2 launch launch/full_system_launch.py"
+fi
+echo
+echo "Usage:"
+echo "• Development setup (default): ./setup.sh --dev"
+echo "• Production setup: ./setup.sh --prod"
 echo
 echo "Documentation:"
 echo "• Model conversion guide: docs/guides/model_conversion_best_practices.md"

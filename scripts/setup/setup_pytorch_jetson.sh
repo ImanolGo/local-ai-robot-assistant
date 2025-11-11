@@ -50,6 +50,11 @@ sudo apt-get install -y python3-opencv
 echo "🧹 Removing existing PyTorch and TensorRT installations..."
 uv pip uninstall torch torchvision torchaudio tensorrt onnxruntime onnxruntime-gpu || true
 
+# Create persistent wheel directory
+WHEEL_DIR="$HOME/jetson_wheels"
+mkdir -p "$WHEEL_DIR"
+echo "📁 Using wheel directory: $WHEEL_DIR"
+
 # Install PyTorch based on JetPack version
 if [ "$JETPACK_MAJOR" = "6" ]; then
     echo "🔥 Installing PyTorch for JetPack 6.x..."
@@ -78,79 +83,91 @@ if [ "$JETPACK_MAJOR" = "6" ]; then
         echo "   ✅ cuSPARSELt already installed"
     fi
 
-    # PyTorch wheel URLs for JetPack 6.2.1
-    TORCH_WHEEL_URL="https://github.com/Shattered217/Jetson-Orin-Nano-Wheels/releases/download/6.2.1rc1/torch-2.3.0a0+git97ff6cf-cp310-cp310-linux_aarch64.whl"
-    TORCHVISION_WHEEL_URL="https://github.com/Shattered217/Jetson-Orin-Nano-Wheels/releases/download/6.2.1rc1/torchvision-0.18.0-cp310-cp310-linux_aarch64.whl"
+    # PyTorch wheel URLs for JetPack 6
+    TORCH_WHEEL_URL="https://pypi.jetson-ai-lab.io/jp6/cu126/+f/62a/1beee9f2f1470/torch-2.8.0-cp310-cp310-linux_aarch64.whl#sha256=62a1beee9f2f147076a974d2942c90060c12771c94740830327cae705b2595fc"
+    TORCH_WHEEL_FILE="torch-2.8.0-cp310-cp310-linux_aarch64.whl"
+
+    TORCHVISION_WHEEL_URL="https://pypi.jetson-ai-lab.io/jp6/cu126/+f/907/c4c1933789645/torchvision-0.23.0-cp310-cp310-linux_aarch64.whl#sha256=907c4c1933789645ebb20dd9181d40f8647978e6bd30086ae7b01febb937d2d1"
+    TORCHVISION_WHEEL_FILE="torchvision-0.23.0-cp310-cp310-linux_aarch64.whl"
+
     TENSORRT_WHEEL_URL="https://github.com/Shattered217/Jetson-Orin-Nano-Wheels/releases/download/6.2.1rc1/tensorrt-10.3.0-cp310-none-linux_aarch64.whl"
-    ONNX_WHEEL_URL="https://github.com/Shattered217/Jetson-Orin-Nano-Wheels/releases/download/6.2.1rc1/onnxruntime_gpu-1.24.0-cp310-cp310-linux_aarch64.whl"
+    TENSORRT_WHEEL_FILE="tensorrt-10.3.0-cp310-none-linux_aarch64.whl"
+
+    ONNX_WHEEL_URL="https://pypi.jetson-ai-lab.io/jp6/cu126/+f/4eb/e6a8902dc7708/onnxruntime_gpu-1.23.0-cp310-cp310-linux_aarch64.whl#sha256=4ebe6a8902dc7708434b2e1541b3fe629ebf434e16ab5537d1d6a622b42c622b"
+    ONNX_WHEEL_FILE="onnxruntime_gpu-1.23.0-cp310-cp310-linux_aarch64.whl"
 
     echo "⬇️  Installing PyTorch, torchvision, and TensorRT wheels..."
 
-    # Create temp directory
-    TEMP_DIR=$(mktemp -d)
-    echo "   📁 Created temp directory: $TEMP_DIR"
-
     # Download and install PyTorch
-    TORCH_WHEEL_FILE=$(basename "$TORCH_WHEEL_URL")
-    echo "   📥 Downloading PyTorch wheel (this may take several minutes)..."
-    echo "      URL: $TORCH_WHEEL_URL"
-    if wget --progress=bar:force --timeout=300 "$TORCH_WHEEL_URL" -O "$TEMP_DIR/$TORCH_WHEEL_FILE"; then
-        echo "   ✅ Downloaded PyTorch wheel ($(du -h "$TEMP_DIR/$TORCH_WHEEL_FILE" | cut -f1))"
-        echo "   📦 Installing PyTorch..."
-        uv pip install "$TEMP_DIR/$TORCH_WHEEL_FILE"
-        echo "   ✅ PyTorch installed successfully"
+    if [ -f "$WHEEL_DIR/$TORCH_WHEEL_FILE" ]; then
+        echo "   ✅ PyTorch wheel already exists ($(du -h "$WHEEL_DIR/$TORCH_WHEEL_FILE" | cut -f1))"
     else
-        echo "   ❌ PyTorch download failed, trying backup..."
-        # Fallback to NVIDIA wheel
-        uv pip install torch --index-url https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/
+        echo "   📥 Downloading PyTorch wheel (this may take several minutes)..."
+        echo "      URL: $TORCH_WHEEL_URL"
+        if wget --progress=bar:force --timeout=300 "$TORCH_WHEEL_URL" -O "$WHEEL_DIR/$TORCH_WHEEL_FILE"; then
+            echo "   ✅ Downloaded PyTorch wheel ($(du -h "$WHEEL_DIR/$TORCH_WHEEL_FILE" | cut -f1))"
+        else
+            echo "   ❌ PyTorch download failed"
+            exit 1
+        fi
     fi
+    echo "   📦 Installing PyTorch..."
+    uv pip install "$WHEEL_DIR/$TORCH_WHEEL_FILE"
+    echo "   ✅ PyTorch installed successfully"
 
     # Download and install torchvision
-    TORCHVISION_WHEEL_FILE=$(basename "$TORCHVISION_WHEEL_URL")
-    echo "   📥 Downloading torchvision wheel..."
-    echo "      URL: $TORCHVISION_WHEEL_URL"
-    if wget --progress=bar:force --timeout=300 "$TORCHVISION_WHEEL_URL" -O "$TEMP_DIR/$TORCHVISION_WHEEL_FILE"; then
-        echo "   ✅ Downloaded torchvision wheel ($(du -h "$TEMP_DIR/$TORCHVISION_WHEEL_FILE" | cut -f1))"
-        echo "   📦 Installing torchvision..."
-        uv pip install "$TEMP_DIR/$TORCHVISION_WHEEL_FILE"
-        echo "   ✅ torchvision installed successfully"
+    if [ -f "$WHEEL_DIR/$TORCHVISION_WHEEL_FILE" ]; then
+        echo "   ✅ torchvision wheel already exists ($(du -h "$WHEEL_DIR/$TORCHVISION_WHEEL_FILE" | cut -f1))"
     else
-        echo "   ❌ torchvision download failed, will build from source"
-        # Build torchvision from source as fallback
-        echo "   🔨 Building torchvision from source..."
-        uv pip install torchvision --no-deps
-        PYTORCH_VERSION=$(python3 -c "import torch; print(torch.__version__)")
-        echo "   ✅ Built torchvision for PyTorch $PYTORCH_VERSION"
+        echo "   📥 Downloading torchvision wheel..."
+        echo "      URL: $TORCHVISION_WHEEL_URL"
+        if wget --progress=bar:force --timeout=300 "$TORCHVISION_WHEEL_URL" -O "$WHEEL_DIR/$TORCHVISION_WHEEL_FILE"; then
+            echo "   ✅ Downloaded torchvision wheel ($(du -h "$WHEEL_DIR/$TORCHVISION_WHEEL_FILE" | cut -f1))"
+        else
+            echo "   ❌ torchvision download failed"
+            exit 1
+        fi
     fi
+    echo "   📦 Installing torchvision..."
+    uv pip install "$WHEEL_DIR/$TORCHVISION_WHEEL_FILE"
+    echo "   ✅ torchvision installed successfully"
 
     # Download and install TensorRT Python bindings
-    TENSORRT_WHEEL_FILE=$(basename "$TENSORRT_WHEEL_URL")
-    echo "   📥 Downloading TensorRT wheel..."
-    echo "      URL: $TENSORRT_WHEEL_URL"
-    if wget --progress=bar:force --timeout=300 "$TENSORRT_WHEEL_URL" -O "$TEMP_DIR/$TENSORRT_WHEEL_FILE"; then
-        echo "   ✅ Downloaded TensorRT wheel ($(du -h "$TEMP_DIR/$TENSORRT_WHEEL_FILE" | cut -f1))"
-        echo "   📦 Installing TensorRT..."
-        uv pip install "$TEMP_DIR/$TENSORRT_WHEEL_FILE"
-        echo "   ✅ TensorRT installed successfully"
+    if [ -f "$WHEEL_DIR/$TENSORRT_WHEEL_FILE" ]; then
+        echo "   ✅ TensorRT wheel already exists ($(du -h "$WHEEL_DIR/$TENSORRT_WHEEL_FILE" | cut -f1))"
     else
-        echo "   ⚠️  TensorRT wheel download failed, using system TensorRT"
+        echo "   📥 Downloading TensorRT wheel..."
+        echo "      URL: $TENSORRT_WHEEL_URL"
+        if wget --progress=bar:force --timeout=300 "$TENSORRT_WHEEL_URL" -O "$WHEEL_DIR/$TENSORRT_WHEEL_FILE"; then
+            echo "   ✅ Downloaded TensorRT wheel ($(du -h "$WHEEL_DIR/$TENSORRT_WHEEL_FILE" | cut -f1))"
+        else
+            echo "   ⚠️  TensorRT wheel download failed, using system TensorRT"
+        fi
+    fi
+    if [ -f "$WHEEL_DIR/$TENSORRT_WHEEL_FILE" ]; then
+        echo "   📦 Installing TensorRT..."
+        uv pip install "$WHEEL_DIR/$TENSORRT_WHEEL_FILE"
+        echo "   ✅ TensorRT installed successfully"
     fi
 
 elif [ "$JETPACK_MAJOR" = "5" ]; then
     echo "🔥 Installing PyTorch for JetPack 5.x..."
     # Use NVIDIA official wheel for JetPack 5
     TORCH_WHEEL_URL="https://developer.download.nvidia.com/compute/redist/jp/v512/pytorch/torch-2.1.0a0+41361538.nv23.06-cp310-cp310-linux_aarch64.whl"
+    TORCH_WHEEL_FILE="torch-2.1.0a0+41361538.nv23.06-cp310-cp310-linux_aarch64.whl"
 
-    TEMP_DIR=$(mktemp -d)
-    TORCH_WHEEL_FILE=$(basename "$TORCH_WHEEL_URL")
-    if wget --quiet "$TORCH_WHEEL_URL" -O "$TEMP_DIR/$TORCH_WHEEL_FILE"; then
-        echo "   ✅ Downloaded PyTorch wheel for JetPack 5"
-        uv pip install "$TEMP_DIR/$TORCH_WHEEL_FILE"
-        uv pip install torchvision==0.16.0
+    if [ -f "$WHEEL_DIR/$TORCH_WHEEL_FILE" ]; then
+        echo "   ✅ PyTorch wheel already exists"
     else
-        echo "❌ Error: Failed to download PyTorch wheel for JetPack 5.x"
-        exit 1
+        if wget --quiet "$TORCH_WHEEL_URL" -O "$WHEEL_DIR/$TORCH_WHEEL_FILE"; then
+            echo "   ✅ Downloaded PyTorch wheel for JetPack 5"
+        else
+            echo "❌ Error: Failed to download PyTorch wheel for JetPack 5.x"
+            exit 1
+        fi
     fi
+    uv pip install "$WHEEL_DIR/$TORCH_WHEEL_FILE"
+    uv pip install torchvision==0.16.0
 else
     echo "❌ Error: Unsupported JetPack version: $JETPACK_VERSION"
     exit 1
@@ -162,16 +179,23 @@ uv pip install 'numpy<2'  # Fix numpy compatibility
 
 if [ "$JETPACK_MAJOR" = "6" ] && [ -n "$ONNX_WHEEL_URL" ]; then
     # Try Jetson-optimized ONNX Runtime wheel
-    ONNX_WHEEL_FILE=$(basename "$ONNX_WHEEL_URL")
-    echo "   📥 Downloading ONNX Runtime GPU wheel..."
-    echo "      URL: $ONNX_WHEEL_URL"
-    if wget --progress=bar:force --timeout=300 "$ONNX_WHEEL_URL" -O "$TEMP_DIR/$ONNX_WHEEL_FILE" 2>/dev/null; then
-        echo "   ✅ Downloaded ONNX Runtime GPU wheel ($(du -h "$TEMP_DIR/$ONNX_WHEEL_FILE" | cut -f1))"
+    if [ -f "$WHEEL_DIR/$ONNX_WHEEL_FILE" ]; then
+        echo "   ✅ ONNX Runtime GPU wheel already exists ($(du -h "$WHEEL_DIR/$ONNX_WHEEL_FILE" | cut -f1))"
+    else
+        echo "   📥 Downloading ONNX Runtime GPU wheel..."
+        echo "      URL: $ONNX_WHEEL_URL"
+        if wget --progress=bar:force --timeout=300 "$ONNX_WHEEL_URL" -O "$WHEEL_DIR/$ONNX_WHEEL_FILE" 2>/dev/null; then
+            echo "   ✅ Downloaded ONNX Runtime GPU wheel ($(du -h "$WHEEL_DIR/$ONNX_WHEEL_FILE" | cut -f1))"
+        else
+            echo "   ⚠️  ONNX Runtime GPU wheel download failed, using standard version"
+        fi
+    fi
+
+    if [ -f "$WHEEL_DIR/$ONNX_WHEEL_FILE" ]; then
         echo "   📦 Installing ONNX Runtime GPU..."
-        uv pip install "$TEMP_DIR/$ONNX_WHEEL_FILE"
+        uv pip install "$WHEEL_DIR/$ONNX_WHEEL_FILE"
         echo "   ✅ ONNX Runtime GPU installed successfully"
     else
-        echo "   ⚠️  ONNX Runtime GPU wheel download failed, using standard version"
         uv pip install onnxruntime
     fi
 else
@@ -180,17 +204,12 @@ else
     echo "   ✅ Standard ONNX Runtime installed"
 fi
 
-# Clean up temp directory
-if [[ -n "${TEMP_DIR:-}" && -d "$TEMP_DIR" ]]; then
-    rm -rf "$TEMP_DIR"
-fi
+echo ""
+echo "🧪 Testing installations..."
+echo "========================================="
 
-    echo ""
-    echo "🧪 Testing installations..."
-    echo "========================================="
-
-    # Test PyTorch
-    python3 -c "
+# Test PyTorch
+python3 -c "
 import torch
 print(f'✅ PyTorch {torch.__version__}')
 print(f'   CUDA available: {torch.cuda.is_available()}')
@@ -203,21 +222,21 @@ if torch.cuda.is_available():
     print('   ✅ CUDA tensor operations working')
 "
 
-    # Test torchvision
-    python3 -c "
+# Test torchvision
+python3 -c "
 import torchvision
 print(f'✅ torchvision {torchvision.__version__}')
 "
 
-    # Test OpenCV
-    python3 -c "
+# Test OpenCV
+python3 -c "
 import cv2
 print(f'✅ OpenCV {cv2.__version__} (system)')
 print('   ℹ️  No CUDA support (system OpenCV)')
 "
 
-    # Test TensorRT
-    python3 -c "
+# Test TensorRT
+python3 -c "
 try:
     import tensorrt as trt
     print(f'✅ TensorRT {trt.__version__}')
@@ -229,8 +248,8 @@ except Exception as e:
     print('   Using system TensorRT')
 "
 
-    # Test ONNX Runtime
-    python3 -c "
+# Test ONNX Runtime
+python3 -c "
 try:
     import onnxruntime as ort
     print(f'✅ ONNX Runtime {ort.__version__}')
@@ -245,16 +264,18 @@ except Exception as e:
     print(f'⚠️  ONNX Runtime: {e}')
 "
 
-    echo "========================================="
-    echo "✅ PyTorch and ML stack setup complete!"
-    echo "========================================="
-    echo ""
-    echo "Summary:"
-    echo "• PyTorch with CUDA support: ✅"
-    echo "• torchvision: ✅"
-    echo "• OpenCV (system): ✅"
-    echo "• TensorRT: ✅"
-    echo "• ONNX Runtime: ✅"
-    echo ""
-    echo "Note: OpenCV does not have CUDA support (system version)"
-    echo "      For CUDA OpenCV, compile from source using OpenCV-4-13-0.sh"
+echo "========================================="
+echo "✅ PyTorch and ML stack setup complete!"
+echo "========================================="
+echo ""
+echo "Summary:"
+echo "• PyTorch with CUDA support: ✅"
+echo "• torchvision: ✅"
+echo "• OpenCV (system): ✅"
+echo "• TensorRT: ✅"
+echo "• ONNX Runtime: ✅"
+echo ""
+echo "Wheels saved to: $WHEEL_DIR"
+echo ""
+echo "Note: OpenCV does not have CUDA support (system version)"
+echo "      For CUDA OpenCV, compile from source using OpenCV-4-13-0.sh"

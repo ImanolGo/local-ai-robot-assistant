@@ -51,24 +51,40 @@ models:
         ram_mb: 250
         vram_mb: 400
       source:
-        provider: "TikTok/Depth-Anything"
+        provider: "Depth-Anything"
         url: "https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf"
         license: "Apache-2.0"
         commercial_use: true
       files:
-        transformers: "config.json"
-        pytorch: "pytorch_model.bin"
-        tensorrt: "depth_anything_v2_small_fp16.engine"
+        transformers_config: "config.json"
+        transformers_model: "model.safetensors"
+        preprocessor_config: "preprocessor_config.json"
+        onnx: "depth_anything_v2_small.onnx"
+        tensorrt: "depth_anything_v2_small.trt"
+        model_config: "depth_trt/config.json"
       conversion:
         required: true
-        script: "tools/convert_depth.py"
+        script: "tools/conversion/convert_depth.py"
         precision: "fp16"
+        workspace_mb: 4096
       features:
         - "DPT architecture with DINOv2 backbone"
         - "Trained on 595K synthetic + 62M+ real images"
         - "Superior fine-grained details vs V1"
-        - "10x faster than SD-based models"
-        - "State-of-the-art robustness"
+        - "10x faster than diffusion-based models"
+        - "State-of-the-art robustness and accuracy"
+        - "Optimized for Jetson Orin Nano deployment"
+      ros2_integration:
+        node: "src/perception_nodes/perception_nodes/depth_estimation_node.py"
+        topics:
+          subscriptions:
+            - "/camera/image_undistorted"
+            - "/camera/camera_info"
+          publications:
+            - "/perception/depth"
+            - "/perception/depth_colored"
+            - "/perception/depth_stats"
+            - "/perception/obstacles"
 
   audio:
     whisper:

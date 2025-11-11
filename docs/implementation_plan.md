@@ -314,12 +314,14 @@
   - [x] Validate output accuracy (mAP drop <2%)
   - [x] Benchmark inference time (target: <50ms on Jetson)
   - [x] Save engine to `models/yolo_trt/YOLOv11n_fp16.engine`
+
 - [ ] Implement `tools/convert_depth.py`
   - [ ] Export Depth Anything V2 Small to ONNX format
   - [ ] Convert ONNX to TensorRT engine (FP16)
-  - [ ] Validate depth map quality
+  - [ ] Validate depth map quality and compare to original model
   - [ ] Benchmark inference time (target: <35ms for 30+ FPS)
   - [ ] Save engine to `models/depth_trt/depth_anything_v2_s_fp16.engine`
+
 - [ ] Document conversion process in `docs/guides/model_conversion.md`
 
 ### 3.3 Audio Model Setup
