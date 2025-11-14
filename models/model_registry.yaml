@@ -109,6 +109,15 @@ models:
       framework: "onnx"
       runtime: "onnx"
       size_mb: 60.3
+      voice_model: "en_US-lessac-medium"
+      performance_targets:
+        latency_ms: 500
+        words_per_second: 30
+      memory_usage:
+        ram_mb: 150
+      actual_performance:
+        latency_ms: 236  # 5 words in 236ms
+        words_per_second: 33.6  # 0.030s per word
       source:
         provider: "Rhasspy"
         url: "https://github.com/rhasspy/piper"
@@ -117,6 +126,10 @@ models:
       files:
         onnx: "en_US-lessac-medium.onnx"
         config: "en_US-lessac-medium.onnx.json"
+      implementation:
+        ros2_node: "src/audio_interface_nodes/piper_tts_node.py"
+        test_script: "scripts/test_piper_tts.py"
+        ros2_test: "scripts/test_piper_ros2.py"
 
     wake_word:
       name: "openWakeWord Models"

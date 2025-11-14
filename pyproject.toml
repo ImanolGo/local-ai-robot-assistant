@@ -21,6 +21,9 @@ dependencies = [
     "gdown",
     "timm",
     "ultralytics",
+    "piper-tts",
+    "openwakeword",
+    "faster_whisper",
 ]
 
 [build-system]
