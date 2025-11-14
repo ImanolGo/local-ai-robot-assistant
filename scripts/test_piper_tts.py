@@ -33,6 +33,12 @@ except ImportError:
     sf = None
     librosa = None
 
+try:
+    import sounddevice as sd
+except ImportError:
+    print("WARNING: sounddevice not available. Audio streaming will be disabled.")
+    sd = None
+
 
 class PiperTTSHandler:
     """Handler for Piper TTS operations with performance monitoring."""
@@ -103,6 +109,82 @@ class PiperTTSHandler:
 
         print(f"Synthesis completed in {synthesis_time:.3f}s")
         return audio_data, synthesis_time
+
+    def synthesize_stream(self, text: str) -> float:
+        """
+        Synthesize text to speech with real-time audio streaming playback.
+
+        Args:
+            text: Text to synthesize
+
+        Returns:
+            float: Total synthesis and playback time
+        """
+        if not self.voice:
+            raise RuntimeError("Voice model not loaded")
+
+        if not sd:
+            raise RuntimeError("sounddevice not available. Install with: pip install sounddevice")
+
+        print(f"Streaming synthesis: '{text}'")
+        start_time = time.time()
+
+        # Audio configuration based on hardware requirements
+        # Piper outputs mono 22050Hz, USB speaker requires stereo 48000Hz
+        piper_sample_rate = self.voice.config.sample_rate  # 22050
+        speaker_sample_rate = 48000  # USB speaker only supports 48kHz
+
+        # USB Speaker configuration (UACDemoV1.0 - device 0)
+        speaker_device = 0  # UACDemoV1.0: USB Audio (hw:0,0) with 2 output channels
+        speaker_channels = 2  # Stereo as required
+
+        # Setup a sounddevice OutputStream for the USB speakers
+        print(
+            f"Configuring audio: Piper {piper_sample_rate}Hz mono -> USB speaker \
+                {speaker_sample_rate}Hz stereo"
+        )
+        stream = sd.OutputStream(
+            samplerate=speaker_sample_rate,  # 48000 Hz as required by USB speaker
+            channels=speaker_channels,  # Stereo as required by UACDemoV1.0
+            dtype="int16",
+            device=speaker_device,  # Explicitly use USB speaker device
+        )
+        stream.start()
+
+        try:
+            # Use the regular synthesize method and stream chunks as they're generated
+            for audio_chunk in self.voice.synthesize(text):
+                # Get the raw audio bytes from the AudioChunk
+                audio_bytes = audio_chunk.audio_int16_bytes
+                mono_data = np.frombuffer(audio_bytes, dtype=np.int16)
+
+                # Resample mono data first (before converting to stereo)
+                if piper_sample_rate != speaker_sample_rate:
+                    # Simple linear interpolation upsampling
+                    original_length = len(mono_data)
+                    resample_ratio = speaker_sample_rate / piper_sample_rate  # ~2.18
+                    target_length = int(original_length * resample_ratio)
+
+                    # Use numpy linear interpolation for resampling
+                    mono_data = np.interp(
+                        np.linspace(0, original_length - 1, target_length),
+                        np.arange(original_length),
+                        mono_data,
+                    ).astype(np.int16)
+
+                # Convert mono to stereo by creating (frames, 2) array
+                # Each frame contains [left, right] where both channels have the same value
+                _ = len(mono_data)
+                stereo_data = np.column_stack((mono_data, mono_data))
+
+                stream.write(stereo_data)
+        finally:
+            stream.stop()
+            stream.close()
+
+        total_time = time.time() - start_time
+        print(f"Streaming synthesis and playback completed in {total_time:.3f}s")
+        return total_time
 
     def _save_audio(self, audio_data: np.ndarray, output_path: str):
         """Save audio data to WAV file."""
@@ -212,6 +294,72 @@ def benchmark_latency(handler: PiperTTSHandler, test_phrases: list, num_runs: in
     return results
 
 
+def benchmark_streaming(handler: PiperTTSHandler, test_phrases: list, num_runs: int = 3) -> dict:
+    """
+    Benchmark streaming synthesis latency with various text lengths.
+
+    Args:
+        handler: PiperTTS handler
+        test_phrases: List of phrases to test
+        num_runs: Number of runs per phrase for averaging (fewer for streaming)
+
+    Returns:
+        Dictionary with streaming benchmark results
+    """
+    if not sd:
+        print("sounddevice not available - skipping streaming benchmark")
+        return {}
+
+    print("Note: Streaming benchmark includes both synthesis and playback time")
+    print("Ensure speakers are connected for audio output testing")
+
+    results = {}
+
+    for phrase in test_phrases:
+        word_count = len(phrase.split())
+        times = []
+
+        print(f"\nStreaming benchmark: '{phrase}' ({word_count} words)")
+
+        # Warm up
+        try:
+            handler.synthesize_stream(phrase)
+        except Exception as e:
+            print(f"Warm-up failed: {e}")
+            continue
+
+        # Actual timing runs
+        for run in range(num_runs):
+            print(f"  Run {run + 1}/{num_runs}")
+            try:
+                stream_time = handler.synthesize_stream(phrase)
+                times.append(stream_time)
+            except Exception as e:
+                print(f"  Run {run + 1} failed: {e}")
+                continue
+
+        if not times:
+            print(f"  All runs failed for phrase: {phrase}")
+            continue
+
+        avg_time = np.mean(times)
+        std_time = np.std(times)
+        time_per_word = avg_time / word_count if word_count > 0 else 0
+
+        results[phrase] = {
+            "word_count": word_count,
+            "avg_time": avg_time,
+            "std_time": std_time,
+            "time_per_word": time_per_word,
+            "all_times": times,
+        }
+
+        print(f"  Average: {avg_time:.3f}s ± {std_time:.3f}s")
+        print(f"  Per word: {time_per_word:.3f}s/word")
+
+    return results
+
+
 def quality_test(handler: PiperTTSHandler, test_phrases: list, output_dir: str):
     """
     Test synthesis quality with various phrases.
@@ -258,6 +406,12 @@ def main():
     parser.add_argument("--benchmark", action="store_true", help="Run latency benchmark")
     parser.add_argument("--quality", action="store_true", help="Run quality tests")
     parser.add_argument(
+        "--stream", action="store_true", help="Stream audio to speakers in real-time"
+    )
+    parser.add_argument(
+        "--stream-benchmark", action="store_true", help="Run streaming benchmark tests"
+    )
+    parser.add_argument(
         "--text",
         default="Hello, this is a test of the Piper text-to-speech system.",
         help="Custom text to synthesize",
@@ -281,18 +435,31 @@ def main():
 
         # Custom text synthesis
         print("=== Custom Text Synthesis ===")
-        audio_data, synthesis_time = handler.synthesize(
-            args.text, os.path.join(args.output_dir, "custom_synthesis.wav")
-        )
-        _ = handler.analyze_audio(audio_data)
 
-        word_count = len(args.text.split())
-        print(f"Synthesized {word_count} words in {synthesis_time:.3f}s")
-        print(f"Performance: {synthesis_time/word_count:.3f}s per word")
-        print(
-            f"Target check: {'✓ PASS' if synthesis_time < 0.5 and word_count <= 20 else '✗ FAIL'} \
-                (<500ms for ≤20 words)"
-        )
+        if args.stream:
+            # Stream audio to speakers
+            print("Streaming audio to speakers...")
+            stream_time = handler.synthesize_stream(args.text)
+
+            word_count = len(args.text.split())
+            print(f"Streamed {word_count} words in {stream_time:.3f}s")
+            print(f"Streaming performance: {stream_time/word_count:.3f}s per word")
+            print("Note: Streaming includes both synthesis and playback time")
+        else:
+            # Regular synthesis with file output
+            audio_data, synthesis_time = handler.synthesize(
+                args.text, os.path.join(args.output_dir, "custom_synthesis.wav")
+            )
+            _ = handler.analyze_audio(audio_data)
+
+            word_count = len(args.text.split())
+            print(f"Synthesized {word_count} words in {synthesis_time:.3f}s")
+            print(f"Performance: {synthesis_time/word_count:.3f}s per word")
+            print(
+                f"Target check: \
+                    {'✓ PASS' if synthesis_time < 0.5 and word_count <= 20 else '✗ FAIL'} \
+                    (<500ms for ≤20 words)"
+            )
 
         # Latency benchmark
         if args.benchmark:
@@ -311,6 +478,21 @@ def main():
                     f"{result['word_count']:2d} words: {result['avg_time']:.3f}s \
                         ({result['time_per_word']:.3f}s/word) {status}"
                 )
+
+        # Streaming benchmark
+        if args.stream_benchmark:
+            print("\n=== Streaming Benchmark ===")
+            streaming_results = benchmark_streaming(handler, test_phrases)
+
+            if streaming_results:
+                # Summary
+                print("\n--- Streaming Benchmark Summary ---")
+                print("Note: Times include both synthesis and real-time playback")
+                for phrase, result in streaming_results.items():
+                    print(
+                        f"{result['word_count']:2d} words: {result['avg_time']:.3f}s \
+                            ({result['time_per_word']:.3f}s/word) [STREAMING]"
+                    )
 
         # Quality test
         if args.quality:
