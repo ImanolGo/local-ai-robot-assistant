@@ -25,11 +25,24 @@ from typing import Optional
 import numpy as np
 import torch
 from huggingface_hub import snapshot_download
-from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+
+# Try to import transformers components with version checking
+try:
+    import transformers
+    from transformers import AutoModelForDepthEstimation
+
+    TRANSFORMERS_VERSION = transformers.__version__
+except ImportError:
+    raise ImportError(
+        "transformers library not found. Install with: pip install transformers>=4.30.0"
+    )
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+# Check transformers version
+logger.info(f"Using transformers version: {TRANSFORMERS_VERSION}")
 
 
 class DepthAnythingV2Converter:
@@ -100,20 +113,17 @@ class DepthAnythingV2Converter:
         logger.info("Exporting model to ONNX format")
 
         try:
-            # Load model and processor
-            logger.info("Loading PyTorch model...")
-            model = AutoModelForDepthEstimation.from_pretrained(
-                self.local_model_path,
-                torch_dtype=torch.float32,  # Use float32 for ONNX export
-            )
-            _ = AutoImageProcessor.from_pretrained(self.local_model_path)
+            logger.info("Loading Depth Anything V2 Small model...")
 
-            # Move to device and set to eval mode
+            model = AutoModelForDepthEstimation.from_pretrained(
+                "depth-anything/Depth-Anything-V2-Small-hf"
+            )
+
+            logger.info("✓ Model and processor loaded successfully")
+
             model = model.to(self.device)
             model.eval()
-            logger.info("✓ Model loaded successfully")
 
-            # Create dummy input matching expected dimensions
             dummy_input = torch.randn(
                 self.batch_size,
                 3,
@@ -123,29 +133,19 @@ class DepthAnythingV2Converter:
                 device=self.device,
             )
 
-            logger.info(f"Dummy input shape: {dummy_input.shape}")
-
-            # Test forward pass to verify model works
             with torch.no_grad():
                 test_output = model(pixel_values=dummy_input)
                 logger.info(f"Model output shape: {test_output.predicted_depth.shape}")
 
-            # Export to ONNX with dynamic shapes
-            logger.info("Exporting to ONNX...")
             torch.onnx.export(
                 model,
                 dummy_input,
                 self.onnx_path,
+                opset_version=17,
                 export_params=True,
-                opset_version=17,  # Use latest stable opset
-                do_constant_folding=True,
                 input_names=["pixel_values"],
                 output_names=["predicted_depth"],
-                dynamic_axes={
-                    "pixel_values": {0: "batch_size", 2: "height", 3: "width"},
-                    "predicted_depth": {0: "batch_size", 1: "height", 2: "width"},
-                },
-                verbose=False,
+                do_constant_folding=True,
             )
 
             logger.info(f"✓ ONNX model saved to: {self.onnx_path}")
@@ -196,13 +196,12 @@ class DepthAnythingV2Converter:
             logger.error(f"✗ ONNX verification failed: {e}")
             raise
 
-    def convert_to_tensorrt(self, workspace_size_mb: int = 256) -> None:
+    def convert_to_tensorrt(self, workspace_size_mb: int = 512) -> None:
         """
         Convert ONNX model to TensorRT engine on Jetson
 
         Args:
-            workspace_size_mb: TensorRT workspace memory pool size in MB \
-                (uses --memPoolSize=workspace:N)
+            workspace_size_mb: TensorRT workspace memory pool size in MB
         """
         logger.info("Converting ONNX to TensorRT engine")
 
@@ -218,22 +217,17 @@ class DepthAnythingV2Converter:
             )
 
         # TensorRT conversion command optimized for Jetson Orin Nano
-        # Use fixed shapes to reduce memory consumption during optimization
         cmd = [
             str(trtexec_path),
             f"--onnx={self.onnx_path}",
             f"--saveEngine={self.engine_path}",
             "--fp16",  # Use FP16 for memory efficiency and speed
-            f"--memPoolSize=workspace:{workspace_size_mb}",  # Reduced workspace memory
-            # Memory optimization flags for Jetson
-            "--builderOptimizationLevel=3",  # Use aggressive optimization
-            "--avgTiming=1",  # Reduce timing iterations to save memory
-            # Use fixed shape instead of dynamic to reduce memory usage
-            f"--shapes=pixel_values:{self.batch_size}x3x{self.input_size[0]}x{self.input_size[1]}",
+            f"--memPoolSize=workspace:{workspace_size_mb}",
+            "--builderOptimizationLevel=3",
+            "--avgTiming=10",
             "--verbose",
             "--useSpinWait",
-            "--noDataTransfers",
-            "--skipInference",  # Skip inference to save time and memory
+            "--useCudaGraph",  # Enable CUDA graphs for better performance
         ]
 
         try:
@@ -333,7 +327,7 @@ class DepthAnythingV2Converter:
         logger.info(f"✓ Preprocessor configuration saved to: {preprocessor_path}")
 
     def full_conversion_pipeline(
-        self, skip_tensorrt: bool = False, workspace_size_mb: int = 256
+        self, skip_tensorrt: bool = False, workspace_size_mb: int = 512
     ) -> None:
         """
         Run the complete model conversion pipeline
@@ -418,8 +412,7 @@ def main():
         "--workspace-size",
         type=int,
         default=256,
-        help="TensorRT workspace memory pool size in MB (for --memPoolSize=workspace:N, \
-            default optimized for Jetson Orin Nano)",
+        help="TensorRT workspace memory pool size in MB",
     )
     parser.add_argument(
         "--skip-download",
@@ -435,6 +428,23 @@ def main():
     args = parser.parse_args()
 
     try:
+        # Check transformers version
+        logger.info("=" * 70)
+        logger.info("Depth Anything V2 Model Converter")
+        logger.info("=" * 70)
+        logger.info(f"Transformers version: {TRANSFORMERS_VERSION}")
+
+        # Warn if version is old
+        from packaging import version
+
+        if version.parse(TRANSFORMERS_VERSION) < version.parse("4.30.0"):
+            logger.warning("⚠ Your transformers version is outdated!")
+            logger.warning("  For best results, upgrade with:")
+            logger.warning("  pip install --upgrade transformers>=4.30.0")
+            logger.warning("")
+            logger.warning("  Proceeding anyway with fallback methods...")
+            time.sleep(2)  # Give user time to read
+
         # Initialize converter
         converter = DepthAnythingV2Converter(args.model_name, models_base_dir=args.models_dir)
 
