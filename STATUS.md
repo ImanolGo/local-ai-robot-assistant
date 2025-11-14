@@ -1,6 +1,6 @@
 # Implementation Status
 
-**Last Updated**: 2 Nov 2025
+**Last Updated**: 14 Nov 2025
 **Current Phase**: Phase 2 (completing), Phase 3 (starting)
 **Overall Progress**: 55%
 
@@ -201,9 +201,20 @@
 
 ---
 
-## Phase 3: Perception Models (70% Complete 🚧)
+## Phase 3: Perception Models (75% Complete 🚧)
 
-### 3.1 Model Conversion Tools (100% Complete ✅)
+### 3.1 Model Acquisition (100% Complete ✅)
+
+- ✅ Download YOLOv11n PyTorch model from Ultralytics
+- ✅ Download Depth Anything V2 Small PyTorch model
+- ✅ Download Whisper Tiny model from OpenAI
+- ✅ Download Piper TTS model and voice files
+- ✅ Download openWakeWord models
+- ✅ Download Gemma 3n E2B (5B parameters, 2B effective footprint)
+- ✅ Organize models in `/models` directory
+- ✅ Document model sources and licenses in `docs/model_credits.md`
+
+### 3.2 Model Conversion Tools (100% Complete ✅)
 
 - ✅ Set up TensorRT optimization pipeline (modern TensorRT 10.x API)
 - ✅ Create YOLO model conversion script (`tools/conversion/convert_yolo.py`)
@@ -211,8 +222,8 @@
   - ✅ TensorRT FP16 optimization with memory pool configuration
   - ✅ Export validation and performance benchmarking
   - ✅ Jetson-optimized workspace memory allocation
-- ✅ Create FastDepth model conversion script (`tools/conversion/convert_depth.py`)
-  - ✅ FastDepth model download and ONNX conversion
+- ✅ Create Depth Anything V2 model conversion script (`tools/conversion/convert_depth.py`)
+  - ✅ Depth Anything V2 Small model download and ONNX conversion
   - ✅ TensorRT FP16 optimization for depth estimation
   - ✅ Input/output tensor validation and profiling
   - ✅ Dynamic input size support for various resolutions
@@ -237,7 +248,7 @@
   - ✅ Performance tuning and troubleshooting guide
   - ✅ Model-specific conversion examples and benchmarks
 
-### 3.2 YOLO Object Detection (15% Complete 🚧)
+### 3.3 YOLO Object Detection (15% Complete 🚧)
 
 - ✅ Download and convert YOLOv11n model to TensorRT
   - ✅ FP16 conversion (8.0MB engine, 20.6 FPS, 48.5ms latency)
@@ -250,16 +261,21 @@
 - ⏳ Implement detection filtering and NMS
 - ⏳ Create visualization node for debugging
 
-### 3.3 FastDepth Depth Estimation (0% Complete ⏳)
+### 3.4 Depth Anything V2 Depth Estimation (15% Complete 🚧)
 
-- ⏳ Download and convert FastDepth model to TensorRT
+- ✅ Download and convert Depth Anything V2 Small model to TensorRT
+  - ✅ Export Depth Anything V2 Small to ONNX format
+  - ✅ Convert ONNX to TensorRT engine (FP16)
+  - ✅ Validate depth map quality and compare to original model
+  - ✅ Benchmark inference time (target: <35ms for 30+ FPS)
+  - ✅ Save engine to `models/depth_trt/depth_anything_v2_s_fp16.engine`
 - ⏳ Implement depth_estimation_node.py
 - ⏳ Create ROS2 node for real-time depth estimation
-- ⏳ Test depth accuracy and speed (target: 15+ FPS)
+- ⏳ Test depth accuracy and speed (target: 30+ FPS)
 - ⏳ Implement depth image processing and filtering
 - ⏳ Create point cloud generation from depth
 
-### 3.4 Model Integration (0% Complete ⏳)
+### 3.5 Model Integration (0% Complete ⏳)
 
 - ⏳ Implement dynamic model loading system
 - ⏳ Create model cache management (8GB RAM constraint)
@@ -269,43 +285,114 @@
 
 ---
 
-## Phase 4: Audio Pipeline (0% Complete ⏳)
+## Phase 4: Audio Detection Pipeline (0% Complete ⏳)
+
+### 4.1 Audio Capture & Playback Infrastructure
+
+- ⏳ Implement audio_capture_node.py
+- ⏳ Implement audio_playback_node.py
+- ⏳ Test audio latency (target: <200ms round-trip)
+- ⏳ Test simultaneous capture/playback without feedback
+- ⏳ Test USB device reconnection and hot-swapping
+
+### 4.2 Wake Word Detection ("Hey Jarvis")
+
+- ⏳ Install openWakeWord library and dependencies
+- ⏳ Implement wake_word_detector_node.py
+- ⏳ Train or fine-tune custom wake word model for "Hey Jarvis"
+- ⏳ Test false positive rate (target: <1 per hour in quiet environment)
+- ⏳ Test detection latency (target: <100ms from word completion)
+- ⏳ Optimize for ultra-low CPU usage (target: <5% continuously)
+
+### 4.3 Voice Activity Detection (VAD)
+
+- ⏳ Install VAD libraries (webrtcvad and/or silero-vad)
+- ⏳ Implement vad_node.py
+- ⏳ Configure VAD sensitivity for different environments
+- ⏳ Test speech segmentation accuracy (target: >95% correct segmentation)
+- ⏳ Test detection latency (target: <50ms)
+- ⏳ Optimize resource usage (target: <2% CPU when active)
+
+### 4.4 Enhanced Speech-to-Text with VAD Integration
+
+- ⏳ Set up faster-whisper (PRIMARY) with optimizations
+- ⏳ Implement enhanced stt_node.py
+- ⏳ Test transcription accuracy (target: WER <8% for clean speech)
+- ⏳ Test with various accents, speaking styles, and command types
+- ⏳ Benchmark inference time (target: <2s for 5s audio, real-time factor <0.4x)
+
+### 4.5 Text-to-Speech (Piper) with State Management
+
+- ⏳ Install Piper TTS with ONNX runtime support
+- ⏳ Download and validate voice model (recommended: en_US-lessac-medium)
+- ⏳ Implement enhanced tts_node.py
+- ⏳ Test voice quality and naturalness (subjective evaluation)
+- ⏳ Test synthesis latency (target: <500ms for 20 words)
+- ⏳ Test various sentence types, lengths, and punctuation handling
+
+### 4.6 Comprehensive Audio Detection Pipeline Integration
+
+- ⏳ Implement audio_detection_pipeline.py - Central state machine coordinator
+- ⏳ Create launch/audio_detection_pipeline_launch.py
+- ⏳ Test complete audio detection flow
+- ⏳ Implement comprehensive integration tests
+- ⏳ Optimize pipeline performance
+
+---
+
+## Phase 5: Enhanced Multimodal Audio Processing (0% Complete ⏳)
+
+### 5.1 Direct Audio Processing for Gemma 3n
+
+- ⏳ Implement multimodal_audio_processor.py
+- ⏳ Create audio encoding utilities
+- ⏳ Handle multi-speaker scenario processing
+
+### 5.2 Environmental Audio Analysis
+
+- ⏳ Implement environmental sound classification
+- ⏳ Test environmental audio understanding
+- ⏳ Background noise detection (crowd, traffic, music)
+
+### 5.3 Audio Context Integration
+
+- ⏳ Implement audio context coordination
+- ⏳ Test integrated audio processing
+- ⏳ Coordinate between traditional ASR and direct audio processing
+
+---
+
+## Phase 6: SLAM & Localization (0% Complete ⏳)
 
 [All items pending]
 
 ---
 
-## Phase 5: SLAM & Localization (0% Complete ⏳)
+## Phase 7: Gemma 3n Multimodal Cognitive Core (0% Complete ⏳)
 
 [All items pending]
 
 ---
 
-## Phase 6: Cognitive Core (0% Complete ⏳)
+## Phase 8: Behavioral Architecture (0% Complete ⏳)
 
 [All items pending]
 
 ---
 
-## Phase 7: Behavioral Architecture (0% Complete ⏳)
+## Phase 9: Integration & Testing (0% Complete ⏳)
 
 [All items pending]
 
 ---
 
-## Phase 8: Integration & Testing (0% Complete ⏳)
+## Phase 10: Monitoring & Web Interface (0% Complete ⏳)
 
 [All items pending]
 
 ---
 
-## Phase 9: Monitoring & Web Interface (0% Complete ⏳)
-
-[All items pending]
-
----
-
-## Phase 10: Documentation & Release (0% Complete ⏳)
+## Phase 11: Documentation & Release (0% Complete ⏳)
 
 [All items pending]
 
@@ -323,6 +410,14 @@
 
 ## Recent Updates
 
+- **14 Nov 2025**: Updated completion status - Depth Anything V2 Small model conversion completed with TensorRT optimization
+- **14 Nov 2025**: Added Model Acquisition section (Phase 3.1) - all required models downloaded and organized
+- **14 Nov 2025**: Updated Phase 3 progress from 70% to 75% complete with model conversion achievements
+- **14 Nov 2025**: Updated STATUS.md to reflect implementation plan changes - restructured phases 4-11
+- **14 Nov 2025**: Phase 5 restructured to focus on Audio Detection Pipeline instead of SLAM & Localization
+- **14 Nov 2025**: Added new Phase 5.5 for Enhanced Multimodal Audio Processing with Gemma 3n integration
+- **14 Nov 2025**: SLAM & Localization moved to Phase 6, subsequent phases renumbered accordingly
+- **14 Nov 2025**: Updated depth estimation model from FastDepth to Depth Anything V2 Small (target: 30+ FPS vs 15+ FPS)
 - **9 Nov 2025**: Completed YOLO model conversion and validation (Phase 3.2) - YOLOv11n successfully converted to TensorRT
 - **9 Nov 2025**: Validated FP16 vs FP32 precision trade-offs: FP16 achieves 20.6 FPS (exceeds 20+ FPS target)
 - **9 Nov 2025**: Confirmed 2.2% accuracy drop is normal TensorRT optimization behavior, not FP16-specific
@@ -369,9 +464,10 @@
 
 - **Week 2**: Complete Phase 2 (Core Infrastructure) - finalize camera pipeline implementation
 - **Week 3**: Complete Phase 3 (Perception Models) - deploy and test converted TensorRT models
-- **Week 4**: Start Phase 4 (Audio Pipeline) - implement wake word detection using faster-whisper
-- **Week 5**: Begin SLAM integration (Phase 5) - implement visual odometry and mapping
-- **Week 6**: Start behavioral architecture (Phase 7) - implement behavior trees for autonomous operation
+- **Week 4**: Start Phase 4 (Audio Detection Pipeline) - implement wake word detection and VAD
+- **Week 5**: Begin Phase 5 (Enhanced Multimodal Audio Processing) - direct audio processing for Gemma 3n
+- **Week 6**: Start Phase 6 (SLAM & Localization) - implement visual odometry and mapping
+- **Week 7**: Begin Phase 7 (Gemma 3n Multimodal Cognitive Core) - implement multimodal LLM integration
 
 ---
 
@@ -384,7 +480,7 @@
 | Audio sample rates | 16kHz, 44.1kHz | 16/22/44.1/48kHz | ✅ |
 | Full duplex audio | Required | Supported | ✅ |
 | Object detection FPS | ≥ 20 | 20.6 (FP16) / 17.8 (FP32) | ✅ |
-| Depth estimation FPS | ≥ 5 | TBD (tools ready) | 🚧 |
+| Depth estimation FPS | ≥ 30 | TBD (conversion complete) | 🚧 |
 | Navigation accuracy | < 10cm | TBD | ⏳ |
 | Camera capture FPS | ≥ 30 | 5500-16500 (DeepStream) | ✅ |
 | UART communication | < 100ms RTT | ~50ms avg | ✅ |
