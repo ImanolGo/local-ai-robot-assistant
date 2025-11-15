@@ -1183,7 +1183,7 @@ def main():
         default="models/yolo_trt",
         help="Directory containing TensorRT engine files",
     )
-    parser.add_argument("--image", help="Path to test image (default: docs/images/bus.jpg)")
+    parser.add_argument("--image", help="Path to test image (default: assets/images/bus.jpg)")
     parser.add_argument(
         "--output",
         default="yolo_test",

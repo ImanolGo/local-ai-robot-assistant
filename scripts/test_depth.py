@@ -901,7 +901,7 @@ def test_depth_estimation(
 
     # Default test image
     if test_image_path is None:
-        test_image_path = Path(__file__).parent.parent / "docs" / "images" / "bus.jpg"
+        test_image_path = Path(__file__).parent.parent / "assets" / "images" / "bus.jpg"
 
     # Load test image
     if Path(test_image_path).exists():
@@ -1155,7 +1155,7 @@ def main():
     )
     parser.add_argument(
         "--image",
-        help="Path to test image (default: docs/images/bus.jpg)",
+        help="Path to test image (default: assets/images/bus.jpg)",
     )
     parser.add_argument(
         "--output",
