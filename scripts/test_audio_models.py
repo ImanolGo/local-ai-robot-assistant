@@ -11,21 +11,25 @@ Features:
 - Speech recognition performance benchmarking
 - CPU/memory usage monitoring
 - Real-time performance validation
+- Audio file testing support
 
 Usage:
     python scripts/test_audio_models.py [--test-wake-word] [--test-whisper] [--benchmark]
+    python scripts/test_audio_models.py --test-audio-files
 """
 
 import argparse
 import logging
 import os
 import time
+import wave
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import psutil
 import sounddevice as sd
+import soundfile as sf
 import yaml
 from faster_whisper import WhisperModel
 from openwakeword import Model as WakeWordModel
@@ -34,6 +38,7 @@ from openwakeword import Model as WakeWordModel
 PROJECT_ROOT = Path(__file__).parent.parent
 MODEL_DIR = PROJECT_ROOT / "models"
 CONFIG_DIR = PROJECT_ROOT / "config"
+ASSETS_DIR = PROJECT_ROOT / "assets" / "audio"
 
 # Configure logging
 logging.basicConfig(
@@ -127,9 +132,7 @@ class AudioModelTester:
         self.sample_rate = self.audio_config.speech_sample_rate
         self.wake_word_sample_rate = self.audio_config.wake_word_sample_rate
         self.wake_word_chunk_ms = self.audio_config.wake_word_chunk_duration_ms
-        self.chunk_size = int(
-            self.wake_word_sample_rate * self.wake_word_chunk_ms / 1000
-        )  # Convert ms to samples
+        self.chunk_size = int(self.wake_word_sample_rate * self.wake_word_chunk_ms / 1000)
         self.microphone_device = self.audio_config.microphone_device
 
         logger.info("Audio configuration loaded:")
@@ -152,37 +155,40 @@ class AudioModelTester:
                 if device["max_input_channels"] > 0 and "USB PnP Sound Device" in device["name"]:
                     logger.info(f"Found microphone device: {device['name']} (index: {i})")
 
-                    # Check supported sample rates for this device
-                    supported_rates = [
-                        44100,
-                        48000,
-                        22050,
-                    ]  # Common rates, highest first
-                    for rate in supported_rates:
+                    # Your device supports 44100 or 48000 Hz
+                    # Use 44100 as it's closer to common speech rates
+                    supported_rate = 44100
+                    try:
+                        sd.check_input_settings(device=i, samplerate=supported_rate, channels=1)
+                        logger.info(f"Using {supported_rate}Hz sample rate for device {i}")
+                        return i, supported_rate
+                    except sd.PortAudioError as e:
+                        logger.warning(f"Could not configure device {i}: {e}")
+                        # Try 48000 as fallback
                         try:
-                            sd.check_input_settings(device=i, samplerate=rate, channels=1)
-                            logger.info(f"Device supports {rate}Hz sample rate")
-                            return i, rate
+                            supported_rate = 48000
+                            sd.check_input_settings(device=i, samplerate=supported_rate, channels=1)
+                            logger.info(
+                                f"Using fallback {supported_rate}Hz sample rate for device {i}"
+                            )
+                            return i, supported_rate
                         except sd.PortAudioError:
                             continue
 
-                    logger.warning(f"No supported sample rates found for device {i}")
-                    return i, 44100  # Default fallback
-
             logger.warning("USB PnP Sound Device not found, using default input device")
-            return None, self.sample_rate
+            return None, 44100
 
         except Exception as e:
             logger.error(f"Error querying audio devices: {e}")
-            return None, self.sample_rate
+            return None, 44100
 
     def _resample_audio_fast(
         self, audio_data: np.ndarray, source_rate: int, target_rate: int
     ) -> np.ndarray:
-        """Fast resample audio data using decimation for real-time processing.
+        """Fast resample audio data using scipy or fallback to decimation.
 
         Args:
-            audio_data: Input audio data
+            audio_data: Input audio data (float32, range -1 to 1)
             source_rate: Source sample rate
             target_rate: Target sample rate
 
@@ -192,18 +198,348 @@ class AudioModelTester:
         if source_rate == target_rate:
             return audio_data
 
-        # For common case: 44100 -> 16000, use simple decimation
-        if source_rate == 44100 and target_rate == 16000:
-            # Ratio is approximately 2.76, so take every ~3rd sample
-            step = int(source_rate / target_rate)
-            return audio_data[::step]
-        elif source_rate == 48000 and target_rate == 16000:
-            # Ratio is 3.0, so take every 3rd sample
-            return audio_data[::3]
-        else:
+        try:
+            # Calculate number of output samples
+            _ = int(len(audio_data) * target_rate / source_rate)
+
+            # Use resample_poly for efficient, high-quality resampling
+            # This is much better than simple decimation
+            # Find GCD to optimize resampling
+            from math import gcd
+
+            from scipy.signal import resample_poly
+
+            g = gcd(source_rate, target_rate)
+            up = target_rate // g
+            down = source_rate // g
+
+            logger.debug(f"Resampling {source_rate}Hz -> {target_rate}Hz (up={up}, down={down})")
+
+            resampled = resample_poly(audio_data, up, down)
+
+            return resampled.astype(np.float32)
+
+        except ImportError:
+            logger.warning("scipy not available, using simple decimation (lower quality)")
             # Fallback to simple decimation
-            step = max(1, int(source_rate / target_rate))
-            return audio_data[::step]
+            step = source_rate / target_rate
+            indices = np.arange(0, len(audio_data), step)
+            indices = indices[indices < len(audio_data)].astype(int)
+            return audio_data[indices]
+
+    def load_audio_file(self, file_path: Path) -> Tuple[np.ndarray, int]:
+        """Load audio file and return audio data and sample rate.
+
+        Args:
+            file_path: Path to audio file
+
+        Returns:
+            Tuple of (audio_data, sample_rate)
+        """
+        try:
+            # Try with soundfile first
+            audio_data, sample_rate = sf.read(file_path, dtype="float32")
+
+            # Convert to mono if stereo
+            if len(audio_data.shape) > 1:
+                logger.info("Converting stereo to mono...")
+                audio_data = np.mean(audio_data, axis=1)
+
+            # Validate audio data
+            if len(audio_data) == 0:
+                raise ValueError("Audio file is empty")
+
+            rms = np.sqrt(np.mean(audio_data**2))
+            if rms < 1e-6:
+                logger.warning(f"⚠️  Audio appears silent (RMS={rms:.6f})")
+
+            logger.info(f"Loaded audio file: {file_path}")
+            logger.info(f"  Sample rate: {sample_rate} Hz")
+            logger.info(f"  Duration: {len(audio_data)/sample_rate:.2f}s")
+            logger.info(f"  Samples: {len(audio_data)}")
+            logger.info(f"  RMS level: {rms:.6f}")
+            logger.info(f"  Range: [{audio_data.min():.6f}, {audio_data.max():.6f}]")
+
+            return audio_data, sample_rate
+
+        except Exception as e:
+            logger.error(f"Failed to load audio file {file_path}: {e}")
+            # Try with wave module as fallback
+            try:
+                with wave.open(str(file_path), "rb") as wf:
+                    sample_rate = wf.getframerate()
+                    n_channels = wf.getnchannels()
+                    n_frames = wf.getnframes()
+                    sample_width = wf.getsampwidth()
+                    audio_bytes = wf.readframes(n_frames)
+
+                    logger.info(f"Wave file info: {n_channels}ch, {sample_width}B, {sample_rate}Hz")
+
+                    # Convert bytes to numpy array based on sample width
+                    if sample_width == 2:
+                        audio_data = np.frombuffer(audio_bytes, dtype=np.int16)
+                        # Convert to float32 [-1, 1]
+                        audio_data = audio_data.astype(np.float32) / 32768.0
+                    elif sample_width == 4:
+                        audio_data = np.frombuffer(audio_bytes, dtype=np.int32)
+                        audio_data = audio_data.astype(np.float32) / 2147483648.0
+                    else:
+                        raise ValueError(f"Unsupported sample width: {sample_width}")
+
+                    # Convert stereo to mono if needed
+                    if n_channels == 2:
+                        audio_data = audio_data.reshape(-1, 2).mean(axis=1)
+
+                    rms = np.sqrt(np.mean(audio_data**2))
+
+                    logger.info(f"Loaded audio file (wave): {file_path}")
+                    logger.info(f"  Sample rate: {sample_rate} Hz")
+                    logger.info(f"  Duration: {len(audio_data)/sample_rate:.2f}s")
+                    logger.info(f"  RMS level: {rms:.6f}")
+
+                    return audio_data, sample_rate
+            except Exception as e2:
+                logger.error(f"Failed to load with wave module: {e2}")
+                raise
+
+    def test_wake_word_from_file(self, audio_file: Path) -> Dict:
+        """Test wake word detection on an audio file.
+
+        Args:
+            audio_file: Path to audio file
+
+        Returns:
+            Dict with test results
+        """
+        if not self.wake_word_model:
+            logger.error("Wake word model not loaded")
+            return {}
+
+        logger.info(f"Testing wake word detection on file: {audio_file}")
+
+        # Load audio file
+        audio_data, file_sample_rate = self.load_audio_file(audio_file)
+
+        # Resample if needed
+        if file_sample_rate != self.wake_word_sample_rate:
+            logger.info(f"Resampling from {file_sample_rate}Hz to {self.wake_word_sample_rate}Hz")
+            audio_data = self._resample_audio_fast(
+                audio_data, file_sample_rate, self.wake_word_sample_rate
+            )
+
+        # Convert to int16 format expected by openWakeWord
+        audio_int16 = (audio_data * 32767).astype(np.int16)
+
+        # Process in chunks
+        chunk_samples = int(self.wake_word_sample_rate * self.wake_word_chunk_ms / 1000)
+        detections = []
+        scores = []
+
+        start_time = time.perf_counter()
+
+        for i in range(0, len(audio_int16), chunk_samples):
+            chunk = audio_int16[i : i + chunk_samples]
+
+            # Skip if chunk is too small
+            if len(chunk) < 160:
+                continue
+
+            # Get predictions
+            predictions = self.wake_word_model.predict(chunk)
+
+            # Check for detections
+            for model_name, score in predictions.items():
+                scores.append(score)
+                if score > 0.5:
+                    timestamp = i / self.wake_word_sample_rate
+                    detections.append({"time": timestamp, "score": score, "model": model_name})
+                    logger.info(f"Wake word detected at {timestamp:.2f}s with score {score:.3f}")
+
+        inference_time = time.perf_counter() - start_time
+
+        results = {
+            "file": str(audio_file),
+            "detections": len(detections),
+            "detection_details": detections,
+            "max_score": max(scores) if scores else 0.0,
+            "avg_score": np.mean(scores) if scores else 0.0,
+            "inference_time_ms": inference_time * 1000,
+            "audio_duration_s": len(audio_data) / self.wake_word_sample_rate,
+        }
+
+        logger.info("Wake word test results:")
+        logger.info(f"  Detections: {results['detections']}")
+        logger.info(f"  Max score: {results['max_score']:.3f}")
+        logger.info(f"  Avg score: {results['avg_score']:.3f}")
+        logger.info(f"  Processing time: {results['inference_time_ms']:.1f}ms")
+
+        return results
+
+    def test_speech_recognition_from_file(
+        self, audio_file: Path, expected_text: Optional[str] = None
+    ) -> Dict:
+        """Test speech recognition on an audio file.
+
+        Args:
+            audio_file: Path to audio file
+            expected_text: Expected transcription (optional)
+
+        Returns:
+            Dict with test results
+        """
+        if not self.whisper_model:
+            logger.error("Whisper model not loaded")
+            return {}
+
+        logger.info(f"Testing speech recognition on file: {audio_file}")
+
+        # For faster-whisper, we can pass the file path directly!
+        # It handles all the audio loading internally
+        logger.info(f"Passing file path directly to faster-whisper: {audio_file}")
+
+        # Transcribe - pass file path as string
+        start_time = time.perf_counter()
+
+        # Collect all segments with details
+        segments_list = []
+        segments, info = self.whisper_model.transcribe(
+            str(audio_file),  # Pass file path as string!
+            beam_size=5,
+            language="en",
+            condition_on_previous_text=False,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+        )
+
+        # IMPORTANT: segments is a generator, must consume it
+        for segment in segments:
+            segments_list.append(
+                {
+                    "start": segment.start,
+                    "end": segment.end,
+                    "text": segment.text,
+                }
+            )
+            logger.info(f"  Segment [{segment.start:.2f}s - {segment.end:.2f}s]: '{segment.text}'")
+
+        # Collect transcription
+        transcription = " ".join([seg["text"].strip() for seg in segments_list])
+        inference_time = time.perf_counter() - start_time
+
+        # Get audio duration from info or load file to calculate
+        try:
+            audio_data, sample_rate = self.load_audio_file(audio_file)
+            audio_duration = len(audio_data) / sample_rate
+        except Exception:
+            # Fallback if we can't load the file
+            audio_duration = info.duration if hasattr(info, "duration") else 1.0
+
+        # Calculate real-time factor
+        rtf = inference_time / audio_duration
+
+        results = {
+            "file": str(audio_file),
+            "transcription": transcription,
+            "expected": expected_text,
+            "inference_time_ms": inference_time * 1000,
+            "audio_duration_s": audio_duration,
+            "real_time_factor": rtf,
+            "language": info.language if hasattr(info, "language") else "unknown",
+            "language_probability": (
+                info.language_probability if hasattr(info, "language_probability") else 0.0
+            ),
+            "num_segments": len(segments_list),
+            "segments": segments_list,
+        }
+
+        logger.info("Speech recognition results:")
+        logger.info(
+            f"  Detected language: {results['language']} (probability: \
+                {results['language_probability']:.2f})"
+        )
+        logger.info(f"  Transcription: '{transcription}'")
+        logger.info(f"  Number of segments: {len(segments_list)}")
+        if expected_text:
+            logger.info(f"  Expected: '{expected_text}'")
+            # Simple word-level accuracy
+            trans_words = set(transcription.lower().split())
+            expected_words = set(expected_text.lower().split())
+
+            # Calculate overlap
+            if len(expected_words) > 0:
+                matches = len(trans_words & expected_words)
+                accuracy = matches / len(expected_words) * 100
+                results["accuracy_percent"] = accuracy
+                logger.info(f"  Word overlap: {matches}/{len(expected_words)} words")
+                logger.info(f"  Accuracy: {accuracy:.1f}%")
+
+            # Also check sequence accuracy
+            trans_lower = transcription.lower()
+            expected_lower = expected_text.lower()
+            if trans_lower == expected_lower:
+                logger.info("  ✅ Exact match!")
+            elif trans_lower in expected_lower or expected_lower in trans_lower:
+                logger.info("  ⚠️  Partial match")
+            else:
+                logger.info("  ❌ Different content")
+
+        logger.info(f"  Processing time: {results['inference_time_ms']:.1f}ms")
+        logger.info(f"  Real-time factor: {rtf:.2f}x")
+
+        return results
+
+    def test_audio_files(self) -> Dict:
+        """Test models on pre-recorded audio files.
+
+        Returns:
+            Dict with all test results
+        """
+        logger.info("\n=== Testing with Audio Files ===")
+
+        results = {"wake_word_tests": [], "speech_recognition_tests": []}
+
+        # Test wake word on HeyJarvis.wav
+        hey_jarvis_file = ASSETS_DIR / "HeyJarvis.wav"
+        if hey_jarvis_file.exists() and self.wake_word_model:
+            logger.info("\n--- Testing Wake Word Detection ---")
+            ww_result = self.test_wake_word_from_file(hey_jarvis_file)
+            results["wake_word_tests"].append(ww_result)
+
+            # Validate
+            if ww_result.get("detections", 0) > 0:
+                logger.info("✅ Wake word detected successfully!")
+            else:
+                logger.warning("❌ Wake word NOT detected (expected at least 1 detection)")
+        else:
+            if not hey_jarvis_file.exists():
+                logger.warning(f"Wake word test file not found: {hey_jarvis_file}")
+            if not self.wake_word_model:
+                logger.warning("Wake word model not loaded")
+
+        # Test speech recognition on TheRainInSpain.wav
+        rain_file = ASSETS_DIR / "TheRainInSpain.wav"
+        expected_text = "The rain in Spain stays mainly in the plane."
+
+        if rain_file.exists() and self.whisper_model:
+            logger.info("\n--- Testing Speech Recognition ---")
+            sr_result = self.test_speech_recognition_from_file(rain_file, expected_text)
+            results["speech_recognition_tests"].append(sr_result)
+
+            # Validate
+            if sr_result.get("accuracy_percent", 0) > 70:
+                logger.info("✅ Speech recognition accuracy good!")
+            else:
+                logger.warning(
+                    f"⚠️  Speech recognition accuracy low: \
+                        {sr_result.get('accuracy_percent', 0):.1f}%"
+                )
+        else:
+            if not rain_file.exists():
+                logger.warning(f"Speech recognition test file not found: {rain_file}")
+            if not self.whisper_model:
+                logger.warning("Whisper model not loaded")
+
+        return results
 
     def setup_wake_word_model(self) -> bool:
         """Set up the openWakeWord model.
@@ -213,14 +549,10 @@ class AudioModelTester:
         """
         try:
             model_path = MODEL_DIR / "wake_word" / "hey_jarvis_v0.1.onnx"
-            if not model_path.exists():
-                logger.error(f"Wake word model not found: {model_path}")
-                return False
 
             logger.info("Loading openWakeWord model...")
             start_time = time.time()
 
-            # Check if using custom model or default
             if model_path.exists():
                 logger.info(f"Using custom wake word model: {model_path}")
                 self.wake_word_model = WakeWordModel(
@@ -250,12 +582,11 @@ class AudioModelTester:
             logger.info("Loading faster-whisper model...")
             start_time = time.time()
 
-            # Use the tiny model for best performance on Jetson
             self.whisper_model = WhisperModel(
                 "tiny",
-                device="cpu",  # Use CPU for now, can optimize to CUDA later
-                compute_type="int8",  # Quantized for better performance
-                cpu_threads=4,  # Optimize for Jetson Orin Nano
+                device="cpu",
+                compute_type="int8",
+                cpu_threads=4,
                 num_workers=1,
             )
 
@@ -283,7 +614,6 @@ class AudioModelTester:
         logger.info(f"Testing wake word detection for {test_duration}s...")
         logger.info("Say 'Hey Jarvis' to test detection")
 
-        # Get the microphone device and its native sample rate
         mic_device, hardware_rate = self._get_audio_device_info()
 
         results = {
@@ -299,23 +629,19 @@ class AudioModelTester:
 
         cpu_readings = []
         inference_times = []
-        start_test = time.time()
 
         def audio_callback(indata, frames, time_info, status):
             """Process audio chunks for wake word detection."""
             try:
                 if status:
-                    logger.debug(f"Audio status: {status}")  # Reduce to debug level
+                    logger.debug(f"Audio status: {status}")
 
-                # Monitor CPU usage (less frequently to reduce overhead)
-                if results["samples_processed"] % 10 == 0:  # Only every 10th sample
-                    cpu_percent = psutil.cpu_percent(interval=None)  # Non-blocking
+                if results["samples_processed"] % 10 == 0:
+                    cpu_percent = psutil.cpu_percent(interval=None)
                     cpu_readings.append(cpu_percent)
 
-                # Process audio chunk
                 start_inference = time.perf_counter()
 
-                # Fast resample audio if needed
                 if hardware_rate != self.wake_word_sample_rate:
                     audio_chunk = self._resample_audio_fast(
                         indata[:, 0], hardware_rate, self.wake_word_sample_rate
@@ -323,19 +649,16 @@ class AudioModelTester:
                 else:
                     audio_chunk = indata[:, 0]
 
-                # Convert to the format expected by openWakeWord
                 audio_data = (audio_chunk * 32767).astype(np.int16)
 
-                # Get predictions (only if we have enough samples)
-                if len(audio_data) >= 160:  # Minimum samples for wake word
+                if len(audio_data) >= 160:
                     predictions = self.wake_word_model.predict(audio_data)
 
                     inference_time = time.perf_counter() - start_inference
-                    inference_times.append(inference_time * 1000)  # Convert to ms
+                    inference_times.append(inference_time * 1000)
 
-                    # Check for wake word detection
                     for model_name, score in predictions.items():
-                        if score > 0.5:  # Threshold for detection
+                        if score > 0.5:
                             results["detections"] += 1
                             logger.info(f"Wake word detected! Score: {score:.3f}")
 
@@ -343,45 +666,35 @@ class AudioModelTester:
 
             except Exception as e:
                 logger.error(f"Callback error: {e}")
-                # Don't re-raise, just log and continue
 
         try:
-            # Calculate chunk size for hardware sample rate (make it larger to reduce overhead)
             hardware_chunk_size = int(hardware_rate * self.wake_word_chunk_ms / 1000)
 
-            # Start audio stream with specific device and larger buffers
             stream_kwargs = {
                 "callback": audio_callback,
                 "channels": self.audio_config.wake_word_channels,
                 "samplerate": hardware_rate,
                 "blocksize": hardware_chunk_size,
                 "dtype": np.float32,
-                "latency": "low",  # Request low latency
+                "latency": "low",
             }
 
-            # Add device if found
             if mic_device is not None:
-                stream_kwargs["device"] = (
-                    mic_device,
-                    None,
-                )  # (input_device, output_device)
+                stream_kwargs["device"] = (mic_device, None)
 
             logger.info(
                 f"Starting audio stream: {hardware_rate}Hz, {hardware_chunk_size} samples/chunk"
             )
-            logger.info("Listening for wake word... (speak now)")
+            logger.info("🎤 Recording active - say 'Hey Jarvis' now!")
 
             with sd.InputStream(**stream_kwargs):
-                # Give it a moment to start
                 time.sleep(0.1)
-                logger.info("🎤 Recording active - say 'Hey Jarvis' now!")
                 time.sleep(test_duration)
 
         except Exception as e:
             logger.error(f"Audio stream error: {e}")
             return {}
 
-        # Calculate statistics
         if cpu_readings:
             results["avg_cpu_usage"] = np.mean(cpu_readings)
             results["max_cpu_usage"] = np.max(cpu_readings)
@@ -390,7 +703,7 @@ class AudioModelTester:
             results["avg_inference_time"] = np.mean(inference_times)
             results["max_inference_time"] = np.max(inference_times)
 
-        results["test_duration"] = time.time() - start_test
+        results["test_duration"] = test_duration
 
         return results
 
@@ -412,14 +725,9 @@ class AudioModelTester:
                 "Hello robot, how are you?",
                 "Move forward slowly",
                 "Turn left and stop",
-                "What do you see?",
-                "Go to the kitchen",
             ]
 
         logger.info("Testing speech recognition...")
-        logger.info("Speak clearly when prompted")
-
-        # Get the microphone device and its native sample rate
         mic_device, hardware_rate = self._get_audio_device_info()
 
         results = {
@@ -441,15 +749,13 @@ class AudioModelTester:
             logger.info(f"Please say: '{phrase}'")
             input("Press Enter when ready to record...")
 
-            # Record audio for the configured duration
             max_duration = self.audio_config.max_recording_duration
             logger.info(f"Recording... ({max_duration} seconds)")
 
             start_cpu = psutil.cpu_percent()
             process = psutil.Process()
-            start_memory = process.memory_info().rss / 1024 / 1024  # MB
+            start_memory = process.memory_info().rss / 1024 / 1024
 
-            # Configure recording parameters
             recording_kwargs = {
                 "frames": int(max_duration * hardware_rate),
                 "samplerate": hardware_rate,
@@ -457,14 +763,13 @@ class AudioModelTester:
                 "dtype": np.float32,
             }
 
-            # Add device if found
             if mic_device is not None:
                 recording_kwargs["device"] = (mic_device, None)
 
             recording = sd.rec(**recording_kwargs)
-            sd.wait()  # Wait for recording to complete
+            sd.wait()
 
-            # Resample to target rate if needed
+            # Resample if needed
             if hardware_rate != self.sample_rate:
                 audio_data = self._resample_audio_fast(
                     recording[:, 0], hardware_rate, self.sample_rate
@@ -472,25 +777,31 @@ class AudioModelTester:
             else:
                 audio_data = recording[:, 0]
 
-            # Convert to int16
-            audio_data = (audio_data * 32767).astype(np.int16)
-
-            # Transcribe
-            start_inference = time.perf_counter()
-
-            segments, info = self.whisper_model.transcribe(
-                audio_data, beam_size=1, language="en"  # Faster inference
+            # For numpy arrays, faster-whisper expects float32 in [-1, 1]
+            # NOT int16! Keep as float32
+            logger.info(
+                f"Audio data: dtype={audio_data.dtype}, \
+                    range=[{audio_data.min():.4f}, {audio_data.max():.4f}]"
             )
 
-            # Collect transcription
+            # Transcribe with float32 array
+            start_inference = time.perf_counter()
+            segments, info = self.whisper_model.transcribe(
+                audio_data,  # Pass float32 array for live audio
+                beam_size=5,
+                language="en",
+                condition_on_previous_text=False,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500),
+            )
+
+            # Consume the generator
             transcription = " ".join([segment.text.strip() for segment in segments])
-
             inference_time = time.perf_counter() - start_inference
-            inference_times.append(inference_time * 1000)  # Convert to ms
+            inference_times.append(inference_time * 1000)
 
-            # Monitor resource usage
             end_cpu = psutil.cpu_percent()
-            end_memory = process.memory_info().rss / 1024 / 1024  # MB
+            end_memory = process.memory_info().rss / 1024 / 1024
 
             cpu_readings.append((start_cpu + end_cpu) / 2)
             memory_usage = end_memory - start_memory
@@ -510,7 +821,6 @@ class AudioModelTester:
 
             results["tests_completed"] += 1
 
-        # Calculate averages
         if inference_times:
             results["avg_inference_time"] = np.mean(inference_times)
             results["max_inference_time"] = np.max(inference_times)
@@ -540,29 +850,25 @@ class AudioModelTester:
             "whisper": {},
         }
 
-        # Test wake word model
         if self.wake_word_model:
             logger.info("\n=== Wake Word Benchmark ===")
             ww_results = self.test_wake_word_detection(test_duration=5.0)
             benchmark_results["wake_word"] = ww_results
 
-            # Check if it meets targets
-            target_cpu = 5.0  # < 5% CPU usage target
+            target_cpu = 5.0
             if ww_results.get("avg_cpu_usage", 100) < target_cpu:
                 logger.info(
-                    f"✅ Wake word CPU usage: {ww_results.get('avg_cpu_usage', 0):.1f}% \
-                        (target: <{target_cpu}%)"
+                    f"✅ Wake word CPU usage: {ww_results.get('avg_cpu_usage', 0):.1f}% "
+                    f"(target: <{target_cpu}%)"
                 )
             else:
                 logger.warning(
-                    f"❌ Wake word CPU usage: {ww_results.get('avg_cpu_usage', 0):.1f}% \
-                        (target: <{target_cpu}%)"
+                    f"❌ Wake word CPU usage: {ww_results.get('avg_cpu_usage', 0):.1f}% "
+                    f"(target: <{target_cpu}%)"
                 )
 
-        # Test whisper model
         if self.whisper_model:
             logger.info("\n=== Whisper Benchmark ===")
-            # Create a test audio snippet programmatically
             test_audio = np.sin(2 * np.pi * 440 * np.arange(0, 2, 1 / self.sample_rate))
             test_audio = (test_audio * 32767).astype(np.int16)
 
@@ -570,7 +876,6 @@ class AudioModelTester:
             segments, info = self.whisper_model.transcribe(test_audio, beam_size=1)
             inference_time = time.perf_counter() - start_time
 
-            # Calculate real-time factor
             audio_duration = len(test_audio) / self.sample_rate
             rtf = inference_time / audio_duration
 
@@ -581,9 +886,8 @@ class AudioModelTester:
                 "memory_usage_mb": psutil.Process().memory_info().rss / 1024 / 1024,
             }
 
-            # Check if it meets targets
-            target_rtf = 0.3  # < 0.3x real-time factor target
-            target_memory = 300  # < 300MB memory target
+            target_rtf = 0.3
+            target_memory = 300
 
             if rtf < target_rtf:
                 logger.info(f"✅ Whisper real-time factor: {rtf:.2f}x (target: <{target_rtf}x)")
@@ -592,15 +896,15 @@ class AudioModelTester:
 
             if benchmark_results["whisper"]["memory_usage_mb"] < target_memory:
                 logger.info(
-                    f"✅ Whisper memory usage: \
-                        {benchmark_results['whisper']['memory_usage_mb']:.1f}\
-                            MB (target: <{target_memory}MB)"
+                    f"✅ Whisper memory usage: "
+                    f"{benchmark_results['whisper']['memory_usage_mb']:.1f}MB "
+                    f"(target: <{target_memory}MB)"
                 )
             else:
                 logger.warning(
-                    f"❌ Whisper memory usage: \
-                        {benchmark_results['whisper']['memory_usage_mb']:.1f}MB \
-                            (target: <{target_memory}MB)"
+                    f"❌ Whisper memory usage: "
+                    f"{benchmark_results['whisper']['memory_usage_mb']:.1f}MB "
+                    f"(target: <{target_memory}MB)"
                 )
 
         return benchmark_results
@@ -614,7 +918,6 @@ class AudioModelTester:
         logger.info("Validating audio setup...")
 
         try:
-            # Check if devices are available
             devices = sd.query_devices()
             logger.info("Available audio devices:")
             for i, device in enumerate(devices):
@@ -623,14 +926,12 @@ class AudioModelTester:
                         f"  Input {i}: {device['name']} ({device['max_input_channels']} channels)"
                     )
 
-            # Test microphone device
             mic_device, hardware_rate = self._get_audio_device_info()
             if mic_device is None:
                 logger.warning("Configured microphone device not found, will use default")
 
-            # Test basic recording capability
             logger.info("Testing basic recording capability...")
-            test_duration = 1  # 1 second test
+            test_duration = 1
 
             recording_kwargs = {
                 "frames": int(test_duration * hardware_rate),
@@ -649,7 +950,6 @@ class AudioModelTester:
             test_recording = sd.rec(**recording_kwargs)
             sd.wait()
 
-            # Check if we got valid audio data
             if test_recording is not None and len(test_recording) > 0:
                 avg_amplitude = np.mean(np.abs(test_recording))
                 logger.info(f"✅ Recording test successful. Average amplitude: {avg_amplitude:.6f}")
@@ -659,7 +959,6 @@ class AudioModelTester:
                         "⚠️  Very low audio signal detected. Check microphone connection and volume"
                     )
 
-                # Test resampling if needed
                 if hardware_rate != self.sample_rate:
                     logger.info(
                         f"Testing resampling from {hardware_rate}Hz to {self.sample_rate}Hz..."
@@ -678,6 +977,9 @@ class AudioModelTester:
 
         except Exception as e:
             logger.error(f"❌ Audio validation failed: {e}")
+            import traceback
+
+            traceback.print_exc()
             return False
 
 
@@ -687,6 +989,7 @@ def main():
     parser.add_argument("--test-wake-word", action="store_true", help="Test wake word detection")
     parser.add_argument("--test-whisper", action="store_true", help="Test speech recognition")
     parser.add_argument("--benchmark", action="store_true", help="Run comprehensive benchmarks")
+    parser.add_argument("--test-audio-files", action="store_true", help="Test with audio files")
     parser.add_argument("--all", action="store_true", help="Run all tests")
     parser.add_argument("--validate-audio", action="store_true", help="Validate audio setup only")
     parser.add_argument("--config", default="audio_config.yaml", help="Audio config file name")
@@ -698,11 +1001,12 @@ def main():
             args.test_wake_word,
             args.test_whisper,
             args.benchmark,
+            args.test_audio_files,
             args.all,
             args.validate_audio,
         ]
     ):
-        args.all = True  # Default to running all tests
+        args.test_audio_files = True  # Default to testing audio files
 
     try:
         tester = AudioModelTester(args.config)
@@ -710,34 +1014,73 @@ def main():
         logger.error(f"Failed to initialize audio tester: {e}")
         return 1
 
-    # Always validate audio setup first
-    if not tester.validate_audio_setup():
-        logger.error("Audio validation failed. Please check your audio configuration.")
-        if not args.validate_audio:  # If just validating, don't exit with error
-            return 1
+    # Always validate audio setup first (unless only testing files)
+    if not args.test_audio_files or args.validate_audio:
+        if not tester.validate_audio_setup():
+            logger.error("Audio validation failed. Please check your audio configuration.")
+            if not args.validate_audio and not args.test_audio_files:
+                return 1
 
     if args.validate_audio:
         logger.info("✅ Audio validation completed successfully!")
         return 0
 
-    # Setup models
-    if args.test_wake_word or args.benchmark or args.all:
+    # Setup models based on what tests we're running
+    need_wake_word = args.test_wake_word or args.benchmark or args.all or args.test_audio_files
+    need_whisper = args.test_whisper or args.benchmark or args.all or args.test_audio_files
+
+    if need_wake_word:
         if not tester.setup_wake_word_model():
             logger.error("Failed to setup wake word model")
             return 1
 
-    if args.test_whisper or args.benchmark or args.all:
+    if need_whisper:
         if not tester.setup_whisper_model():
             logger.error("Failed to setup whisper model")
             return 1
 
     # Run tests
     try:
-        if args.benchmark or args.all:
+        if args.test_audio_files or args.all:
+            logger.info("\n" + "=" * 60)
+            logger.info("TESTING WITH AUDIO FILES")
+            logger.info("=" * 60)
+            file_results = tester.test_audio_files()
+
+            # Print summary
+            print("\n" + "=" * 60)
+            print("AUDIO FILE TEST SUMMARY")
+            print("=" * 60)
+
+            if file_results.get("wake_word_tests"):
+                print("\nWake Word Detection:")
+                for test in file_results["wake_word_tests"]:
+                    print(f"  File: {Path(test['file']).name}")
+                    print(f"  Detections: {test['detections']}")
+                    print(f"  Max Score: {test['max_score']:.3f}")
+                    if test["detections"] > 0:
+                        print("  Status: ✅ PASS")
+                    else:
+                        print("  Status: ❌ FAIL")
+
+            if file_results.get("speech_recognition_tests"):
+                print("\nSpeech Recognition:")
+                for test in file_results["speech_recognition_tests"]:
+                    print(f"  File: {Path(test['file']).name}")
+                    print(f"  Transcription: '{test['transcription']}'")
+                    print(f"  Expected: '{test['expected']}'")
+                    if "accuracy_percent" in test:
+                        print(f"  Accuracy: {test['accuracy_percent']:.1f}%")
+                        if test["accuracy_percent"] > 70:
+                            print("  Status: ✅ PASS")
+                        else:
+                            print("  Status: ⚠️  PARTIAL")
+                    print(f"  RTF: {test['real_time_factor']:.2f}x")
+
+        if args.benchmark:
             results = tester.benchmark_models()
             logger.info("\n=== Benchmark Results ===")
 
-            # Print summary
             if "wake_word" in results and results["wake_word"]:
                 ww = results["wake_word"]
                 print("Wake Word Detection:")
@@ -760,14 +1103,17 @@ def main():
             results = tester.test_speech_recognition()
             logger.info(f"Speech recognition test completed: {results}")
 
-        logger.info("✅ Audio model testing completed successfully!")
+        logger.info("\n✅ Audio model testing completed successfully!")
         return 0
 
     except KeyboardInterrupt:
-        logger.info("Testing interrupted by user")
+        logger.info("\nTesting interrupted by user")
         return 1
     except Exception as e:
         logger.error(f"Testing failed: {e}")
+        import traceback
+
+        traceback.print_exc()
         return 1
 
 
