@@ -20,6 +20,7 @@ setup(
     entry_points={
         "console_scripts": [
             "nanollm_interface = cognitive_core_nodes.nanollm_interface:main",
+            "multimodal_llm_node = cognitive_core_nodes.multimodal_llm_node:main",
         ],
     },
 )
