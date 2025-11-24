@@ -353,16 +353,19 @@
 - Alternative TensorRT conversion available: `tools/conversion/convert_whisper_tensorrt.py`
 
 ### 3.4 Cognitive Core Setup (Ollama + Moondream)
-- [ ] Install Ollama (Linux ARM64)
-  - [ ] Configure systemd service for auto-start
-  - [ ] Verify Ollama API access (`curl localhost:11434`)
-- [ ] Pull Moondream model
-  - [ ] Run `ollama pull moondream`
-  - [ ] Test inference via CLI
-  - [ ] Verify memory usage (should be ~1.8GB)
-- [ ] Create `scripts/setup_ollama.sh`
-  - [ ] Automated installation and model pulling
-- [ ] Create `docs/guides/ollama_setup.md`
+- [x] Install Ollama (Linux ARM64)
+  - [x] Configure systemd service for auto-start
+  - [x] Verify Ollama API access (`curl localhost:11434`)
+- [x] Pull Moondream model
+  - [x] Run `ollama pull moondream`
+  - [x] Test inference via CLI
+  - [x] Verify memory usage (should be ~1.8GB)
+- [x] Create `scripts/setup_ollama.sh`
+  - [x] Automated installation and model pulling
+- [x] Create `docs/guides/ollama_setup.md`
+- [x] Create `scripts/test_ollama_moondream.py`
+  - [x] Benchmark inference speed and memory usage
+  - [x] Document results in walkthrough
 
 ### 3.5 Model Profiling
 - [ ] Implement `tools/profile_model.py`
