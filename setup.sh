@@ -131,6 +131,44 @@ else
     echo "   ⚠️  trtexec not found - may need to add to PATH"
 fi
 
+# --- Install Ollama (VLM Server) ---
+echo "🦙 Checking Ollama installation..."
+if ! command -v ollama &> /dev/null; then
+    echo "   Installing Ollama..."
+    # Install using official script
+    curl -fsSL https://ollama.com/install.sh | sh
+    echo "   ✅ Ollama installed successfully"
+else
+    echo "   ✅ Ollama is already installed"
+fi
+
+# Check Ollama Service
+echo "   Checking Ollama service status..."
+if systemctl is-active --quiet ollama; then
+    echo "   ✅ Ollama service is running"
+else
+    echo "   🚀 Starting Ollama service..."
+    sudo systemctl start ollama
+    sudo systemctl enable ollama
+    # Wait a moment for service to spin up
+    sleep 5
+fi
+
+# Pre-pull Moondream model (Architecture Requirement)
+echo "   📦 Checking 'moondream' model..."
+# Use a timeout logic just in case the service isn't fully ready
+if timeout 5s ollama list &> /dev/null; then
+    # Check if moondream is already pulled to save bandwidth
+    if ollama list | grep -q "moondream"; then
+        echo "   ✅ 'moondream' model already present"
+    else
+        echo "   ⬇️  Pulling 'moondream' model (this may take a few minutes)..."
+        ollama pull moondream
+    fi
+else
+    echo "   ⚠️  Ollama service not responding yet. Please run 'ollama pull moondream' manually later."
+fi
+
 # --- Fix IMX219 red tint issue ---
 echo "🎨 Applying IMX219 camera ISP tuning fix for red tint..."
 if [ ! -f /var/nvidia/nvcam/settings/camera_overrides.isp ]; then
@@ -315,22 +353,24 @@ echo "Setup completed with mode: $([ "$DEV_MODE" = true ] && echo "Development" 
 echo
 echo "Next steps:"
 if [ "$DEV_MODE" = true ]; then
-    echo "1. Test model conversion tools: python3 tools/overview.py"
-    echo "2. Convert models: python3 tools/conversion/convert_yolo.py --help"
-    echo "3. Download models: ./scripts/setup/download_models.sh"
-    echo "4. Calibrate camera: python3 hardware_tests/calibrate_camera.py"
-    echo "5. Test hardware: python3 hardware_tests/test_*.py"
-    echo "6. Launch system: ros2 launch launch/full_system_launch.py"
+    echo "1. Verify Ollama status: systemctl status ollama"
+    echo "2. Test model conversion tools: python3 tools/overview.py"
+    echo "3. Convert models: python3 tools/conversion/convert_yolo.py --help"
+    echo "4. Download models: ./scripts/setup/download_models.sh"
+    echo "5. Calibrate camera: python3 hardware_tests/calibrate_camera.py"
+    echo "6. Test hardware: python3 hardware_tests/test_*.py"
+    echo "7. Launch system: ros2 launch launch/full_system_launch.py"
     echo
     echo "Model conversion commands:"
     echo "• YOLO: python3 tools/conversion/convert_yolo.py --model YOLOv11n --output-dir ./models/yolo_trt"
     echo "• Depth: python3 tools/conversion/convert_depth.py --output-dir ./models/depth_trt"
     echo "• Whisper: python3 tools/conversion/convert_whisper.py --model-size tiny"
 else
-    echo "1. Download pre-converted models: ./scripts/setup/download_models.sh"
-    echo "2. Calibrate camera: python3 hardware_tests/calibrate_camera.py"
-    echo "3. Test hardware: python3 hardware_tests/test_*.py"
-    echo "4. Launch system: ros2 launch launch/full_system_launch.py"
+    echo "1. Verify Ollama status: systemctl status ollama"
+    echo "2. Download pre-converted models: ./scripts/setup/download_models.sh"
+    echo "3. Calibrate camera: python3 hardware_tests/calibrate_camera.py"
+    echo "4. Test hardware: python3 hardware_tests/test_*.py"
+    echo "5. Launch system: ros2 launch launch/full_system_launch.py"
 fi
 echo
 echo "Usage:"
@@ -341,4 +381,4 @@ echo "Documentation:"
 echo "• Model conversion guide: docs/guides/model_conversion_best_practices.md"
 echo "• Architecture: docs/architecture.md"
 echo
-echo "Note: You may need to log out and back in for group changes to take effect"
+echo "Note: You may need to log out and back in for group changes to take effect" 
