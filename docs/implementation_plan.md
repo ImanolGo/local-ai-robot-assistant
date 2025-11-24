@@ -368,13 +368,18 @@
   - [x] Document results in walkthrough
 
 ### 3.5 Model Profiling
-- [ ] Implement `tools/profile_model.py`
-  - [ ] Measure inference time for each model
-  - [ ] Measure RAM/VRAM usage
-  - [ ] Measure GPU utilization
-  - [ ] Generate performance report
-- [ ] Run profiling for all models
-- [ ] Document results in `docs/model_performance.md`
+- [x] Individual model profiling scripts created
+  - [x] `scripts/test_yolo.py` - YOLO benchmarking
+  - [x] `scripts/test_depth.py` - Depth model benchmarking
+  - [x] `scripts/test_ollama_moondream.py` - Moondream benchmarking
+  - [x] `scripts/test_audio_models.py` - Audio models benchmarking
+  - [x] `scripts/test_piper_tts.py` - Piper TTS benchmarking
+- [x] Create `scripts/generate_performance_report.py`
+  - [x] Run all model benchmarks
+  - [x] Aggregate results into unified report
+  - [x] Generate `docs/model_performance.md`
+- [x] Run unified performance report generator
+- [x] Review and finalize `docs/model_performance.md`
 
 **Deliverables**:
 - All models converted to optimal formats (TensorRT for vision)

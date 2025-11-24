@@ -1189,10 +1189,90 @@ def main():
         action="store_true",
         help="Skip HuggingFace model comparison (faster, ONNX+TensorRT only)",
     )
+    parser.add_argument(
+        "--benchmark-only",
+        action="store_true",
+        help="Quick benchmark: TensorRT only, no comparisons, just performance metrics",
+    )
 
     args = parser.parse_args()
 
-    # Handle compare logic
+    # Quick benchmark mode - TensorRT only
+    if args.benchmark_only:
+        print("🚀 Quick Benchmark Mode - TensorRT Only")
+        print("=" * 60)
+
+        models_dir = Path(args.models_dir)
+        trt_path = models_dir / "depth_anything_v2_small.trt"
+        config_path = models_dir / "config.json"
+
+        if not trt_path.exists():
+            print(f"❌ TensorRT engine not found: {trt_path}")
+            sys.exit(1)
+
+        # Load test image
+        if args.image and Path(args.image).exists():
+            image = cv2.imread(str(args.image))
+            print(f"✓ Loaded test image: {args.image}")
+        else:
+            image = create_test_image()
+            print("✓ Created synthetic test image")
+
+        try:
+            # Load TensorRT model
+            print(f"Loading TensorRT model from {trt_path}...")
+            model = TensorRTDepthModel(str(trt_path), str(config_path))
+            print("✓ TensorRT model loaded")
+
+            # Warmup
+            print("\nWarmup (3 iterations)...")
+            for _ in range(3):
+                _ = model.infer(image)
+            print("✓ Warmup complete")
+
+            # Benchmark
+            print(f"\nBenchmarking ({args.iterations} iterations)...")
+            for i in range(args.iterations):
+                depth_map = model.infer(image)
+                if i == 0:
+                    print(f"  Depth map shape: {depth_map.shape}")
+                    print(f"  Depth range: {depth_map.min():.3f} - {depth_map.max():.3f}")
+
+            # Get stats
+            stats = model.get_performance_stats()
+
+            print("\n" + "=" * 60)
+            print("BENCHMARK RESULTS")
+            print("=" * 60)
+            print(f"Average inference time: {stats['avg_inference_time']*1000:.2f} ms")
+            print(f"Min inference time: {stats['min_inference_time']*1000:.2f} ms")
+            print(f"Max inference time: {stats['max_inference_time']*1000:.2f} ms")
+            print(f"Std deviation: {stats['std_inference_time']*1000:.2f} ms")
+            print(f"Average FPS: {stats['avg_fps']:.1f}")
+            print(f"Total iterations: {stats['total_inferences']}")
+            print("=" * 60)
+
+            # Memory info
+            try:
+                import psutil
+
+                process = psutil.Process()
+                mem_info = process.memory_info()
+                print(f"\nMemory usage (RSS): {mem_info.rss / (1024**2):.1f} MB")
+            except Exception:
+                pass
+
+            model.cleanup()
+            sys.exit(0)
+
+        except Exception as e:
+            print(f"❌ Benchmark failed: {e}")
+            import traceback
+
+            traceback.print_exc()
+            sys.exit(1)
+
+    # Handle compare logic for full test mode
     compare_models = args.compare and not args.no_compare
 
     success = test_depth_estimation(
