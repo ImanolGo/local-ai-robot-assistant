@@ -89,17 +89,19 @@ class PerformanceReportGenerator:
 
         try:
             # Check if TensorRT engine exists
-            engine_path = MODELS_DIR / "depth_trt" / "depth_anything_v2_small.trt"
+            engine_path = MODELS_DIR / "depth_trt" / "depth_anything_v2_vits_518.engine"
             if not engine_path.exists():
                 print(f"⚠️  Depth engine not found at {engine_path}")
                 return None
 
+            # Use the new benchmark_depth.py script with correct arguments
             cmd = [
                 sys.executable,
-                str(SCRIPTS_DIR / "test_depth.py"),
-                "--models-dir",
-                str(MODELS_DIR / "depth_trt"),
-                "--benchmark-only",  # Quick benchmark mode
+                str(SCRIPTS_DIR / "benchmark_depth.py"),
+                "--engine",
+                str(engine_path),
+                "--iterations",
+                "50",  # Reduced for faster report generation
             ]
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -110,12 +112,25 @@ class PerformanceReportGenerator:
                     "status": "✅ Success",
                 }
 
-                # Extract performance info
+                # Extract performance info from the benchmark output
                 output = result.stdout
+
+                # Parse the benchmark results section
                 for line in output.split("\n"):
-                    if "FPS" in line or "latency" in line.lower():
-                        metrics["output_sample"] = line.strip()
-                        break
+                    if "Average FPS:" in line:
+                        # Extract the FPS value
+                        fps = line.split(":")[-1].strip()
+                        metrics["fps"] = fps
+                    elif "Average inference time:" in line:
+                        # Extract inference time
+                        inf_time = line.split(":")[-1].strip()
+                        metrics["inference_time"] = inf_time
+
+                # Create a summary line
+                if metrics.get("fps") and metrics.get("inference_time"):
+                    metrics[
+                        "output_sample"
+                    ] = f"FPS: {metrics['fps']} | Latency: {metrics['inference_time']}"
 
                 return metrics
             else:
