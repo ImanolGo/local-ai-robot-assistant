@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-Depth Anything V2 Model Conversion Script
+Native Depth Anything V2 Model Conversion Script
 
 Converts Depth Anything V2 Small monocular depth estimation model to TensorRT FP16
 for deployment on NVIDIA Jetson Orin Nano Super.
 
+This uses the native model definition from the official repository for optimized
+ONNX graph generation and superior TensorRT performance.
+
 Features:
-- Downloads model from HuggingFace Hub
-- Exports to ONNX format with verification
-- Converts to TensorRT FP16 engine
+- Uses official Depth Anything V2 repository model definition
+- Exports clean ONNX format without transformers overhead
+- Converts to TensorRT FP16 engine with optimal settings
 - Creates configuration files for deployment
-- Performance: 20+ FPS at 518x518 resolution target
+- Performance: 25+ FPS at 518x518 resolution target
 """
 
 import argparse
@@ -24,128 +27,122 @@ from typing import Optional
 
 import numpy as np
 import torch
-from huggingface_hub import snapshot_download
-
-# Try to import transformers components with version checking
-try:
-    import transformers
-    from transformers import AutoModelForDepthEstimation
-
-    TRANSFORMERS_VERSION = transformers.__version__
-except ImportError:
-    raise ImportError(
-        "transformers library not found. Install with: pip install transformers>=4.30.0"
-    )
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Check transformers version
-logger.info(f"Using transformers version: {TRANSFORMERS_VERSION}")
-
 
 class DepthAnythingV2Converter:
     """
-    Depth Anything V2 model converter for Jetson Orin Nano
+    Native Depth Anything V2 model converter for Jetson Orin Nano
 
-    Handles download, ONNX export, and TensorRT conversion of Depth Anything V2 Small
+    Uses official repository model definition for optimized ONNX/TensorRT conversion
     """
 
     def __init__(
         self,
-        model_name: str = "depth-anything/Depth-Anything-V2-Small-hf",
         models_base_dir: Optional[Path] = None,
+        input_size: int = 518,
     ):
         """
         Initialize converter
 
         Args:
-            model_name: HuggingFace model name/path
             models_base_dir: Base directory for models (default: <repo_root>/models)
+            input_size: Model input resolution (default: 518)
         """
-        self.model_name = model_name
-
-        # Use CPU for export to avoid memory issues during conversion
-        self.device = "cpu"
-
         # Setup directory structure
         if models_base_dir is None:
             models_base_dir = Path(__file__).parent.parent.parent / "models"
 
         self.models_dir = Path(models_base_dir)
-        # Use depth_trt as the single directory for all model files
-        self.local_model_path = self.models_dir / "depth_trt"
         self.depth_trt_path = self.models_dir / "depth_trt"
-        self.onnx_path = self.depth_trt_path / "depth_anything_v2_small.onnx"
-        self.engine_path = self.depth_trt_path / "depth_anything_v2_small.trt"
+        self.repo_dir = self.depth_trt_path / "Depth-Anything-V2"
+        self.weights_path = self.depth_trt_path / "depth_anything_v2_vits.pth"
+
+        # Output paths
+        self.onnx_path = self.depth_trt_path / f"depth_anything_v2_vits_{input_size}.onnx"
+        self.engine_path = self.depth_trt_path / f"depth_anything_v2_vits_{input_size}.engine"
 
         # Model configuration
-        self.input_size = (518, 518)  # Standard size for Depth Anything V2
+        self.input_size = input_size
         self.batch_size = 1
 
         # Create directories
         self.depth_trt_path.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Initialized converter for {model_name}")
+        logger.info("Initialized native converter")
         logger.info(f"Models directory: {self.models_dir}")
-        logger.info(f"Device: {self.device}")
+        logger.info(f"Input size: {self.input_size}x{self.input_size}")
 
-    def download_model(self) -> None:
-        """Download Depth Anything V2 Small model from HuggingFace"""
-        logger.info(f"Downloading model: {self.model_name}")
+    def verify_prerequisites(self) -> bool:
+        """Verify that repository and weights are available"""
+        if not self.repo_dir.exists():
+            logger.error(f"✗ Repository not found at: {self.repo_dir}")
+            logger.error("  Run download_models.py first to clone the repository")
+            return False
 
-        try:
-            snapshot_download(
-                repo_id=self.model_name,
-                local_dir=self.local_model_path,
-                local_dir_use_symlinks=False,
-                ignore_patterns=["*.git*", "*.md", "*.txt"],
-            )
-            logger.info(f"✓ Model downloaded to: {self.local_model_path}")
+        if not self.weights_path.exists():
+            logger.error(f"✗ Weights not found at: {self.weights_path}")
+            logger.error("  Run download_models.py first to download weights")
+            return False
 
-        except Exception as e:
-            logger.error(f"✗ Failed to download model: {e}")
-            raise
+        logger.info("✓ Prerequisites verified")
+        return True
 
     def export_to_onnx(self) -> None:
-        """Export PyTorch model to ONNX format"""
-        logger.info("Exporting model to ONNX format")
+        """Export native PyTorch model to ONNX format"""
+        logger.info("Exporting native model to ONNX format")
 
         try:
-            logger.info("Loading Depth Anything V2 Small model...")
+            # Add repository to Python path
+            sys.path.insert(0, str(self.repo_dir))
 
-            model = AutoModelForDepthEstimation.from_pretrained(
-                "depth-anything/Depth-Anything-V2-Small-hf"
-            )
+            # Import native model definition
+            from depth_anything_v2.dpt import DepthAnythingV2
 
-            logger.info("✓ Model and processor loaded successfully")
+            logger.info("Loading native model...")
 
-            model = model.to(self.device)
+            # Native Model Configuration (Small/ViT-S)
+            model_configs = {
+                "vits": {
+                    "encoder": "vits",
+                    "features": 64,
+                    "out_channels": [48, 96, 192, 384],
+                },
+            }
+
+            # Initialize model
+            model = DepthAnythingV2(**model_configs["vits"])
+
+            # Load weights
+            state_dict = torch.load(self.weights_path, map_location="cpu")
+            model.load_state_dict(state_dict)
             model.eval()
 
-            dummy_input = torch.randn(
-                self.batch_size,
-                3,
-                self.input_size[0],
-                self.input_size[1],
-                dtype=torch.float32,
-                device=self.device,
-            )
+            logger.info("✓ Native model loaded successfully")
 
+            # Create dummy input
+            dummy_input = torch.ones((self.batch_size, 3, self.input_size, self.input_size))
+
+            # Test forward pass
             with torch.no_grad():
-                test_output = model(pixel_values=dummy_input)
-                logger.info(f"Model output shape: {test_output.predicted_depth.shape}")
+                test_output = model(dummy_input)
+                logger.info(f"Model output shape: {test_output.shape}")
 
+            # Export to ONNX
+            logger.info(f"Exporting to ONNX (Input: {self.input_size}x{self.input_size})...")
             torch.onnx.export(
                 model,
                 dummy_input,
                 self.onnx_path,
-                opset_version=17,
+                opset_version=14,  # Opset 14 is stable for TensorRT 8.6/10.x
                 export_params=True,
-                input_names=["pixel_values"],
-                output_names=["predicted_depth"],
+                input_names=["input"],
+                output_names=["output"],
                 do_constant_folding=True,
+                verbose=False,
             )
 
             logger.info(f"✓ ONNX model saved to: {self.onnx_path}")
@@ -154,6 +151,10 @@ class DepthAnythingV2Converter:
             # Verify ONNX model
             self._verify_onnx_model()
 
+        except ImportError as e:
+            logger.error(f"✗ Failed to import native model: {e}")
+            logger.error("  Ensure the Depth-Anything-V2 repository is properly cloned")
+            raise
         except Exception as e:
             logger.error(f"✗ ONNX export failed: {e}")
             raise
@@ -179,11 +180,11 @@ class DepthAnythingV2Converter:
 
             # Create test input
             test_input = np.random.randn(
-                self.batch_size, 3, self.input_size[0], self.input_size[1]
+                self.batch_size, 3, self.input_size, self.input_size
             ).astype(np.float32)
 
             # Run inference
-            outputs = ort_session.run(None, {"pixel_values": test_input})
+            outputs = ort_session.run(None, {"input": test_input})
 
             logger.info("✓ ONNX inference successful")
             logger.info(f"  Output shape: {outputs[0].shape}")
@@ -216,18 +217,17 @@ class DepthAnythingV2Converter:
                 "This step must be run on the Jetson device."
             )
 
-        # TensorRT conversion command optimized for Jetson Orin Nano
+        # TensorRT conversion command optimized for Jetson Orin Nano with native model
         cmd = [
             str(trtexec_path),
             f"--onnx={self.onnx_path}",
             f"--saveEngine={self.engine_path}",
-            "--fp16",  # Use FP16 for memory efficiency and speed
-            f"--memPoolSize=workspace:{workspace_size_mb}",
-            "--builderOptimizationLevel=3",
+            "--fp16",  # Crucial for Orin performance
+            "--best",  # Try all tactical optimizations
             "--avgTiming=10",
+            "--useCudaGraph",  # Optimizes kernel launching
+            "--infStreams=1",  # Minimize overhead
             "--verbose",
-            "--useSpinWait",
-            "--useCudaGraph",  # Enable CUDA graphs for better performance
         ]
 
         try:
@@ -277,14 +277,15 @@ class DepthAnythingV2Converter:
 
         # Model configuration
         model_config = {
-            "model_name": "depth_anything_v2_small",
+            "model_name": "depth_anything_v2_vits",
             "model_type": "depth_estimation",
             "framework": "tensorrt",
-            "version": "v2",
-            "input_shape": [self.batch_size, 3, self.input_size[0], self.input_size[1]],
-            "output_shape": [self.batch_size, self.input_size[0], self.input_size[1]],
+            "version": "v2_native",
+            "model_variant": "small_vits",
+            "input_shape": [self.batch_size, 3, self.input_size, self.input_size],
+            "output_shape": [self.batch_size, self.input_size, self.input_size],
             "preprocessing": {
-                "resize": self.input_size,
+                "resize": [self.input_size, self.input_size],
                 "normalize": {
                     "mean": [0.485, 0.456, 0.406],
                     "std": [0.229, 0.224, 0.225],
@@ -292,14 +293,17 @@ class DepthAnythingV2Converter:
                 "color_format": "RGB",
             },
             "performance": {
-                "target_fps": 20,
-                "max_latency_ms": 50,
-                "memory_limit_mb": 1000,
+                "target_fps": 25,
+                "max_latency_ms": 40,
+                "memory_limit_mb": 800,
             },
             "files": {
+                "weights": "depth_anything_v2_vits.pth",
                 "onnx": str(self.onnx_path.name),
                 "tensorrt": str(self.engine_path.name),
+                "repository": "Depth-Anything-V2",
             },
+            "notes": "Native model definition for optimized ONNX graph",
         }
 
         config_path = config_dir / "config.json"
@@ -316,7 +320,7 @@ class DepthAnythingV2Converter:
             "image_std": [0.229, 0.224, 0.225],
             "keep_aspect_ratio": False,
             "resample": 3,  # PIL.Image.BICUBIC
-            "size": {"height": self.input_size[0], "width": self.input_size[1]},
+            "size": {"height": self.input_size, "width": self.input_size},
             "size_divisor": 14,  # Patch size for vision transformer
         }
 
@@ -343,12 +347,14 @@ class DepthAnythingV2Converter:
         start_time = time.time()
 
         try:
-            # Step 1: Download model
-            if not (self.local_model_path / "config.json").exists():
-                logger.info("\n[1/4] Downloading model from HuggingFace...")
-                self.download_model()
-            else:
-                logger.info(f"\n[1/4] Model already exists at: {self.local_model_path}")
+            # Step 1: Verify prerequisites
+            logger.info("\n[1/4] Verifying prerequisites...")
+            if not self.verify_prerequisites():
+                logger.error("\n✗ Prerequisites check failed")
+                logger.error(
+                    "  Run: python scripts/setup/download_models.py --models depth_anything_v2"
+                )
+                raise RuntimeError("Missing prerequisites")
 
             # Step 2: Export to ONNX
             if not self.onnx_path.exists():
@@ -380,7 +386,8 @@ class DepthAnythingV2Converter:
             logger.info(f"✓ Conversion pipeline completed in {elapsed_time:.2f} seconds")
             logger.info("=" * 70)
             logger.info("\nGenerated files:")
-            logger.info(f"  - Model weights: {self.local_model_path}")
+            logger.info(f"  - Repository: {self.repo_dir}")
+            logger.info(f"  - Model weights: {self.weights_path}")
             logger.info(f"  - ONNX model: {self.onnx_path}")
             if self.engine_path.exists():
                 logger.info(f"  - TensorRT engine: {self.engine_path}")
@@ -394,13 +401,14 @@ class DepthAnythingV2Converter:
 def main():
     """Main conversion script entry point"""
     parser = argparse.ArgumentParser(
-        description="Convert Depth Anything V2 Small model for Jetson deployment",
+        description="Convert native Depth Anything V2 Small model for Jetson deployment",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--model-name",
-        default="depth-anything/Depth-Anything-V2-Small-hf",
-        help="HuggingFace model name or local path",
+        "--input-size",
+        type=int,
+        default=518,
+        help="Model input resolution (default: 518)",
     )
     parser.add_argument(
         "--models-dir",
@@ -415,11 +423,6 @@ def main():
         help="TensorRT workspace memory pool size in MB",
     )
     parser.add_argument(
-        "--skip-download",
-        action="store_true",
-        help="Skip model download if already exists",
-    )
-    parser.add_argument(
         "--onnx-only",
         action="store_true",
         help="Only export to ONNX, skip TensorRT conversion",
@@ -428,33 +431,23 @@ def main():
     args = parser.parse_args()
 
     try:
-        # Check transformers version
         logger.info("=" * 70)
-        logger.info("Depth Anything V2 Model Converter")
+        logger.info("Native Depth Anything V2 Model Converter")
         logger.info("=" * 70)
-        logger.info(f"Transformers version: {TRANSFORMERS_VERSION}")
-
-        # Warn if version is old
-        from packaging import version
-
-        if version.parse(TRANSFORMERS_VERSION) < version.parse("4.30.0"):
-            logger.warning("⚠ Your transformers version is outdated!")
-            logger.warning("  For best results, upgrade with:")
-            logger.warning("  pip install --upgrade transformers>=4.30.0")
-            logger.warning("")
-            logger.warning("  Proceeding anyway with fallback methods...")
-            time.sleep(2)  # Give user time to read
+        logger.info("Using native model definition for optimal ONNX graph")
+        logger.info(f"Input size: {args.input_size}x{args.input_size}")
 
         # Initialize converter
-        converter = DepthAnythingV2Converter(args.model_name, models_base_dir=args.models_dir)
+        converter = DepthAnythingV2Converter(
+            models_base_dir=args.models_dir, input_size=args.input_size
+        )
 
         if args.onnx_only:
             # Only run ONNX export
-            if not args.skip_download:
-                converter.download_model()
-            converter.export_to_onnx()
-            converter.create_config_files()
-            logger.info("✓ ONNX export completed successfully!")
+            if converter.verify_prerequisites():
+                converter.export_to_onnx()
+                converter.create_config_files()
+                logger.info("✓ ONNX export completed successfully!")
         else:
             # Run full pipeline with workspace size argument
             converter.full_conversion_pipeline(

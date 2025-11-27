@@ -51,21 +51,24 @@ MODEL_REGISTRY = {
         "required": True,
     },
     "depth_anything_v2": {
-        "name": "Depth Anything V2 Small Monocular Depth Estimation",
+        "name": "Depth Anything V2 Small Monocular Depth Estimation (Native)",
         "description": "Depth Anything V2 Small with DPT architecture and DINOv2 backbone for \
 state-of-the-art monocular depth estimation. Trained on 595K synthetic labeled + 62M+ real \
-unlabeled images for superior fine-grained details and robustness.",
-        "url": "depth-anything/Depth-Anything-V2-Small-hf",  # HuggingFace model ID
-        "filename": "config.json",  # Main indicator file
+unlabeled images for superior fine-grained details and robustness. Uses native model definition \
+for optimized ONNX/TensorRT conversion.",
+        "url": "https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_vits.pth",  # noqa E501
+        "filename": "depth_anything_v2_vits.pth",
         "destination": "models/depth_trt/",
-        "size_mb": 95.0,  # Estimated size for Depth Anything V2 Small
+        "size_mb": 99.3,  # Native weights size
         "sha256": "",  # Will be calculated during download
         "license": "Apache-2.0",
-        "source": "TikTok/Depth-Anything",
+        "source": "DepthAnything/Depth-Anything-V2",
         "required": True,
-        "download_method": "transformers_offline",
-        "note": "Downloads complete model using transformers for offline capability. \
-Includes model weights, config, and all required files for TensorRT conversion.",
+        "download_method": "native_depth_anything",
+        "git_repo": "https://github.com/DepthAnything/Depth-Anything-V2.git",
+        "note": "Downloads native model weights and clones official repository for clean model \
+definition. This approach creates a much more optimized ONNX graph compared to \
+    HuggingFace version.",
     },
     "whisper": {
         "name": "Whisper Tiny Speech Recognition",
@@ -222,6 +225,56 @@ class ModelDownloader:
                 filepath.unlink()  # Remove partial download
             return False
 
+    def download_native_depth_anything(
+        self, destination_dir: Path, git_repo: str, weights_url: str
+    ) -> bool:
+        """Download native Depth Anything V2 model by cloning repo and downloading weights."""
+        import subprocess
+
+        try:
+            print("Setting up native Depth Anything V2...")
+            print("   This approach creates a much cleaner ONNX graph for TensorRT.")
+
+            # Create directory if it doesn't exist
+            destination_dir.mkdir(parents=True, exist_ok=True)
+
+            # Clone the official repository if not already present
+            repo_dir = destination_dir / "Depth-Anything-V2"
+            if not repo_dir.exists():
+                print("   Cloning official repository...")
+                result = subprocess.run(
+                    ["git", "clone", git_repo, str(repo_dir)],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+                if result.returncode != 0:
+                    print(f"❌ Git clone failed: {result.stderr}")
+                    return False
+                print(f"✅ Repository cloned to {repo_dir}")
+            else:
+                print(f"   Repository already exists at {repo_dir}")
+
+            # Download the native weights
+            weights_file = destination_dir / "depth_anything_v2_vits.pth"
+            if not weights_file.exists():
+                print("   Downloading native model weights...")
+                success = self.download_with_progress(weights_url, weights_file)
+                if not success:
+                    return False
+            else:
+                print(f"   Weights already exist at {weights_file}")
+
+            print("✅ Native Depth Anything V2 setup complete")
+            return True
+
+        except subprocess.TimeoutExpired:
+            print("❌ Git clone timed out")
+            return False
+        except Exception as e:
+            print(f"❌ Native Depth Anything download failed: {e}")
+            return False
+
     def download_transformers_offline(self, repo_id: str, destination_dir: Path) -> bool:
         """Download complete model and processor using transformers for offline use."""
 
@@ -247,23 +300,6 @@ class ModelDownloader:
                 # Download and save processor
                 print("   Downloading processor (tokenizer, etc.)...")
                 processor = AutoProcessor.from_pretrained(repo_id)
-                processor.save_pretrained(destination_dir)
-
-            elif "depth-anything" in repo_id.lower():
-                # Download and save Depth Anything V2 model
-                print("   Downloading Depth Anything V2 model weights...")
-                from transformers import AutoImageProcessor, AutoModelForDepthEstimation
-
-                model = AutoModelForDepthEstimation.from_pretrained(
-                    repo_id,
-                    torch_dtype=torch.float32,  # Depth models typically use float32
-                    device_map=None,
-                )
-                model.save_pretrained(destination_dir)
-
-                # Download and save image processor
-                print("   Downloading image processor...")
-                processor = AutoImageProcessor.from_pretrained(repo_id)
                 processor.save_pretrained(destination_dir)
 
             else:
@@ -387,6 +423,16 @@ class ModelDownloader:
         download_method = model_info.get("download_method", "urllib")
         if download_method == "gdown":
             success = self.download_from_gdrive(model_info["url"], main_filepath)
+
+        elif download_method == "native_depth_anything":
+            # Special handling for native Depth Anything V2
+            git_repo = model_info.get("git_repo")
+            success = self.download_native_depth_anything(
+                destination_dir, git_repo, model_info["url"]
+            )
+            if success:
+                print(f"✅ Successfully downloaded: {model_info['name']}\n")
+                return True
 
         elif download_method == "transformers_offline":
             repo_id = model_info["url"]  # For transformers, this is the repo_id
