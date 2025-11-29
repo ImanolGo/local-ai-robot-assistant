@@ -517,15 +517,15 @@
 
 ### 5.2 Wake Word Detection ("Hey Jarvis")
 
-- [ ] Install openWakeWord library and dependencies
-- [ ] Implement `wake_word_detector_node.py`
-  - [ ] Load wake word model (ONNX format for "Hey Jarvis")
-  - [ ] Subscribe to `/audio/raw` with real-time processing
-  - [ ] Run continuous detection in dedicated thread
-  - [ ] Publish to `/audio/wake_word_detected` (std_msgs/Bool + confidence)
-  - [ ] Add detection confidence threshold (configurable, default: 0.6)
-  - [ ] Implement cooldown period to prevent multiple triggers (default: 2 seconds)
-  - [ ] Always-on operation with minimal resource footprint
+- [x] Install openWakeWord library and dependencies
+- [x] Implement `wake_word_detector_node.py`
+  - [x] Load wake word model (ONNX format for "Hey Jarvis")
+  - [x] Subscribe to `/audio/raw` with real-time processing
+  - [x] Run continuous detection in dedicated thread
+  - [x] Publish to `/audio/wake_word_detected` (std_msgs/Bool + confidence)
+  - [x] Add detection confidence threshold (configurable, default: 0.6)
+  - [x] Implement cooldown period to prevent multiple triggers (default: 2 seconds)
+  - [x] Always-on operation with minimal resource footprint
 - [ ] Train or fine-tune custom wake word model for "Hey Jarvis"
 - [ ] Test false positive rate (target: <1 per hour in quiet environment)
 - [ ] Test detection latency (target: <100ms from word completion)

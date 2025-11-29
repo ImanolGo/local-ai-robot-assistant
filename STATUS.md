@@ -334,7 +334,7 @@
 
 ---
 
-## Phase 5: Audio Detection Pipeline (20% Complete 🚧)
+## Phase 5: Audio Detection Pipeline (35% Complete 🚧)
 
 ### 5.1 Audio Capture & Playback Infrastructure (100% Complete ✅)
 
@@ -362,14 +362,25 @@
 - ⏳ Test simultaneous capture/playback without feedback
 - ⏳ Test USB device reconnection and hot-swapping
 
-### 5.2 Wake Word Detection ("Hey Jarvis")
+### 5.2 Wake Word Detection ("Hey Jarvis") ✅
 
-- ⏳ Install openWakeWord library and dependencies
-- ⏳ Implement wake_word_detector_node.py
-- ⏳ Train or fine-tune custom wake word model for "Hey Jarvis"
+- ✅ Install openWakeWord library and dependencies (openwakeword, onnxruntime, tflite-runtime)
+- ✅ Implement wake_word_detector_node.py
+  - ✅ Load openWakeWord model with default models
+  - ✅ Subscribe to `/audio/raw` with real-time processing
+  - ✅ Run continuous detection in dedicated thread
+  - ✅ Publish to `/audio/wake_word_detected` (std_msgs/Bool + confidence)
+  - ✅ Add detection confidence threshold (configurable, default: 0.6)
+  - ✅ Implement cooldown period to prevent multiple triggers (default: 2 seconds)
+  - ✅ Always-on operation with minimal resource footprint
+- ✅ Add wake word configuration to audio_config.yaml
+- ✅ Create unit tests (tests/test_wake_word.py)
+- ✅ Build and integrate with audio_interface_nodes package
+- ⏳ Train or fine-tune custom wake word model for "Hey Jarvis" (using default models for now)
 - ⏳ Test false positive rate (target: <1 per hour in quiet environment)
 - ⏳ Test detection latency (target: <100ms from word completion)
 - ⏳ Optimize for ultra-low CPU usage (target: <5% continuously)
+- ⏳ Test robustness across different voices, accents, and distances
 
 ### 5.3 Voice Activity Detection (VAD)
 
