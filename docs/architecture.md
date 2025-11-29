@@ -87,7 +87,51 @@ graph TD
 ```
 
 ### 2.2. ROS2 as the Backbone
-(Unchanged from v3.0 - ROS2 remains the middleware for communication).
+
+ROS2 remains the middleware for communication between all system components.
+
+#### Running ROS2 Nodes with Virtual Environment
+
+**Important**: This project uses a Python virtual environment (`.venv`) for package isolation, but ROS2 `colcon build` creates executables with system Python shebangs. To run nodes properly:
+
+**Use the provided launcher script**:
+```bash
+# Launch any ROS2 Python node
+./launch_node.sh <package_name> <node_name>
+
+# Example: Start audio capture
+./launch_node.sh audio_interface_nodes audio_capture_node
+```
+
+**For ROS2 commands and topic monitoring**:
+```bash
+# Source the combined environment
+source ros2_venv.sh
+
+# Now use any ROS2 command
+ros2 topic list
+ros2 topic hz /audio/raw
+ros2 node list
+```
+
+**Why these tools exist**:
+- `launch_node.sh`: Runs ROS2 Python nodes using the venv Python interpreter (bypasses system Python shebang)
+- `ros2_venv.sh`: Sources both venv and ROS2, adds venv packages to PYTHONPATH for ROS2 CLI tools
+- This approach maintains Python package isolation while ensuring ROS2 functionality
+
+**Standard workflow** (multiple terminals):
+```bash
+# Terminal 1 - Run a node
+./launch_node.sh audio_interface_nodes audio_capture_node
+
+# Terminal 2 - Monitor topics
+source ros2_venv.sh
+ros2 topic hz /audio/raw
+
+# Terminal 3 - Run tests
+source ros2_venv.sh
+python manual_tests/test_audio_capture_playback.py
+```
 
 ### 2.3. Tier 1: Continuous Perception & Localization Layer
 (Unchanged from v3.0 - YOLO, Depth, and SLAM operate independently of the LLM/VLM).
