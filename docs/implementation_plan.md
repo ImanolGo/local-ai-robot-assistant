@@ -479,20 +479,21 @@
 ## Phase 5: Audio Detection Pipeline (Week 7)
 
 ### 5.1 Audio Capture & Playback Infrastructure
-- [ ] Implement `audio_capture_node.py`
-  - [ ] PyAudio initialization with USB microphone configuration
-  - [ ] Continuous audio streaming at 16 kHz
-  - [ ] Publish to `/audio/raw` topic (audio_msgs/AudioData)
-  - [ ] Circular buffer management (5-second rolling buffer)
-  - [ ] USB device health monitoring and auto-reconnection
-  - [ ] Configurable sample rate and channels from `config/audio_config.yaml`
-- [ ] Implement `audio_playback_node.py`
-  - [ ] PyAudio initialization with USB speakers configuration
-  - [ ] Subscribe to `/audio/tts_output`
-  - [ ] Queue-based playback system with priority handling
-  - [ ] Handle playback interruptions (emergency stop, new commands)
-  - [ ] Volume normalization and audio quality optimization
-  - [ ] Monitor playback errors and device status
+- [x] Implement `audio_capture_node.py`
+  - [x] sounddevice initialization with USB microphone configuration
+  - [x] Continuous audio streaming at 16 kHz (with hardware resampling from 44.1kHz/48kHz)
+  - [x] Publish to `/audio/raw` topic (audio_common_msgs/AudioData or robot_interfaces/AudioData)
+  - [x] Circular buffer management (5-second rolling buffer)
+  - [x] USB device health monitoring and auto-reconnection
+  - [x] Configurable sample rate and channels from `config/audio_config.yaml`
+- [x] Implement `audio_playback_node.py`
+  - [x] sounddevice initialization with USB speakers configuration
+  - [x] Subscribe to `/audio/tts_output`
+  - [x] Queue-based playback system with priority handling
+  - [x] Handle playback interruptions (via priority queue)
+  - [x] Volume normalization and audio quality optimization
+  - [x] Monitor playback errors and device status
+  - [x] Publish audio events to `/audio/events`
 - [ ] Test audio latency (target: <200ms round-trip)
 - [ ] Test simultaneous capture/playback without feedback
 - [ ] Test USB device reconnection and hot-swapping
