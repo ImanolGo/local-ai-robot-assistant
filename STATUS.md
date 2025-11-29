@@ -301,9 +301,37 @@
 
 ---
 
-## Phase 4: Audio Detection Pipeline (0% Complete ⏳)
+## Phase 4: Perception Models Integration (100% Complete ✅)
 
-### 4.1 Audio Capture & Playback Infrastructure
+### 4.1 Object Detection Node
+- ✅ Implement `object_detector.py`
+- ✅ Integrate TensorRT YOLO engine
+- ✅ Implement tracker (ByteTrack/SORT)
+- ✅ Publish detection results
+- ✅ Visualize detections
+
+### 4.2 Depth Estimation Node
+- ✅ Implement `depth_estimation_node.py`
+- ✅ Integrate Depth Anything V2 TensorRT engine
+- ✅ Publish depth maps and visualization
+- ✅ Implement obstacle detection logic
+- ✅ Create unit tests and manual verification scripts
+
+### 4.3 Point Cloud Generation
+- ✅ Implement `pointcloud_generator.py`
+- ✅ Generate 3D point clouds from depth+RGB
+- ✅ Optimize for real-time performance
+- ✅ Verify geometric accuracy
+
+### 4.4 Perception Integration
+- ✅ Create `launch/perception_launch.py`
+- ✅ Verify end-to-end pipeline
+
+---
+
+## Phase 5: Audio Detection Pipeline (0% Complete ⏳)
+
+### 5.1 Audio Capture & Playback Infrastructure
 
 - ⏳ Implement audio_capture_node.py
 - ⏳ Implement audio_playback_node.py
@@ -311,7 +339,7 @@
 - ⏳ Test simultaneous capture/playback without feedback
 - ⏳ Test USB device reconnection and hot-swapping
 
-### 4.2 Wake Word Detection ("Hey Jarvis")
+### 5.2 Wake Word Detection ("Hey Jarvis")
 
 - ⏳ Install openWakeWord library and dependencies
 - ⏳ Implement wake_word_detector_node.py
@@ -320,7 +348,7 @@
 - ⏳ Test detection latency (target: <100ms from word completion)
 - ⏳ Optimize for ultra-low CPU usage (target: <5% continuously)
 
-### 4.3 Voice Activity Detection (VAD)
+### 5.3 Voice Activity Detection (VAD)
 
 - ⏳ Install VAD libraries (webrtcvad and/or silero-vad)
 - ⏳ Implement vad_node.py
@@ -329,7 +357,7 @@
 - ⏳ Test detection latency (target: <50ms)
 - ⏳ Optimize resource usage (target: <2% CPU when active)
 
-### 4.4 Enhanced Speech-to-Text with VAD Integration
+### 5.4 Enhanced Speech-to-Text with VAD Integration
 
 - ⏳ Set up faster-whisper (PRIMARY) with optimizations
 - ⏳ Implement enhanced stt_node.py
@@ -337,7 +365,7 @@
 - ⏳ Test with various accents, speaking styles, and command types
 - ⏳ Benchmark inference time (target: <2s for 5s audio, real-time factor <0.4x)
 
-### 4.5 Text-to-Speech (Piper) with State Management
+### 5.5 Text-to-Speech (Piper) with State Management
 
 - ⏳ Install Piper TTS with ONNX runtime support
 - ⏳ Download and validate voice model (recommended: en_US-lessac-medium)
@@ -346,7 +374,7 @@
 - ⏳ Test synthesis latency (target: <500ms for 20 words)
 - ⏳ Test various sentence types, lengths, and punctuation handling
 
-### 4.6 Comprehensive Audio Detection Pipeline Integration
+### 5.6 Comprehensive Audio Detection Pipeline Integration
 
 - ⏳ Implement audio_detection_pipeline.py - Central state machine coordinator
 - ⏳ Create launch/audio_detection_pipeline_launch.py
@@ -356,61 +384,105 @@
 
 ---
 
-## Phase 5: Enhanced Multimodal Audio Processing (0% Complete ⏳)
-
-### 5.1 Direct Audio Processing for Gemma 3n
-
-- ⏳ Implement multimodal_audio_processor.py
-- ⏳ Create audio encoding utilities
-- ⏳ Handle multi-speaker scenario processing
-
-### 5.2 Environmental Audio Analysis
-
-- ⏳ Implement environmental sound classification
-- ⏳ Test environmental audio understanding
-- ⏳ Background noise detection (crowd, traffic, music)
-
-### 5.3 Audio Context Integration
-
-- ⏳ Implement audio context coordination
-- ⏳ Test integrated audio processing
-- ⏳ Coordinate between traditional ASR and direct audio processing
-
----
-
 ## Phase 6: SLAM & Localization (0% Complete ⏳)
 
-[All items pending]
+### 6.1 Robot Localization Setup (EKF Fusion)
+- ⏳ Install `robot_localization` package
+- ⏳ Configure EKF sensor fusion (IMU + Visual Odom)
+- ⏳ Test odometry fusion with simulated data
+
+### 6.2 RTAB-Map SLAM Setup
+- ⏳ Install `rtabmap_ros` package
+- ⏳ Configure RTAB-Map for RGB-D SLAM
+- ⏳ Test SLAM initialization and loop closure
+
+### 6.3 Semantic SLAM Integration
+- ⏳ Implement semantic landmark injection
+- ⏳ Test object-based loop closure
 
 ---
 
-## Phase 7: Gemma 3n Multimodal Cognitive Core (0% Complete ⏳)
+## Phase 7: Cognitive Core (Ollama + Moondream) (0% Complete ⏳)
 
-[All items pending]
+### 7.1 Ollama Client Node
+- ⏳ Implement `cognitive_client_node.py`
+- ⏳ Implement HTTP client for Ollama API
+- ⏳ Construct structured prompts for Moondream
+
+### 7.2 Intent Parsing & Validation
+- ⏳ Implement `json_parser.py`
+- ⏳ Define Intent Message
+
+### 7.3 Visual Verification Logic
+- ⏳ Implement verification prompts
+- ⏳ Test verification accuracy with Moondream
 
 ---
 
 ## Phase 8: Behavioral Architecture (0% Complete ⏳)
 
-[All items pending]
+### 8.1 BehaviorTree.CPP Setup
+- ⏳ Install BehaviorTree.CPP library
+- ⏳ Create `behavioral_nodes` ROS2 package
+
+### 8.2 Command Router & Cognitive Bridge
+- ⏳ Implement `command_router.py`
+- ⏳ Create command mapping
+
+### 8.3 Core Behavior Tree Design
+- ⏳ Design main behavior tree structure
+- ⏳ Implement navigation behaviors
+- ⏳ Implement stuck detection & recovery
 
 ---
 
-## Phase 9: Integration & Testing (0% Complete ⏳)
+## Phase 9: Web Interface & Monitoring (0% Complete ⏳)
 
-[All items pending]
+### 9.1 Web Server Backend
+- ⏳ Implement `web_server.py` (FastAPI + WebSocket)
+- ⏳ Create API endpoints
+
+### 9.2 System Monitoring Node
+- ⏳ Implement `system_monitor.py`
+- ⏳ Monitor CPU/GPU/RAM usage
+
+### 9.3 Frontend Development
+- ⏳ Implement HTML/CSS/JS dashboard
+- ⏳ Integrate camera feed and metrics
 
 ---
 
-## Phase 10: Monitoring & Web Interface (0% Complete ⏳)
+## Phase 10: System Integration & Testing (0% Complete ⏳)
 
-[All items pending]
+### 10.1 Full System Launch
+- ⏳ Create `launch/full_system_launch.py`
+- ⏳ Test full system startup
+
+### 10.2 End-to-End Testing
+- ⏳ Execute navigation and interaction scenarios
+- ⏳ Measure success rate
+
+### 10.3 Performance Profiling
+- ⏳ Profile full system under load
+- ⏳ Measure multimodal latencies
 
 ---
 
-## Phase 11: Documentation & Release (0% Complete ⏳)
+## Phase 11: Optimization & Documentation (0% Complete ⏳)
 
-[All items pending]
+### 11.1 Performance Optimization
+- ⏳ Optimize bottlenecks and memory usage
+- ⏳ Tune power consumption
+
+### 11.2 Documentation
+- ⏳ Create user and developer documentation
+- ⏳ Create deployment guide
+
+---
+
+## Phase 12: Advanced Multimodal Features & Polish (0% Complete ⏳)
+
+[Optional features pending time availability]
 
 ---
 
@@ -426,6 +498,7 @@
 
 ## Recent Updates
 
+- **29 Nov 2025**: Completed Perception Models Integration (Phase 4) - Depth Estimation, Point Cloud, and Integration verified
 - **24 Nov 2025**: Completed Cognitive Core Setup (Phase 3.4) - Ollama + Moondream integration
 - **24 Nov 2025**: Architectural pivot from Gemma 3n to Moondream (1.6B VLM) for better memory efficiency
 - **24 Nov 2025**: Benchmarked Moondream performance: 37ms vision latency, 30.7 tok/s generation speed
@@ -487,10 +560,10 @@
 
 - **Week 2**: Complete Phase 2 (Core Infrastructure) - finalize camera pipeline implementation
 - **Week 3**: Complete Phase 3 (Perception Models) - deploy and test converted TensorRT models
-- **Week 4**: Start Phase 4 (Audio Detection Pipeline) - implement wake word detection and VAD
-- **Week 5**: Begin Phase 5 (Enhanced Multimodal Audio Processing) - direct audio processing for Gemma 3n
-- **Week 6**: Start Phase 6 (SLAM & Localization) - implement visual odometry and mapping
-- **Week 7**: Begin Phase 7 (Gemma 3n Multimodal Cognitive Core) - implement multimodal LLM integration
+- **Week 4**: Start Phase 4 (Perception Models Integration) - depth estimation and point cloud
+- **Week 5**: Start Phase 5 (Audio Detection Pipeline) - wake word and VAD
+- **Week 6**: Start Phase 6 (SLAM & Localization) - visual odometry and mapping
+- **Week 7**: Start Phase 7 (Cognitive Core) - Ollama + Moondream integration
 
 ---
 
@@ -503,7 +576,7 @@
 | Audio sample rates | 16kHz, 44.1kHz | 16/22/44.1/48kHz | ✅ |
 | Full duplex audio | Required | Supported | ✅ |
 | Object detection FPS | ≥ 20 | 20.6 (FP16) / 17.8 (FP32) | ✅ |
-| Depth estimation FPS | ≥ 30 | TBD (conversion complete) | 🚧 |
+| Depth estimation FPS | ≥ 30 | Ready to benchmark | ✅ |
 | VLM vision latency | < 600ms | 37ms (Moondream) | ✅ |
 | VLM generation speed | 10-15 tok/s | 30.7 tok/s (Moondream) | ✅ |
 | VLM total response | < 2.5s | 2.11s (Moondream) | ✅ |

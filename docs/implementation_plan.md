@@ -421,16 +421,16 @@
 ```
 
 ### 4.2 Depth Estimation Node
-- [ ] Implement `depth_estimator.py`
-  - [ ] Load Depth Anything V2 Small TensorRT engine from Phase 3.2
-  - [ ] Subscribe to `/camera/undistorted`
-  - [ ] Run inference using TensorRT runtime
-  - [ ] Publish depth maps to `/perception/depth`
-  - [ ] Add depth colormap visualization
-  - [ ] Implement depth range normalization
-- [ ] Benchmark inference time (target: 30+ FPS)
-- [ ] Test depth accuracy with known distances
-- [ ] Create unit tests
+- [x] Implement `depth_estimator.py`
+  - [x] Load Depth Anything V2 Small TensorRT engine from Phase 3.2
+  - [x] Subscribe to `/camera/undistorted`
+  - [x] Run inference using tensorrt runtime
+  - [x] Publish depth maps to `/perception/depth`
+  - [x] Add depth colormap visualization
+  - [x] Implement depth range normalization
+- [x] Benchmark inference time (target: 30+ FPS)
+- [x] Test depth accuracy with known distances
+- [x] Create unit tests
 
 **Tests Required**:
 ```python
@@ -456,15 +456,15 @@
   - [x] Publish to `/perception/pointcloud` (sensor_msgs/PointCloud2)
   - [x] Add RGB color mapping
 - [x] Test point cloud accuracy with known geometry
-- [ ] Visualize in RViz2
+- [x] Visualize in RViz2
 - [x] Optimize for real-time performance (target: 10+ Hz)
 
 ### 4.4 Perception Integration Test
 - [x] Create `launch/perception_launch.py` (updated existing file)
 - [x] Test complete perception pipeline:
   - Camera → Undistortion → YOLO + Depth → Point Cloud
-- [ ] Measure end-to-end latency (target: <200ms)
-- [ ] Profile GPU/CPU usage
+- [x] Measure end-to-end latency (target: <200ms)
+- [x] Profile GPU/CPU usage
 - [ ] Test for memory leaks (24-hour test)
 
 **Deliverables**:
