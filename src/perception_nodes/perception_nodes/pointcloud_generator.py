@@ -12,6 +12,7 @@ Publishes to:
 - /perception/pointcloud (sensor_msgs/PointCloud2): RGB point cloud
 """
 
+import array
 import time
 from typing import Optional, Tuple
 
@@ -192,6 +193,7 @@ class PointCloudGenerator(Node):
     def create_pointcloud2_msg(self, points: np.ndarray, header) -> PointCloud2:
         """
         Create PointCloud2 message from point array.
+        Optimized version using direct byte buffer manipulation.
 
         Args:
             points: Point cloud array (N x 6) with [x, y, z, r, g, b]
@@ -207,34 +209,30 @@ class PointCloudGenerator(Node):
                 PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
                 PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
                 PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
-                PointField(name="rgb", offset=12, datatype=PointField.UINT32, count=1),
+                PointField(name="rgb", offset=12, datatype=PointField.FLOAT32, count=1),
             ]
 
-            # Pack RGB into single uint32
+            # Pack RGB into single float32 (via uint32 view)
+            # This is a bit magic: ROS expects a float32 that is actually a packed uint32
             rgb_packed = (
                 (points[:, 3].astype(np.uint32) << 16)  # R
                 | (points[:, 4].astype(np.uint32) << 8)  # G
                 | (points[:, 5].astype(np.uint32))  # B
             )
-
-            # Reinterpret as float32 for point cloud
             rgb_float = rgb_packed.view(np.float32)
 
-            # Create structured array
-            cloud_array = np.zeros(
-                len(points),
-                dtype=[
-                    ("x", np.float32),
-                    ("y", np.float32),
-                    ("z", np.float32),
-                    ("rgb", np.float32),
-                ],
-            )
+            # Create output array directly
+            # We need (N, 4) float32 array: [x, y, z, rgb]
+            # Allocate uninitialized memory for speed
+            cloud_data = np.empty((len(points), 4), dtype=np.float32)
 
-            cloud_array["x"] = points[:, 0]
-            cloud_array["y"] = points[:, 1]
-            cloud_array["z"] = points[:, 2]
-            cloud_array["rgb"] = rgb_float
+            # Fill data
+            cloud_data[:, 0] = points[:, 0]  # x
+            cloud_data[:, 1] = points[:, 1]  # y
+            cloud_data[:, 2] = points[:, 2]  # z
+            cloud_data[:, 3] = rgb_float  # rgb
+
+            point_step = 16
 
         else:
             # XYZ only format
@@ -244,18 +242,15 @@ class PointCloudGenerator(Node):
                 PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
             ]
 
-            cloud_array = np.zeros(
-                len(points),
-                dtype=[
-                    ("x", np.float32),
-                    ("y", np.float32),
-                    ("z", np.float32),
-                ],
-            )
+            # Create output array directly
+            cloud_data = np.empty((len(points), 3), dtype=np.float32)
 
-            cloud_array["x"] = points[:, 0]
-            cloud_array["y"] = points[:, 1]
-            cloud_array["z"] = points[:, 2]
+            # Fill data
+            cloud_data[:, 0] = points[:, 0]  # x
+            cloud_data[:, 1] = points[:, 1]  # y
+            cloud_data[:, 2] = points[:, 2]  # z
+
+            point_step = 12
 
         # Create PointCloud2 message
         pointcloud_msg = PointCloud2()
@@ -266,10 +261,12 @@ class PointCloudGenerator(Node):
         pointcloud_msg.width = len(points)
         pointcloud_msg.fields = fields
         pointcloud_msg.is_bigendian = False
-        pointcloud_msg.point_step = cloud_array.itemsize
+        pointcloud_msg.point_step = point_step
         pointcloud_msg.row_step = pointcloud_msg.point_step * pointcloud_msg.width
         pointcloud_msg.is_dense = False
-        pointcloud_msg.data = cloud_array.tobytes()
+
+        # Optimized assignment: Convert to array.array to bypass slow rclpy validation
+        pointcloud_msg.data = array.array("B", cloud_data.tobytes())
 
         return pointcloud_msg
 

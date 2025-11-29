@@ -30,7 +30,7 @@ class MockDepthPublisher(Node):
         self.camera_info_pub = self.create_publisher(CameraInfo, "/camera_info", 10)
 
         self.bridge = CvBridge()
-        self.timer = self.create_timer(0.1, self.publish_data)  # 10 Hz
+        self.timer = self.create_timer(0.033, self.publish_data)  # 30 Hz
 
         self.get_logger().info("Mock depth publisher started")
 

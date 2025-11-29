@@ -137,7 +137,7 @@ class YOLODetector:
             "toothbrush",
         ]
 
-    def detect(self, image: np.ndarray) -> Tuple[List[np.ndarray], List[float], List[int]]:
+    def detect(self, image: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Run detection using Ultralytics YOLO (handles preprocessing/inference/postprocessing).
 
@@ -145,30 +145,33 @@ class YOLODetector:
             image: BGR image from OpenCV
 
         Returns:
-            Tuple of (boxes, scores, class_ids)
+            Tuple of (boxes, scores, class_ids) as numpy arrays
         """
         # Run inference with Ultralytics (handles everything internally)
+        # verbose=False prevents printing to stdout which saves time
         results = self.model(image, conf=self.confidence_threshold, verbose=False)
-
-        boxes = []
-        scores = []
-        class_ids = []
 
         if results and len(results) > 0:
             result = results[0]
             if result.boxes is not None and len(result.boxes) > 0:
                 # Batch transfer from GPU to CPU (optimized)
+                # This is much faster than iterating through boxes
                 bboxes_np = result.boxes.xyxy.cpu().numpy()  # Shape: (N, 4)
                 confs_np = result.boxes.conf.cpu().numpy()  # Shape: (N,)
                 classes_np = result.boxes.cls.cpu().numpy().astype(int)  # Shape: (N,)
 
-                # Convert to lists
-                for i in range(len(bboxes_np)):
-                    boxes.append(bboxes_np[i].tolist())
-                    scores.append(float(confs_np[i]))
-                    class_ids.append(int(classes_np[i]))
+                # Explicit cleanup to prevent memory accumulation
+                del result
+                del results
 
-        return boxes, scores, class_ids
+                return bboxes_np, confs_np, classes_np
+
+        # Return empty arrays if no detections
+        return (
+            np.empty((0, 4), dtype=np.float32),
+            np.array([], dtype=np.float32),
+            np.array([], dtype=int),
+        )
 
 
 class ObjectDetectorNode(Node):
@@ -199,6 +202,10 @@ class ObjectDetectorNode(Node):
         self.get_logger().info(f"Loading YOLO model from {engine_path}")
         self.detector = YOLODetector(engine_path, confidence_threshold, nms_threshold, input_size)
         self.get_logger().info("YOLO model loaded successfully")
+
+        # Optimize OpenCV
+        cv2.setNumThreads(4)
+        cv2.setUseOptimized(True)
 
         # Initialize CV bridge
         self.bridge = CvBridge()
@@ -240,7 +247,12 @@ class ObjectDetectorNode(Node):
             detection_array = Detection2DArray()
             detection_array.header = msg.header
 
-            for box, score, class_id in zip(boxes, scores, class_ids):
+            # Iterate over numpy arrays
+            for i in range(len(boxes)):
+                box = boxes[i]
+                score = float(scores[i])
+                class_id = int(class_ids[i])
+
                 detection = Detection2D()
                 detection.header = msg.header
 
@@ -274,15 +286,19 @@ class ObjectDetectorNode(Node):
     def draw_detections(
         self,
         image: np.ndarray,
-        boxes: List[np.ndarray],
-        scores: List[float],
-        class_ids: List[int],
+        boxes: np.ndarray,
+        scores: np.ndarray,
+        class_ids: np.ndarray,
     ) -> np.ndarray:
         """Draw bounding boxes and labels on image."""
         viz_image = image.copy()
 
-        for box, score, class_id in zip(boxes, scores, class_ids):
-            x1, y1, x2, y2 = box
+        for i in range(len(boxes)):
+            box = boxes[i]
+            score = float(scores[i])
+            class_id = int(class_ids[i])
+
+            x1, y1, x2, y2 = box.astype(int)
 
             # Draw box
             cv2.rectangle(viz_image, (x1, y1), (x2, y2), (0, 255, 0), 2)

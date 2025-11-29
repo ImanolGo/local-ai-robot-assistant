@@ -29,7 +29,7 @@ class MockImagePublisher(Node):
 
         self.publisher = self.create_publisher(Image, "/camera/undistorted", 10)
         self.bridge = CvBridge()
-        self.timer = self.create_timer(0.1, self.publish_image)  # 10 Hz
+        self.timer = self.create_timer(0.033, self.publish_image)  # 30 Hz
 
         self.get_logger().info("Mock image publisher started")
 
