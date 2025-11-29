@@ -87,12 +87,35 @@ def generate_launch_description():
     # Depth estimation node
     depth_estimator_node = Node(
         package="perception_nodes",
-        executable="depth_estimator",
+        executable="depth_estimation_node",
         name="depth_estimator",
         parameters=[{"debug": debug}],
         remappings=[
             ("camera/undistorted", "/camera/undistorted"),
             ("perception/depth", "/perception/depth"),
+            ("perception/depth_viz", "/perception/depth_viz"),
+        ],
+        output="screen",
+    )
+
+    # Point cloud generator node
+    pointcloud_generator_node = Node(
+        package="perception_nodes",
+        executable="pointcloud_generator",
+        name="pointcloud_generator",
+        parameters=[
+            {
+                "debug": debug,
+                "depth_range_min": 0.1,
+                "depth_range_max": 10.0,
+                "downsample_factor": 2,
+                "enable_rgb": True,
+            }
+        ],
+        remappings=[
+            ("perception/depth", "/perception/depth"),
+            ("camera/undistorted", "/camera/undistorted"),
+            ("camera_info", "/camera/camera_info"),
             ("perception/pointcloud", "/perception/pointcloud"),
         ],
         output="screen",
@@ -107,5 +130,6 @@ def generate_launch_description():
             undistort_node,
             object_detector_node,
             depth_estimator_node,
+            pointcloud_generator_node,
         ]
     )

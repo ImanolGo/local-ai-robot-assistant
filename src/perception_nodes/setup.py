@@ -25,6 +25,7 @@ setup(
             "object_detector = perception_nodes.object_detector:main",
             "depth_estimator = perception_nodes.depth_estimator:main",
             "depth_estimation_node = perception_nodes.depth_estimation_node:main",
+            "pointcloud_generator = perception_nodes.pointcloud_generator:main",
         ],
     },
 )
