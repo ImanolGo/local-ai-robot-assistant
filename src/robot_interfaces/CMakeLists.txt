@@ -15,6 +15,7 @@ find_package(sensor_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MotorCommand.msg"
   "msg/ChassisState.msg"
+  "msg/AudioData.msg"
   "msg/AudioEvent.msg"
   "msg/CognitiveCommand.msg"
   "msg/ObjectDetection.msg"
