@@ -117,10 +117,22 @@ class TestImageUndistortNode(unittest.TestCase):
 
         node.destroy_node()
 
+    @patch("perception_nodes.image_undistort_node.ImageUndistortNode.get_parameter")
     @patch("perception_nodes.image_undistort_node.ImageUndistortNode._setup_ros2")
-    def test_calibration_loading(self, mock_setup_ros2):
+    def test_calibration_loading(self, mock_setup_ros2, mock_get_parameter):
         """Test camera calibration loading."""
         mock_setup_ros2.return_value = None
+
+        # Mock parameter values
+        def get_param_side_effect(name):
+            mock_p = Mock()
+            if name == "alpha":
+                mock_p.value = 1.0
+            elif name == "use_gpu":
+                mock_p.value = False
+            return mock_p
+
+        mock_get_parameter.side_effect = get_param_side_effect
 
         # Mock config and calibration loading
         with patch("builtins.open", unittest.mock.mock_open()):
@@ -195,13 +207,25 @@ class TestImageUndistortNode(unittest.TestCase):
 
         node.destroy_node()
 
+    @patch("perception_nodes.image_undistort_node.ImageUndistortNode.get_parameter")
     @patch("cv2.initUndistortRectifyMap")
     @patch("cv2.getOptimalNewCameraMatrix")
-    def test_cpu_undistortion_setup(self, mock_optimal_matrix, mock_init_map):
+    def test_cpu_undistortion_setup(self, mock_optimal_matrix, mock_init_map, mock_get_parameter):
         """Test CPU undistortion setup."""
         # Mock return values
         mock_optimal_matrix.return_value = (np.eye(3), (0, 0, 640, 480))
         mock_init_map.return_value = (np.zeros((480, 640)), np.zeros((480, 640)))
+
+        # Mock parameter values
+        def get_param_side_effect(name):
+            mock_p = Mock()
+            if name == "alpha":
+                mock_p.value = 1.0
+            elif name == "use_gpu":
+                mock_p.value = False
+            return mock_p
+
+        mock_get_parameter.side_effect = get_param_side_effect
 
         with patch("perception_nodes.image_undistort_node.ImageUndistortNode._setup_ros2"):
             with patch("builtins.open", unittest.mock.mock_open()):
@@ -273,6 +297,11 @@ class TestImageUndistortNode(unittest.TestCase):
         node.config["undistortion"]["cache_maps"] = True
         node.map1 = np.zeros((480, 640), dtype=np.float32)
         node.map2 = np.zeros((480, 640), dtype=np.float32)
+
+        # Add required calibration data to pass validation
+        node.camera_matrix = np.eye(3)
+        node.dist_coeffs = np.zeros(5)
+        node.new_camera_matrix = np.eye(3)
 
         # Mock parameter
         mock_param = Mock()

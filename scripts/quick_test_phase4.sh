@@ -80,15 +80,13 @@ case "$TEST_LEVEL" in
 
         echo "Test 1: Point Cloud Generator"
         echo "  Terminal 1: python3 manual_tests/test_pointcloud_mock.py"
-        echo "  Terminal 2: ros2 run perception_nodes pointcloud_generator"
+        echo "  Terminal 2: ./scripts/run_perception_node.sh pointcloud_generator"
         echo ""
 
         echo "Test 2: Object Detector"
         echo "  Terminal 1: python3 manual_tests/test_object_detector_mock.py"
-        echo "  Terminal 2: ros2 run perception_nodes object_detector --ros-args -p engine_path:=/fake/path"
-        echo ""
-
-        echo -e "${BLUE}Starting point cloud mock test in 3 seconds...${NC}"
+        echo "  Terminal 2: ./scripts/run_perception_node.sh object_detector"
+        echo ""        echo -e "${BLUE}Starting point cloud mock test in 3 seconds...${NC}"
         sleep 3
         python3 manual_tests/test_pointcloud_mock.py
         ;;
