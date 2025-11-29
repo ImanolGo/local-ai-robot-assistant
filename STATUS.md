@@ -1,8 +1,8 @@
 # Implementation Status
 
-**Last Updated**: 24 Nov 2025
-**Current Phase**: Phase 3 (completing)
-**Overall Progress**: 60%
+**Last Updated**: 29 Nov 2025
+**Current Phase**: Phase 5 (Audio Detection Pipeline)
+**Overall Progress**: 65%
 
 ## Legend
 - ✅ Complete
@@ -334,12 +334,30 @@
 
 ---
 
-## Phase 5: Audio Detection Pipeline (0% Complete ⏳)
+## Phase 5: Audio Detection Pipeline (20% Complete 🚧)
 
-### 5.1 Audio Capture & Playback Infrastructure
+### 5.1 Audio Capture & Playback Infrastructure (100% Complete ✅)
 
-- ⏳ Implement audio_capture_node.py
-- ⏳ Implement audio_playback_node.py
+- ✅ Implement audio_capture_node.py
+  - ✅ sounddevice initialization with USB microphone configuration
+  - ✅ Continuous audio streaming at 16 kHz (with hardware resampling from 44.1kHz/48kHz)
+  - ✅ Publish to `/audio/raw` topic (robot_interfaces/AudioData)
+  - ✅ Circular buffer management (5-second rolling buffer)
+  - ✅ USB device health monitoring and auto-reconnection
+  - ✅ Configurable sample rate and channels from `config/audio_config.yaml`
+- ✅ Implement audio_playback_node.py
+  - ✅ sounddevice initialization with USB speakers configuration
+  - ✅ Subscribe to `/audio/tts_output`
+  - ✅ Queue-based playback system with priority handling
+  - ✅ Handle playback interruptions (via priority queue)
+  - ✅ Volume normalization and audio quality optimization
+  - ✅ Monitor playback errors and device status
+  - ✅ Publish audio events to `/audio/events`
+- ✅ Create AudioData message definition in robot_interfaces
+- ✅ Build and test message generation
+- ✅ Create launch_node.sh script for venv+ROS2 integration
+- ✅ Create ros2_venv.sh for environment setup
+- ✅ Document venv usage in docs/ros2_venv_usage.md
 - ⏳ Test audio latency (target: <200ms round-trip)
 - ⏳ Test simultaneous capture/playback without feedback
 - ⏳ Test USB device reconnection and hot-swapping
