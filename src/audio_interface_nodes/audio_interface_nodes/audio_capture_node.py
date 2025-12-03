@@ -102,6 +102,13 @@ class AudioCaptureNode(Node):
         self.get_logger().info("Audio Capture Node initialized")
         self.get_logger().info(f"  Target sample rate: {self.target_sample_rate} Hz")
         self.get_logger().info(f"  Hardware sample rate: {self.hardware_sample_rate} Hz")
+        if self.hardware_sample_rate == self.target_sample_rate:
+            self.get_logger().info("  ✅ No resampling needed (rates match)")
+        else:
+            self.get_logger().warn(
+                f"  ⚠️  Resampling required: {self.hardware_sample_rate}Hz -> \
+                    {self.target_sample_rate}Hz"
+            )
         self.get_logger().info(f"  Channels: {self.channels}")
         self.get_logger().info(
             f"  Hardware chunk size: {self.hardware_chunk_size} samples ({chunk_duration_ms}ms)"
@@ -191,8 +198,8 @@ class AudioCaptureNode(Node):
                 if device["max_input_channels"] > 0 and self.device_name in device["name"]:
                     self.get_logger().info(f"Found microphone: {device['name']} (index: {i})")
 
-                    # Test supported sample rates (prefer 44100 as it's closer to 16kHz)
-                    for test_rate in [44100, 48000, 16000]:
+                    # Test supported sample rates (prefer 16000 to avoid resampling)
+                    for test_rate in [16000, 44100, 48000]:
                         try:
                             sd.check_input_settings(
                                 device=i, samplerate=test_rate, channels=self.channels
@@ -211,8 +218,8 @@ class AudioCaptureNode(Node):
             default_device = sd.query_devices(kind="input")
             if default_device:
                 self.get_logger().info(f"Default device: {default_device['name']}")
-                # Assume 44100 Hz for default device
-                return None, 44100
+                # Assume 16000 Hz for default device (most common for speech)
+                return None, 16000
             else:
                 raise RuntimeError("No input audio device available")
 
