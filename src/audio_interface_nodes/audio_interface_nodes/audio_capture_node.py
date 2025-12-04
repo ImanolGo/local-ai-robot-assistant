@@ -7,6 +7,8 @@ Implements circular buffer management for wake word detection and
 automatic USB device reconnection.
 """
 
+import re
+import subprocess
 import threading
 import time
 from collections import deque
@@ -15,7 +17,6 @@ from typing import Optional, Tuple
 
 import numpy as np
 import rclpy
-import sounddevice as sd
 import yaml
 from rclpy.node import Node
 from scipy.signal import resample_poly
@@ -81,8 +82,9 @@ class AudioCaptureNode(Node):
         audio_topic = self.get_parameter("audio_topic").get_parameter_value().string_value
         self.audio_publisher = self.create_publisher(AudioData, audio_topic, 10)
 
-        # Audio stream
-        self.stream: Optional[sd.InputStream] = None
+        # Audio capture process
+        self.capture_process: Optional[subprocess.Popen] = None
+        self.capture_thread: Optional[threading.Thread] = None
 
         # State management
         self.is_running = True
@@ -186,46 +188,55 @@ class AudioCaptureNode(Node):
         except Exception as e:
             self.get_logger().error(f"Error loading config: {e}")
 
-    def _find_audio_device(self) -> Tuple[Optional[int], int]:
-        """Find the audio device index and hardware sample rate.
+    def _find_audio_device(self) -> Tuple[str, int]:
+        """Find the ALSA device name and hardware sample rate.
 
         Returns:
-            Tuple of (device_index, hardware_sample_rate)
+            Tuple of (alsa_device_name, hardware_sample_rate)
         """
         try:
-            devices = sd.query_devices()
-            for i, device in enumerate(devices):
-                if device["max_input_channels"] > 0 and self.device_name in device["name"]:
-                    self.get_logger().info(f"Found microphone: {device['name']} (index: {i})")
+            # Run arecord -l to list devices
+            result = subprocess.run(["arecord", "-l"], capture_output=True, text=True, check=True)
+            output = result.stdout
 
-                    # Test supported sample rates (prefer 16000 to avoid resampling)
-                    for test_rate in [16000, 44100, 48000]:
-                        try:
-                            sd.check_input_settings(
-                                device=i, samplerate=test_rate, channels=self.channels
-                            )
-                            self.get_logger().info(
-                                f"Using {test_rate}Hz hardware sample rate for device {i}"
-                            )
-                            return i, test_rate
-                        except sd.PortAudioError:
-                            continue
+            # Parse output to find device matching self.device_name
+            # Format: card X: Device [USB PnP Sound Device], device Y: ...
+            card_pattern = re.compile(r"card (\d+):.*\[(.*)\], device (\d+):")
 
-            # Device not found by name, use default
+            for line in output.splitlines():
+                match = card_pattern.search(line)
+                if match:
+                    card_num = match.group(1)
+                    name = match.group(2)
+                    device_num = match.group(3)
+
+                    if self.device_name in name:
+                        self.get_logger().info(
+                            f"Found microphone: {name} (card {card_num}, device {device_num})"
+                        )
+                        # Construct ALSA device string
+                        alsa_device = f"plughw:{card_num},{device_num}"
+
+                        # Default to 16000Hz for USB mics if possible, or 44100/48000
+                        # We'll try 16000 first as it's our target
+                        return alsa_device, 16000
+
+            # Device not found by name, try to find any USB audio device
             self.get_logger().warn(
-                f"Device '{self.device_name}' not found, using default input device"
+                f"Device '{self.device_name}' not found, looking for any USB Audio device"
             )
-            default_device = sd.query_devices(kind="input")
-            if default_device:
-                self.get_logger().info(f"Default device: {default_device['name']}")
-                # Assume 16000 Hz for default device (most common for speech)
-                return None, 16000
-            else:
-                raise RuntimeError("No input audio device available")
+            if "USB Audio" in output:
+                # Try to find it again with looser matching if needed, or just fail
+                pass
+
+            # Fallback to default "default" device
+            self.get_logger().warn("Using default ALSA device")
+            return "default", 16000
 
         except Exception as e:
             self.get_logger().error(f"Error finding audio device: {e}")
-            raise
+            # Fallback
+            return "default", 16000
 
     def _resample_audio(
         self, audio_data: np.ndarray, source_rate: int, target_rate: int
@@ -254,24 +265,39 @@ class AudioCaptureNode(Node):
         return resampled.astype(np.float32)
 
     def _initialize_audio(self):
-        """Initialize sounddevice audio stream."""
+        """Initialize arecord subprocess."""
         try:
-            # Create stream with callback
-            stream_kwargs = {
-                "callback": self._audio_callback,
-                "channels": self.channels,
-                "samplerate": self.hardware_sample_rate,
-                "blocksize": self.hardware_chunk_size,
-                "dtype": np.float32,
-                "latency": "low",
-            }
+            # Construct arecord command
+            # arecord -D <device> -r <rate> -c <channels> -f S16_LE -t raw
+            cmd = [
+                "arecord",
+                "-D",
+                str(self.device_index),  # device_index is now the ALSA string
+                "-r",
+                str(self.hardware_sample_rate),
+                "-c",
+                str(self.channels),
+                "-f",
+                "S16_LE",
+                "-t",
+                "raw",
+            ]
 
-            if self.device_index is not None:
-                stream_kwargs["device"] = (self.device_index, None)
+            self.get_logger().info(f"Starting audio capture: {' '.join(cmd)}")
 
-            self.stream = sd.InputStream(**stream_kwargs)
-            self.stream.start()
+            self.capture_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=self.hardware_chunk_size * 2 * 4,  # Buffer a few chunks
+            )
+
             self.is_streaming = True
+
+            # Start reading thread
+            self.capture_thread = threading.Thread(target=self._read_audio_stream)
+            self.capture_thread.daemon = True
+            self.capture_thread.start()
 
             self.get_logger().info(
                 f"Audio stream started: {self.hardware_sample_rate}Hz, "
@@ -283,17 +309,76 @@ class AudioCaptureNode(Node):
             self.is_streaming = False
             self._schedule_reconnect()
 
-    def _audio_callback(self, indata, frames, time_info, status):
-        """sounddevice callback for processing incoming audio data."""
-        if status:
-            self.get_logger().debug(f"Audio status: {status}")
+    def _read_audio_stream(self):
+        """Read raw audio data from arecord stdout."""
+        bytes_per_sample = 2  # S16_LE
+        chunk_bytes = self.hardware_chunk_size * self.channels * bytes_per_sample
+        buffer = b""
 
+        while self.is_streaming and self.capture_process:
+            # Check if process is still alive
+            if self.capture_process.poll() is not None:
+                self.get_logger().error(
+                    f"arecord process exited with code {self.capture_process.returncode}"
+                )
+                if self.capture_process.stderr:
+                    err = self.capture_process.stderr.read().decode()
+                    self.get_logger().error(f"arecord stderr: {err}")
+                break
+
+            try:
+                # Read raw bytes
+                # We use read1() if available to avoid blocking for full chunk if not ready,
+                # but standard read() is fine if we want to block.
+                # However, to handle partials properly:
+
+                needed = chunk_bytes - len(buffer)
+                data = self.capture_process.stdout.read(needed)
+
+                if not data:
+                    # EOF
+                    break
+
+                buffer += data
+
+                if len(buffer) >= chunk_bytes:
+                    # We have a full chunk
+                    process_data = buffer[:chunk_bytes]
+                    buffer = buffer[chunk_bytes:]
+
+                    # Convert to numpy array
+                    # S16_LE -> int16
+                    audio_int16 = np.frombuffer(process_data, dtype=np.int16)
+
+                    # Normalize to float32 (-1.0 to 1.0)
+                    audio_float32 = audio_int16.astype(np.float32) / 32768.0
+
+                    self._process_audio_chunk(audio_float32)
+
+            except Exception as e:
+                self.get_logger().error(f"Error reading audio stream: {e}")
+                break
+
+        self.get_logger().warn("Audio capture thread stopped")
+        self.is_streaming = False
+        if self.is_running:
+            self._schedule_reconnect()
+
+    def _process_audio_chunk(self, audio_chunk: np.ndarray):
+        """Process incoming audio data."""
         try:
             # Extract mono audio if needed
-            if len(indata.shape) > 1:
-                audio_chunk = indata[:, 0]  # Take first channel
-            else:
-                audio_chunk = indata
+            if len(audio_chunk.shape) > 1:
+                # This shouldn't happen with flat buffer from arecord unless we reshape,
+                # but if we did:
+                pass
+
+            # If channels > 1, we need to reshape or slice.
+            # np.frombuffer gives a 1D array.
+            if self.channels > 1:
+                # Reshape to (samples, channels)
+                audio_chunk = audio_chunk.reshape(-1, self.channels)
+                audio_chunk = audio_chunk[:, 0]  # Take first channel
 
             # Resample if hardware rate differs from target rate
             if self.hardware_sample_rate != self.target_sample_rate:
@@ -313,7 +398,7 @@ class AudioCaptureNode(Node):
             self.frames_captured += 1
 
         except Exception as e:
-            self.get_logger().error(f"Error in audio callback: {e}")
+            self.get_logger().error(f"Error in audio processing: {e}")
 
     def _publish_audio(self, audio_array: np.ndarray):
         """Publish audio data to ROS2 topic."""
@@ -414,11 +499,19 @@ class AudioCaptureNode(Node):
     def _cleanup_audio(self):
         """Clean up audio resources."""
         try:
-            if self.stream is not None:
-                if self.stream.active:
-                    self.stream.stop()
-                self.stream.close()
-                self.stream = None
+            self.is_streaming = False
+
+            if self.capture_process:
+                self.capture_process.terminate()
+                try:
+                    self.capture_process.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    self.capture_process.kill()
+                self.capture_process = None
+
+            if self.capture_thread and self.capture_thread.is_alive():
+                # Thread should exit when process is killed and read returns empty
+                self.capture_thread.join(timeout=1.0)
 
         except Exception as e:
             self.get_logger().error(f"Error cleaning up audio: {e}")
