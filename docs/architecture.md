@@ -150,8 +150,13 @@ This layer now includes a discrete transcription step using `faster-whisper`.
    - Circular buffer for pre-roll capture.
 
 **2. Wake Word Detection** (`wake_word_detector_node.py`)
-   - Uses **openWakeWord** (ONNX).
-   - Triggers the recording state.
+   - Uses **openWakeWord** (ONNX) from https://github.com/dscripka/openWakeWord.
+   - Model: Pre-trained `hey_roe_ver.onnx` included in the repository.
+   - Triggers the recording state when wake phrase is detected.
+   - **Custom Model Training**: openWakeWord provides automated utilities for training custom models:
+     - **Quick Training**: Google Colab notebook with easy interface (<1 hour, no dev experience needed)
+     - **Advanced Training**: Detailed notebook with full customization (higher quality, requires dev experience)
+   - See openWakeWord documentation for training new models with custom wake phrases.
 
 **3. Automatic Speech Recognition** (`asr_node.py`) - **CHANGED**
    - **Model**: `faster-whisper` (CTranslate2 backend).

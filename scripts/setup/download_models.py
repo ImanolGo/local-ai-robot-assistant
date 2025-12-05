@@ -113,7 +113,7 @@ definition. This approach creates a much more optimized ONNX graph compared to \
     "wake_word": {
         "name": "openWakeWord Models",
         "description": "Pre-trained wake word detection models",
-        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/hey_roe_ver.onnx",  # noqa E501
+        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/hey_jarvis.onnx",  # noqa E501
         "filename": "hey_roe_ver.onnx",
         "destination": "models/wake_word/",
         "size_mb": 1.2,
