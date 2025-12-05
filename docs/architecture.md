@@ -271,7 +271,7 @@ class OllamaBridge:
 ### 3.1. Example: "Go to the red ball"
 
 ```
-T=0.0s: User: "Hey Jarvis"
+T=0.0s: User: "Hey Rover"
         → openWakeWord triggers recording
 
 T=0.1s: User: "Go to the red ball"

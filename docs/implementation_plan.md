@@ -515,18 +515,18 @@
 - Test volume control and audio quality
 ```
 
-### 5.2 Wake Word Detection ("Hey Jarvis")
+### 5.2 Wake Word Detection ("Hey Rover")
 
 - [x] Install openWakeWord library and dependencies
 - [x] Implement `wake_word_detector_node.py`
-  - [x] Load wake word model (ONNX format for "Hey Jarvis")
+  - [x] Load wake word model (ONNX format for "Hey Rover")
   - [x] Subscribe to `/audio/raw` with real-time processing
   - [x] Run continuous detection in dedicated thread
   - [x] Publish to `/audio/wake_word_detected` (std_msgs/Bool + confidence)
   - [x] Add detection confidence threshold (configurable, default: 0.6)
   - [x] Implement cooldown period to prevent multiple triggers (default: 2 seconds)
   - [x] Always-on operation with minimal resource footprint
-- [ ] Train or fine-tune custom wake word model for "Hey Jarvis"
+- [ ] Train or fine-tune custom wake word model for "Hey Rover"
 - [ ] Test false positive rate (target: <1 per hour in quiet environment)
 - [ ] Test detection latency (target: <100ms from word completion)
 - [ ] Optimize for ultra-low CPU usage (target: <5% continuously)
@@ -661,7 +661,7 @@
 - [ ] Implement `audio_detection_pipeline.py` - Central state machine coordinator
   - [ ] Coordinate all audio nodes (capture, wake word, VAD, STT, TTS, playback)
   - [ ] Implement the 6-step pipeline state machine:
-    - Step 1: Always listening for "Hey Jarvis" (LISTENING_WAKE_WORD)
+    - Step 1: Always listening for "Hey Rover" (LISTENING_WAKE_WORD)
     - Step 2: VAD activation for speech capture (CAPTURING_COMMAND)
     - Step 3: Whisper transcription (PROCESSING_SPEECH)
     - Step 4: Command forwarding to cognitive core (COMMAND_SENT)
@@ -711,7 +711,7 @@
 
 **Deliverables**:
 - Complete audio detection pipeline with 6-step state machine
-- Wake word detection for "Hey Jarvis" (<5% CPU continuously)
+- Wake word detection for "Hey Rover" (<5% CPU continuously)
 - Voice Activity Detection with feedback loop prevention
 - Speech-to-text transcription (WER <8% for clean speech)
 - Text-to-speech synthesis with natural voice output

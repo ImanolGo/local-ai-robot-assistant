@@ -75,7 +75,7 @@ pipeline:
     chunk_size: 1280  # 80ms at 16kHz
     confidence_threshold: 0.6  # Minimum confidence for detection (0.0-1.0)
     cooldown_seconds: 2.0  # Prevent multiple triggers
-    wake_word_name: "hey_jarvis"  # Wake word to detect
+    wake_word_name: "hey_rover"  # Wake word to detect
     model_path: ""  # Empty = use default models
     enable_verbose_logging: false  # Log all confidence scores
     target_cpu_usage: 5.0  # Target <5% CPU usage

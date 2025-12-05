@@ -362,7 +362,7 @@
 - ⏳ Test simultaneous capture/playback without feedback
 - ⏳ Test USB device reconnection and hot-swapping
 
-### 5.2 Wake Word Detection ("Hey Jarvis") ✅
+### 5.2 Wake Word Detection ("Hey Rover") ✅
 
 - ✅ Install openWakeWord library and dependencies (openwakeword, onnxruntime, tflite-runtime)
 - ✅ Implement wake_word_detector_node.py
@@ -376,7 +376,7 @@
 - ✅ Add wake word configuration to audio_config.yaml
 - ✅ Create unit tests (tests/test_wake_word.py)
 - ✅ Build and integrate with audio_interface_nodes package
-- ⏳ Train or fine-tune custom wake word model for "Hey Jarvis" (using default models for now)
+- ⏳ Train or fine-tune custom wake word model for "Hey Rover" (using default models for now)
 - ⏳ Test false positive rate (target: <1 per hour in quiet environment)
 - ⏳ Test detection latency (target: <100ms from word completion)
 - ⏳ Optimize for ultra-low CPU usage (target: <5% continuously)

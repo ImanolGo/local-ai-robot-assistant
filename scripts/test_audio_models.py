@@ -498,11 +498,11 @@ class AudioModelTester:
 
         results = {"wake_word_tests": [], "speech_recognition_tests": []}
 
-        # Test wake word on HeyJarvis.wav
-        hey_jarvis_file = ASSETS_DIR / "HeyJarvis.wav"
-        if hey_jarvis_file.exists() and self.wake_word_model:
+        # Test wake word on HeyRover.wav
+        hey_rover_file = ASSETS_DIR / "HeyRover.wav"
+        if hey_rover_file.exists() and self.wake_word_model:
             logger.info("\n--- Testing Wake Word Detection ---")
-            ww_result = self.test_wake_word_from_file(hey_jarvis_file)
+            ww_result = self.test_wake_word_from_file(hey_rover_file)
             results["wake_word_tests"].append(ww_result)
 
             # Validate
@@ -511,8 +511,8 @@ class AudioModelTester:
             else:
                 logger.warning("❌ Wake word NOT detected (expected at least 1 detection)")
         else:
-            if not hey_jarvis_file.exists():
-                logger.warning(f"Wake word test file not found: {hey_jarvis_file}")
+            if not hey_rover_file.exists():
+                logger.warning(f"Wake word test file not found: {hey_rover_file}")
             if not self.wake_word_model:
                 logger.warning("Wake word model not loaded")
 
@@ -548,7 +548,7 @@ class AudioModelTester:
             bool: True if setup successful, False otherwise
         """
         try:
-            model_path = MODEL_DIR / "wake_word" / "hey_jarvis_v0.1.onnx"
+            model_path = MODEL_DIR / "wake_word" / "hey_roe_ver.onnx"
 
             logger.info("Loading openWakeWord model...")
             start_time = time.time()
@@ -559,9 +559,9 @@ class AudioModelTester:
                     wakeword_models=[str(model_path)], inference_framework="onnx"
                 )
             else:
-                logger.info("Using default 'hey jarvis' model")
+                logger.info("Using default 'hey rover' model")
                 self.wake_word_model = WakeWordModel(
-                    wakeword_models=["hey_jarvis_v0.1"], inference_framework="onnx"
+                    wakeword_models=["hey_roe_ver"], inference_framework="onnx"
                 )
 
             load_time = time.time() - start_time
@@ -612,7 +612,7 @@ class AudioModelTester:
             return {}
 
         logger.info(f"Testing wake word detection for {test_duration}s...")
-        logger.info("Say 'Hey Jarvis' to test detection")
+        logger.info("Say 'Hey Rover' to test detection")
 
         mic_device, hardware_rate = self._get_audio_device_info()
 
@@ -685,7 +685,7 @@ class AudioModelTester:
             logger.info(
                 f"Starting audio stream: {hardware_rate}Hz, {hardware_chunk_size} samples/chunk"
             )
-            logger.info("🎤 Recording active - say 'Hey Jarvis' now!")
+            logger.info("🎤 Recording active - say 'Hey Rover' now!")
 
             with sd.InputStream(**stream_kwargs):
                 time.sleep(0.1)

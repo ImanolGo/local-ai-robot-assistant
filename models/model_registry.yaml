@@ -143,7 +143,7 @@ models:
         license: "Apache-2.0"
         commercial_use: true
       files:
-        onnx: "hey_jarvis_v0.1.onnx"
+        onnx: "hey_roe_ver.onnx"
 
   language:
     nanollm:

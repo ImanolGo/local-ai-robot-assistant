@@ -3,7 +3,7 @@
 Wake Word Detection Node for Local AI Robot Assistant
 
 This node continuously monitors audio from the /audio/raw topic and detects
-the wake word "Hey Jarvis" using openWakeWord. It publishes detection events
+the wake word "Hey Rover" using openWakeWord. It publishes detection events
 with confidence scores to /audio/wake_word_detected.
 
 Features:
@@ -42,7 +42,7 @@ class WakeWordDetectorNode(Node):
     """
     ROS2 node for wake word detection using openWakeWord.
 
-    Continuously monitors audio stream and detects "Hey Jarvis" wake word.
+    Continuously monitors audio stream and detects "Hey Rover" wake word.
     Publishes detection events with confidence scores.
     """
 
@@ -57,7 +57,7 @@ class WakeWordDetectorNode(Node):
             raise ImportError("openWakeWord library not found")
 
         # Declare parameters
-        self.declare_parameter("wake_word", "hey_jarvis")
+        self.declare_parameter("wake_word", "hey_rover")
         self.declare_parameter("confidence_threshold", 0.6)
         self.declare_parameter("cooldown_seconds", 2.0)
         self.declare_parameter("sample_rate", 16000)
