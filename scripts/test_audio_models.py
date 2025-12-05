@@ -144,36 +144,36 @@ class AudioModelTester:
         )
 
     def _get_audio_device_info(self) -> Tuple[Optional[int], int]:
-        """Get the audio device index and appropriate sample rate for the configured microphone.
+        """Get the audio device index and best sample rate for the configured microphone.
 
         Returns:
-            Tuple of (device_index, sample_rate) where sample_rate is hardware-supported
+            Tuple of (device_index, sample_rate) where sample_rate is either:
+            - The target rate (16000Hz) if supported by the device/ALSA
+            - The hardware native rate (44100Hz) for manual resampling
         """
         try:
             devices = sd.query_devices()
+            target_rate = self.wake_word_sample_rate  # 16000Hz for speech
+
             for i, device in enumerate(devices):
                 if device["max_input_channels"] > 0 and "USB PnP Sound Device" in device["name"]:
                     logger.info(f"Found microphone device: {device['name']} (index: {i})")
 
-                    # Your device supports 44100 or 48000 Hz
-                    # Use 44100 as it's closer to common speech rates
-                    supported_rate = 44100
+                    # Try target rate first (16000Hz)
+                    # Note: sounddevice accesses hw device directly, doesn't use ALSA's plughw
+                    # So we need to use hardware-supported rates and resample manually
                     try:
-                        sd.check_input_settings(device=i, samplerate=supported_rate, channels=1)
-                        logger.info(f"Using {supported_rate}Hz sample rate for device {i}")
-                        return i, supported_rate
-                    except sd.PortAudioError as e:
-                        logger.warning(f"Could not configure device {i}: {e}")
-                        # Try 48000 as fallback
-                        try:
-                            supported_rate = 48000
-                            sd.check_input_settings(device=i, samplerate=supported_rate, channels=1)
-                            logger.info(
-                                f"Using fallback {supported_rate}Hz sample rate for device {i}"
-                            )
-                            return i, supported_rate
-                        except sd.PortAudioError:
-                            continue
+                        sd.check_input_settings(device=i, samplerate=target_rate, channels=1)
+                        logger.info(f"Device supports target rate {target_rate}Hz directly")
+                        return i, target_rate
+                    except sd.PortAudioError:
+                        # Device doesn't support 16000Hz natively
+                        # Use 44100Hz (common USB mic rate) and we'll resample manually
+                        logger.info(f"Device doesn't support {target_rate}Hz natively")
+                        logger.info(
+                            f"Using hardware rate 44100Hz with manual resampling to {target_rate}Hz"
+                        )
+                        return i, 44100
 
             logger.warning("USB PnP Sound Device not found, using default input device")
             return None, 44100

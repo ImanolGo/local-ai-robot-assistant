@@ -87,6 +87,7 @@ class WakeWordDetectorNode(Node):
         self.total_chunks_processed = 0
         self.total_detections = 0
         self.false_positive_count = 0
+        self.messages_received = 0
 
         # Initialize openWakeWord model
         self.get_logger().info("Initializing openWakeWord model...")
@@ -156,6 +157,8 @@ class WakeWordDetectorNode(Node):
         Args:
             msg: AudioData message with raw audio samples
         """
+        self.messages_received += 1
+
         # Verify sample rate matches
         if msg.sample_rate != self.sample_rate:
             if self.total_chunks_processed == 0:  # Log once
@@ -169,6 +172,14 @@ class WakeWordDetectorNode(Node):
 
         # Normalize to float32 [-1.0, 1.0]
         audio_float = audio_np.astype(np.float32) / 32768.0
+
+        # Debug: Log audio statistics occasionally
+        if self.verbose_logging and self.total_chunks_processed % 100 == 0:
+            self.get_logger().info(
+                f"Audio chunk stats - min: {audio_float.min():.4f}, "
+                f"max: {audio_float.max():.4f}, mean: {audio_float.mean():.4f}, "
+                f"std: {audio_float.std():.4f}, samples: {len(audio_float)}"
+            )
 
         # Add to buffer
         with self.buffer_lock:
@@ -200,6 +211,13 @@ class WakeWordDetectorNode(Node):
 
                 self.total_chunks_processed += 1
 
+                # Debug: Log all predictions if verbose
+                if self.verbose_logging and self.total_chunks_processed % 50 == 0:
+                    self.get_logger().info(
+                        f"Prediction keys: {list(prediction.keys())}, "
+                        f"Values: {[(k, f'{v:.4f}') for k, v in prediction.items()]}"
+                    )
+
                 # Check if wake word detected
                 if self.wake_word in prediction:
                     confidence = prediction[self.wake_word]
@@ -225,6 +243,13 @@ class WakeWordDetectorNode(Node):
                     # Update cooldown status
                     if current_time - self.last_detection_time > self.cooldown_seconds:
                         self.is_in_cooldown = False
+                else:
+                    # Wake word not in prediction - log this issue
+                    if self.total_chunks_processed % 100 == 0:
+                        self.get_logger().warn(
+                            f"Wake word '{self.wake_word}' not found in predictions. "
+                            f"Available: {list(prediction.keys())}"
+                        )
 
             except Exception as e:
                 self.get_logger().error(f"Error in processing loop: {e}")
@@ -268,7 +293,8 @@ class WakeWordDetectorNode(Node):
         """Publish periodic status information."""
         if self.total_chunks_processed > 0:
             self.get_logger().info(
-                f"Status - Chunks processed: {self.total_chunks_processed}, "
+                f"Status - Messages received: {self.messages_received}, "
+                f"Chunks processed: {self.total_chunks_processed}, "
                 f"Detections: {self.total_detections}, "
                 f"Buffer size: {len(self.audio_buffer)}, "
                 f"In cooldown: {self.is_in_cooldown}"

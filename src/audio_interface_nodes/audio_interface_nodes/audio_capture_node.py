@@ -44,6 +44,7 @@ class AudioCaptureNode(Node):
         self.declare_parameter("buffer_duration", 5.0)  # 5 seconds circular buffer
         self.declare_parameter("device_name", "USB PnP Sound Device")
         self.declare_parameter("reconnect_interval", 2.0)  # seconds
+        self.declare_parameter("audio_gain", 50.0)  # Software gain multiplier for quiet mics
 
         # Load configuration
         self._load_config()
@@ -61,6 +62,7 @@ class AudioCaptureNode(Node):
         self.reconnect_interval = (
             self.get_parameter("reconnect_interval").get_parameter_value().double_value
         )
+        self.audio_gain = self.get_parameter("audio_gain").get_parameter_value().double_value
 
         # Find audio device and get hardware sample rate
         self.device_index, self.hardware_sample_rate = self._find_audio_device()
@@ -403,6 +405,12 @@ class AudioCaptureNode(Node):
     def _publish_audio(self, audio_array: np.ndarray):
         """Publish audio data to ROS2 topic."""
         try:
+            # Apply software gain if needed
+            if self.audio_gain != 1.0:
+                audio_array = audio_array * self.audio_gain
+                # Clip to prevent overflow
+                audio_array = np.clip(audio_array, -1.0, 1.0)
+
             # Convert float32 to int16 for efficient transmission
             audio_int16 = (audio_array * 32767).astype(np.int16)
             audio_bytes = audio_int16.tobytes()
