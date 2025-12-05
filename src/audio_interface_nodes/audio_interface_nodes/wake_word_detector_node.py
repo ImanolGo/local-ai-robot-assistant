@@ -93,8 +93,15 @@ class WakeWordDetectorNode(Node):
         self.get_logger().info("Initializing openWakeWord model...")
         try:
             if self.model_path and os.path.exists(self.model_path):
-                self.model = Model(wakeword_models=[self.model_path])
-                self.get_logger().info(f"Loaded custom model from: {self.model_path}")
+                # Detect inference framework from file extension
+                if self.model_path.endswith(".onnx"):
+                    self.model = Model(
+                        wakeword_models=[self.model_path], inference_framework="onnx"
+                    )
+                    self.get_logger().info(f"Loaded custom ONNX model from: {self.model_path}")
+                else:
+                    self.model = Model(wakeword_models=[self.model_path])
+                    self.get_logger().info(f"Loaded custom model from: {self.model_path}")
             else:
                 # Use default models (will download if not present)
                 self.model = Model()
@@ -159,31 +166,31 @@ class WakeWordDetectorNode(Node):
         """
         self.messages_received += 1
 
-        # Verify sample rate matches
+        # STRICT sample rate validation - fail if mismatch
         if msg.sample_rate != self.sample_rate:
             if self.total_chunks_processed == 0:  # Log once
-                self.get_logger().warn(
-                    f"Audio sample rate mismatch: expected {self.sample_rate}, "
-                    f"got {msg.sample_rate}. Consider resampling."
+                self.get_logger().error(
+                    f"CRITICAL: Audio sample rate mismatch! "
+                    f"Expected {self.sample_rate}Hz, got {msg.sample_rate}Hz. "
+                    f"Audio capture node must resample correctly!"
                 )
+            # Skip this message - don't process invalid audio
+            return
 
-        # Convert audio data to numpy array
+        # Convert audio data to numpy array (keep as int16 for openWakeWord)
         audio_np = np.frombuffer(bytes(msg.data), dtype=np.int16)
-
-        # Normalize to float32 [-1.0, 1.0]
-        audio_float = audio_np.astype(np.float32) / 32768.0
 
         # Debug: Log audio statistics occasionally
         if self.verbose_logging and self.total_chunks_processed % 100 == 0:
+            rms = np.sqrt(np.mean(audio_np.astype(np.float32) ** 2))
             self.get_logger().info(
-                f"Audio chunk stats - min: {audio_float.min():.4f}, "
-                f"max: {audio_float.max():.4f}, mean: {audio_float.mean():.4f}, "
-                f"std: {audio_float.std():.4f}, samples: {len(audio_float)}"
+                f"Audio chunk stats - min: {audio_np.min()}, "
+                f"max: {audio_np.max()}, rms: {rms:.1f}, samples: {len(audio_np)}"
             )
 
-        # Add to buffer
+        # Add to buffer (keep as int16)
         with self.buffer_lock:
-            self.audio_buffer.extend(audio_float)
+            self.audio_buffer.extend(audio_np)
 
     def processing_loop(self):
         """
@@ -200,13 +207,13 @@ class WakeWordDetectorNode(Node):
                         time.sleep(0.01)  # Wait for more data
                         continue
 
-                    # Get chunk
-                    chunk = np.array(list(self.audio_buffer)[: self.chunk_size])
+                    # Get chunk as int16 (openWakeWord expects int16)
+                    chunk = np.array(list(self.audio_buffer)[: self.chunk_size], dtype=np.int16)
                     # Remove processed samples
                     for _ in range(self.chunk_size):
                         self.audio_buffer.popleft()
 
-                # Process chunk with openWakeWord
+                # Process chunk with openWakeWord (expects int16 audio)
                 prediction = self.model.predict(chunk)
 
                 self.total_chunks_processed += 1

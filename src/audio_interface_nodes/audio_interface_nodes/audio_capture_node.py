@@ -40,7 +40,7 @@ class AudioCaptureNode(Node):
         self.declare_parameter("audio_topic", "/audio/raw")
         self.declare_parameter("target_sample_rate", 16000)
         self.declare_parameter("channels", 1)
-        self.declare_parameter("chunk_duration_ms", 64)  # 64ms chunks for lower latency
+        self.declare_parameter("chunk_duration_ms", 80)  # 80ms chunks for openWakeWord
         self.declare_parameter("buffer_duration", 5.0)  # 5 seconds circular buffer
         self.declare_parameter("device_name", "USB PnP Sound Device")
         self.declare_parameter("reconnect_interval", 2.0)  # seconds
@@ -219,9 +219,52 @@ class AudioCaptureNode(Node):
                         # Construct ALSA device string
                         alsa_device = f"plughw:{card_num},{device_num}"
 
-                        # Default to 16000Hz for USB mics if possible, or 44100/48000
-                        # We'll try 16000 first as it's our target
-                        return alsa_device, 16000
+                        # Detect actual hardware sample rate
+                        # Try common rates: 16000 (target), 44100 (common USB), 48000 (high-end)
+                        for test_rate in [16000, 44100, 48000]:
+                            try:
+                                # Test if device supports this rate with a short recording
+                                test_cmd = [
+                                    "arecord",
+                                    "-D",
+                                    alsa_device,
+                                    "-r",
+                                    str(test_rate),
+                                    "-c",
+                                    "1",
+                                    "-f",
+                                    "S16_LE",
+                                    "-d",
+                                    "0.1",  # 100ms test
+                                    "-t",
+                                    "raw",
+                                    "/dev/null",  # Discard output
+                                ]
+                                result = subprocess.run(
+                                    test_cmd,
+                                    capture_output=True,
+                                    timeout=1.0,
+                                    check=False,
+                                )
+                                if result.returncode == 0:
+                                    self.get_logger().info(
+                                        f"Detected hardware sample rate: {test_rate}Hz"
+                                    )
+                                    if test_rate != self.target_sample_rate:
+                                        self.get_logger().info(
+                                            f"Will resample from {test_rate}Hz to \
+                                                {self.target_sample_rate}Hz"
+                                        )
+                                    return alsa_device, test_rate
+                            except (subprocess.TimeoutExpired, Exception) as e:
+                                self.get_logger().debug(f"Rate {test_rate}Hz not supported: {e}")
+                                continue
+
+                        # Fallback to 44100Hz if no rate detected (common USB mic rate)
+                        self.get_logger().warn(
+                            "Could not detect hardware rate, defaulting to 44100Hz"
+                        )
+                        return alsa_device, 44100
 
             # Device not found by name, try to find any USB audio device
             self.get_logger().warn(
@@ -232,13 +275,13 @@ class AudioCaptureNode(Node):
                 pass
 
             # Fallback to default "default" device
-            self.get_logger().warn("Using default ALSA device")
-            return "default", 16000
+            self.get_logger().warn("Using default ALSA device with 44100Hz")
+            return "default", 44100
 
         except Exception as e:
             self.get_logger().error(f"Error finding audio device: {e}")
-            # Fallback
-            return "default", 16000
+            # Fallback to common USB audio rate
+            return "default", 44100
 
     def _resample_audio(
         self, audio_data: np.ndarray, source_rate: int, target_rate: int
