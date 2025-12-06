@@ -215,9 +215,6 @@ class AudioCaptureNode(Node):
             self.get_logger().info(
                 "  Note: 'plughw' device handles hardware resampling automatically"
             )
-            self.get_logger().info(
-                "  Note: 'plughw' device handles hardware resampling automatically"
-            )
         self.get_logger().info(f"  Channels: {self.channels}")
         self.get_logger().info(f"  Chunk size: {self.chunk_size} samples ({chunk_duration_ms}ms)")
         self.get_logger().info(
@@ -617,47 +614,61 @@ class AudioCaptureNode(Node):
             return
 
         try:
-            # Convert to float32 tensor for VAD
-            audio_float32 = audio_chunk.astype(np.float32) / 32768.0
-            audio_tensor = torch.tensor(audio_float32)
-
-            # Run VAD
-            speech_dict = self.vad_iterator(audio_tensor, return_seconds=False)
-
-            # Accumulate audio
+            # Accumulate audio first
             self.recording_buffer.append(audio_chunk.copy())
 
-            # Check for speech events
-            if speech_dict:
-                if "start" in speech_dict and self.speech_start_time is None:
-                    self.speech_start_time = time.time()
-                    self.get_logger().info("🎤 Speech started")
+            # Silero VAD expects chunks of 512 samples for 16kHz
+            # Our chunks are 1280 samples (80ms), so we need to split them
+            VAD_CHUNK_SIZE = 512
 
-                    # Publish event
-                    if AudioEvent:
-                        event = AudioEvent()
-                        event.header.stamp = self.get_clock().now().to_msg()
-                        event.event_type = "speech_started"
-                        self.event_pub.publish(event)
+            # Convert to float32 for VAD
+            audio_float32 = audio_chunk.astype(np.float32) / 32768.0
 
-                elif "end" in speech_dict and self.speech_start_time is not None:
-                    self.get_logger().info("🎤 Speech ended")
+            # Process in 512-sample chunks
+            for i in range(0, len(audio_float32), VAD_CHUNK_SIZE):
+                chunk_segment = audio_float32[i : i + VAD_CHUNK_SIZE]
 
-                    # Publish event
-                    if AudioEvent:
-                        event = AudioEvent()
-                        event.header.stamp = self.get_clock().now().to_msg()
-                        event.event_type = "speech_ended"
-                        duration = time.time() - self.speech_start_time
-                        event.duration = float(duration)
-                        self.event_pub.publish(event)
+                # Skip if segment is too small
+                if len(chunk_segment) < VAD_CHUNK_SIZE:
+                    continue
 
-                    # Transition to TRANSCRIBING state
-                    with self.state_lock:
-                        self.state = PipelineState.TRANSCRIBING
+                audio_tensor = torch.tensor(chunk_segment)
 
-                    # Start transcription in background thread
-                    self._start_transcription()
+                # Run VAD on this segment
+                speech_dict = self.vad_iterator(audio_tensor, return_seconds=False)
+
+                # Check for speech events
+                if speech_dict:
+                    if "start" in speech_dict and self.speech_start_time is None:
+                        self.speech_start_time = time.time()
+                        self.get_logger().info("🎤 Speech started")
+
+                        # Publish event
+                        if AudioEvent:
+                            event = AudioEvent()
+                            event.header.stamp = self.get_clock().now().to_msg()
+                            event.event_type = "speech_started"
+                            self.event_pub.publish(event)
+
+                    elif "end" in speech_dict and self.speech_start_time is not None:
+                        self.get_logger().info("🎤 Speech ended")
+
+                        # Publish event
+                        if AudioEvent:
+                            event = AudioEvent()
+                            event.header.stamp = self.get_clock().now().to_msg()
+                            event.event_type = "speech_ended"
+                            duration = time.time() - self.speech_start_time
+                            event.duration = float(duration)
+                            self.event_pub.publish(event)
+
+                        # Transition to TRANSCRIBING state
+                        with self.state_lock:
+                            self.state = PipelineState.TRANSCRIBING
+
+                        # Start transcription in background thread
+                        self._start_transcription()
+                        return  # Exit early since we're transitioning
 
             # Check for timeout
             if self.recording_start_time is not None:
