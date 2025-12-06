@@ -7,6 +7,7 @@ Implements circular buffer management for wake word detection and
 automatic USB device reconnection.
 """
 
+import os
 import re
 import subprocess
 import threading
@@ -18,13 +19,25 @@ import numpy as np
 import rclpy
 import yaml
 from rclpy.node import Node
-from std_msgs.msg import Header
+from std_msgs.msg import Bool, Float32, Header
 
 try:
     from audio_common_msgs.msg import AudioData
 except ImportError:
     # Fallback to custom message if audio_common_msgs not available
     from robot_interfaces.msg import AudioData
+
+try:
+    from robot_interfaces.msg import AudioEvent
+except ImportError:
+    AudioEvent = None
+
+try:
+    from openwakeword.model import Model
+
+    OPENWAKEWORD_AVAILABLE = True
+except ImportError:
+    OPENWAKEWORD_AVAILABLE = False
 
 
 class AudioCaptureNode(Node):
@@ -44,6 +57,13 @@ class AudioCaptureNode(Node):
         self.declare_parameter("reconnect_interval", 2.0)  # seconds
         self.declare_parameter("audio_gain", 1.0)  # Default gain (will be dynamic)
 
+        # Wake Word Parameters
+        self.declare_parameter("wake_word", "hey_rover")
+        self.declare_parameter("confidence_threshold", 0.5)
+        self.declare_parameter("cooldown_seconds", 2.0)
+        self.declare_parameter("model_path", "")
+        self.declare_parameter("enable_verbose_logging", False)
+
         # Load configuration
         self._load_config()
 
@@ -62,6 +82,18 @@ class AudioCaptureNode(Node):
         )
         self.audio_gain = self.get_parameter("audio_gain").get_parameter_value().double_value
 
+        # Wake Word Config
+        self.wake_word = self.get_parameter("wake_word").value
+        self.confidence_threshold = self.get_parameter("confidence_threshold").value
+        self.cooldown_seconds = self.get_parameter("cooldown_seconds").value
+        self.model_path = self.get_parameter("model_path").value
+        self.verbose_logging = self.get_parameter("enable_verbose_logging").value
+
+        # Wake Word State
+        self.last_detection_time = 0.0
+        self.is_in_cooldown = False
+        self.model = None
+
         # Find audio device
         self.device_string = self._find_audio_device()
         self.hardware_sample_rate = self.target_sample_rate  # We trust plughw to resample
@@ -77,8 +109,15 @@ class AudioCaptureNode(Node):
         self.buffer_lock = threading.Lock()
 
         # ROS2 publisher
+        # ROS2 publisher
         audio_topic = self.get_parameter("audio_topic").get_parameter_value().string_value
         self.audio_publisher = self.create_publisher(AudioData, audio_topic, 10)
+
+        # Wake Word Publishers
+        self.wake_word_pub = self.create_publisher(Bool, "/audio/wake_word_detected", 10)
+        self.confidence_pub = self.create_publisher(Float32, "/audio/wake_word_confidence", 10)
+        if AudioEvent:
+            self.event_pub = self.create_publisher(AudioEvent, "/audio/events", 10)
 
         # Audio capture process
         self.capture_process: Optional[subprocess.Popen] = None
@@ -92,6 +131,9 @@ class AudioCaptureNode(Node):
         # Statistics
         self.frames_captured = 0
         self.last_stats_time = time.time()
+
+        # Initialize Wake Word Model
+        self._initialize_model()
 
         # Start audio capture
         self._initialize_audio()
@@ -337,13 +379,97 @@ class AudioCaptureNode(Node):
             with self.buffer_lock:
                 self.audio_buffer.append(audio_normalized.copy())
 
-            # Publish to ROS2 topic
+            # Publish to ROS2 topic (IMMEDIATELY - Non-blocking for Whisper)
             self._publish_audio(audio_normalized)
 
             self.frames_captured += 1
 
+            # Run Wake Word Detection (After publishing)
+            self._detect_wake_word(audio_normalized)
+
         except Exception as e:
             self.get_logger().error(f"Error in audio processing: {e}")
+
+    def _initialize_model(self):
+        """Initialize openWakeWord model."""
+        if not OPENWAKEWORD_AVAILABLE:
+            self.get_logger().error("openWakeWord library not found. Wake word detection disabled.")
+            return
+
+        self.get_logger().info("Initializing openWakeWord model...")
+        try:
+            if self.model_path and os.path.exists(self.model_path):
+                if self.model_path.endswith(".onnx"):
+                    self.model = Model(
+                        wakeword_models=[self.model_path], inference_framework="onnx"
+                    )
+                    self.get_logger().info(f"Loaded custom ONNX model: {self.model_path}")
+                else:
+                    self.model = Model(wakeword_models=[self.model_path])
+                    self.get_logger().info(f"Loaded custom model: {self.model_path}")
+            else:
+                self.model = Model()
+                self.get_logger().info("Loaded default openWakeWord models")
+        except Exception as e:
+            self.get_logger().error(f"Failed to initialize wake word model: {e}")
+            self.model = None
+
+    def _detect_wake_word(self, audio_chunk: np.ndarray):
+        """Run wake word detection on audio chunk."""
+        if self.model is None:
+            return
+
+        try:
+            # Measure inference time
+            start_time = time.time()
+
+            # Predict
+            prediction = self.model.predict(audio_chunk)
+
+            # Check inference time
+            inference_time = (time.time() - start_time) * 1000
+            if inference_time > 80:  # Warn if slower than real-time (80ms chunk)
+                self.get_logger().warn(f"Wake word inference slow: {inference_time:.1f}ms")
+
+            # Check for wake word
+            if self.wake_word in prediction:
+                confidence = prediction[self.wake_word]
+
+                # Publish confidence
+                conf_msg = Float32()
+                conf_msg.data = float(confidence)
+                self.confidence_pub.publish(conf_msg)
+
+                current_time = time.time()
+
+                if confidence >= self.confidence_threshold:
+                    # Check cooldown
+                    if not self.is_in_cooldown:
+                        self.get_logger().info(f"🎤 WAKE WORD DETECTED! ({confidence:.3f})")
+
+                        # Publish detection
+                        self.wake_word_pub.publish(Bool(data=True))
+
+                        # Publish event
+                        if AudioEvent:
+                            event = AudioEvent()
+                            event.header.stamp = self.get_clock().now().to_msg()
+                            event.event_type = "wake_word_detected"
+                            event.confidence = float(confidence)
+                            event.details = f"Wake word: {self.wake_word}"
+                            self.event_pub.publish(event)
+
+                        self.last_detection_time = current_time
+                        self.is_in_cooldown = True
+
+                # Reset cooldown if time passed
+                if self.is_in_cooldown and (
+                    current_time - self.last_detection_time > self.cooldown_seconds
+                ):
+                    self.is_in_cooldown = False
+
+        except Exception as e:
+            self.get_logger().error(f"Error in wake word detection: {e}")
 
     def _publish_audio(self, audio_array: np.ndarray):
         """Publish audio data to ROS2 topic."""
