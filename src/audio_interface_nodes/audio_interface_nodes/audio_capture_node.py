@@ -206,19 +206,41 @@ class AudioCaptureNode(Node):
                         ]
                     )
 
-            # Extract pipeline configuration for chunk duration
+            # Extract pipeline configuration for wake word
             if "pipeline" in config and "wake_word" in config["pipeline"]:
                 ww_config = config["pipeline"]["wake_word"]
-                if "chunk_duration_ms" in ww_config:
-                    self.set_parameters(
-                        [
+
+                # List of parameters to update from config
+                params_to_update = [
+                    ("chunk_duration_ms", rclpy.Parameter.Type.INTEGER),
+                    (
+                        "wake_word",
+                        rclpy.Parameter.Type.STRING,
+                        "wake_word_name",
+                    ),  # Map config name to param name
+                    ("confidence_threshold", rclpy.Parameter.Type.DOUBLE),
+                    ("cooldown_seconds", rclpy.Parameter.Type.DOUBLE),
+                    ("model_path", rclpy.Parameter.Type.STRING),
+                    ("enable_verbose_logging", rclpy.Parameter.Type.BOOL),
+                ]
+
+                new_params = []
+                for param_def in params_to_update:
+                    param_name = param_def[0]
+                    param_type = param_def[1]
+                    config_key = param_def[2] if len(param_def) > 2 else param_name
+
+                    if config_key in ww_config:
+                        new_params.append(
                             rclpy.parameter.Parameter(
-                                "chunk_duration_ms",
-                                rclpy.Parameter.Type.INTEGER,
-                                ww_config["chunk_duration_ms"],
+                                param_name,
+                                param_type,
+                                ww_config[config_key],
                             )
-                        ]
-                    )
+                        )
+
+                if new_params:
+                    self.set_parameters(new_params)
 
             self.get_logger().info(f"Loaded configuration from {config_file}")
 
@@ -456,7 +478,7 @@ class AudioCaptureNode(Node):
                             event.header.stamp = self.get_clock().now().to_msg()
                             event.event_type = "wake_word_detected"
                             event.confidence = float(confidence)
-                            event.details = f"Wake word: {self.wake_word}"
+                            event.data = f"Wake word: {self.wake_word}"
                             self.event_pub.publish(event)
 
                         self.last_detection_time = current_time
