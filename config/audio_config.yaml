@@ -3,7 +3,7 @@
 
 # USB Microphone Configuration (USB PnP Sound Device)
 microphone:
-  device: "plughw:1,0"  # Use plug plugin for sample rate conversion
+  device: "plughw:1,0" # Use plug plugin for sample rate conversion
   card_id: 1
   device_id: 0
   name: "USB PnP Sound Device"
@@ -20,7 +20,7 @@ microphone:
     format: "S16_LE"
 
   # Performance characteristics
-  measured_noise_floor_db: -73.5  # Very good noise performance
+  measured_noise_floor_db: -73.5 # Very good noise performance
   supported_sample_rates: [16000, 22050, 44100, 48000]
 
   # Volume control
@@ -28,8 +28,8 @@ microphone:
     available: true
     control_name: "Mic"
     card_command: "amixer -c 1"
-    current_level: "0%"  # Default capture level
-    range: "0-16"  # Hardware range
+    current_level: "0%" # Default capture level
+    range: "0-16" # Hardware range
     description: "Microphone gain control"
 
   # Recording parameters for low latency
@@ -38,8 +38,8 @@ microphone:
 
 # USB Speaker Configuration (UACDemoV1.0)
 speaker:
-  device: "hw:0,0"  # Direct hardware access for best performance
-  device_plug: "plughw:0,0"  # Use for sample rate conversion if needed
+  device: "hw:0,0" # Direct hardware access for best performance
+  device_plug: "plughw:0,0" # Use for sample rate conversion if needed
   card_id: 0
   device_id: 0
   name: "UACDemoV1.0"
@@ -47,7 +47,7 @@ speaker:
   # Native format (best performance)
   native_format:
     sample_rate: 48000
-    channels: 2  # Stereo required
+    channels: 2 # Stereo required
     format: "S16_LE"
 
   # Playback parameters
@@ -59,8 +59,8 @@ speaker:
     available: true
     control_name: "PCM"
     card_command: "amixer -c 0"
-    current_level: "30%"  # Default playback level
-    range: "0-147"  # Hardware range
+    current_level: "30%" # Default playback level
+    range: "0-147" # Hardware range
     db_range: "-infinity to 0dB"
     channels: "Front Left/Right (stereo)"
     description: "Speaker volume control"
@@ -71,30 +71,30 @@ pipeline:
   wake_word:
     sample_rate: 16000
     channels: 1
-    chunk_duration_ms: 80  # 80ms chunks for openWakeWord
-    chunk_size: 1280  # 80ms at 16kHz
-    confidence_threshold: 0.6  # Minimum confidence for detection (0.0-1.0)
-    cooldown_seconds: 2.0  # Prevent multiple triggers
-    wake_word_name: "hey_rover"  # Wake word to detect
-    model_path: ""  # Empty = use default models
-    enable_verbose_logging: false  # Log all confidence scores
-    target_cpu_usage: 5.0  # Target <5% CPU usage
+    chunk_duration_ms: 80 # 80ms chunks for openWakeWord
+    chunk_size: 1280 # 80ms at 16kHz
+    confidence_threshold: 0.5 # Minimum confidence for detection (0.0-1.0)
+    cooldown_seconds: 2.0 # Prevent multiple triggers
+    wake_word_name: "hey_roe_ver" # Wake word to detect
+    model_path: "models/wake_word/hey_roe_ver.onnx" # Path to custom model
+    enable_verbose_logging: false # Log all confidence scores
+    target_cpu_usage: 5.0 # Target <5% CPU usage
 
   # Speech-to-text (Whisper)
   speech_to_text:
     sample_rate: 16000
     channels: 1
-    max_recording_duration: 10  # seconds
+    max_recording_duration: 10 # seconds
     silence_threshold_db: -50
 
   # Text-to-speech (Piper)
   text_to_speech:
-    sample_rate: 48000  # Match speaker native rate
-    channels: 2  # Stereo output
+    sample_rate: 48000 # Match speaker native rate
+    channels: 2 # Stereo output
 
   # Simultaneous record/playback capability
   full_duplex_supported: true
-  estimated_latency_ms: 50  # Typical USB audio latency
+  estimated_latency_ms: 50 # Typical USB audio latency
 
 # Hardware Requirements
 requirements:

@@ -292,7 +292,7 @@ class WakeWordDetectorNode(Node):
         event_msg = AudioEvent()
         event_msg.header.stamp = self.get_clock().now().to_msg()
         event_msg.event_type = "wake_word_detected"
-        event_msg.confidence = confidence
+        event_msg.confidence = float(confidence)
         event_msg.details = f"Wake word: {self.wake_word}"
         self.event_pub.publish(event_msg)
 

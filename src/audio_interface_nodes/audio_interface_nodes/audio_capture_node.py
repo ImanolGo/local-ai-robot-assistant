@@ -12,14 +12,12 @@ import subprocess
 import threading
 import time
 from collections import deque
-from math import gcd
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 import rclpy
 import yaml
 from rclpy.node import Node
-from scipy.signal import resample_poly
 from std_msgs.msg import Header
 
 try:
@@ -44,7 +42,7 @@ class AudioCaptureNode(Node):
         self.declare_parameter("buffer_duration", 5.0)  # 5 seconds circular buffer
         self.declare_parameter("device_name", "USB PnP Sound Device")
         self.declare_parameter("reconnect_interval", 2.0)  # seconds
-        self.declare_parameter("audio_gain", 50.0)  # Software gain multiplier for quiet mics
+        self.declare_parameter("audio_gain", 1.0)  # Default gain (will be dynamic)
 
         # Load configuration
         self._load_config()
@@ -64,19 +62,17 @@ class AudioCaptureNode(Node):
         )
         self.audio_gain = self.get_parameter("audio_gain").get_parameter_value().double_value
 
-        # Find audio device and get hardware sample rate
-        self.device_index, self.hardware_sample_rate = self._find_audio_device()
+        # Find audio device
+        self.device_string = self._find_audio_device()
+        self.hardware_sample_rate = self.target_sample_rate  # We trust plughw to resample
 
-        # Calculate chunk size based on hardware sample rate
-        self.hardware_chunk_size = int(self.hardware_sample_rate * chunk_duration_ms / 1000)
-        self.target_chunk_size = int(self.target_sample_rate * chunk_duration_ms / 1000)
+        # Calculate chunk size based on target sample rate (since plughw handles resampling)
+        self.chunk_size = int(self.target_sample_rate * chunk_duration_ms / 1000)
 
         # Calculate circular buffer size (number of chunks at target rate)
-        self.buffer_max_chunks = int(
-            (buffer_duration * self.target_sample_rate) / self.target_chunk_size
-        )
+        self.buffer_max_chunks = int((buffer_duration * self.target_sample_rate) / self.chunk_size)
 
-        # Circular buffer for audio data (stores resampled chunks at target rate)
+        # Circular buffer for audio data
         self.audio_buffer = deque(maxlen=self.buffer_max_chunks)
         self.buffer_lock = threading.Lock()
 
@@ -104,22 +100,23 @@ class AudioCaptureNode(Node):
         self.create_timer(10.0, self._report_statistics)
 
         self.get_logger().info("Audio Capture Node initialized")
+        self.get_logger().info(f"  Device: {self.device_string}")
         self.get_logger().info(f"  Target sample rate: {self.target_sample_rate} Hz")
-        self.get_logger().info(f"  Hardware sample rate: {self.hardware_sample_rate} Hz")
         if self.hardware_sample_rate == self.target_sample_rate:
             self.get_logger().info("  ✅ No resampling needed (rates match)")
         else:
-            self.get_logger().warn(
-                f"  ⚠️  Resampling required: {self.hardware_sample_rate}Hz -> \
-                    {self.target_sample_rate}Hz"
+            self.get_logger().info(
+                f"  ℹ️  Hardware rate: {self.hardware_sample_rate}Hz -> Target:\
+                     {self.target_sample_rate}Hz"
+            )
+            self.get_logger().info(
+                "  Note: 'plughw' device handles hardware resampling automatically"
+            )
+            self.get_logger().info(
+                "  Note: 'plughw' device handles hardware resampling automatically"
             )
         self.get_logger().info(f"  Channels: {self.channels}")
-        self.get_logger().info(
-            f"  Hardware chunk size: {self.hardware_chunk_size} samples ({chunk_duration_ms}ms)"
-        )
-        self.get_logger().info(
-            f"  Target chunk size: {self.target_chunk_size} samples ({chunk_duration_ms}ms)"
-        )
+        self.get_logger().info(f"  Chunk size: {self.chunk_size} samples ({chunk_duration_ms}ms)")
         self.get_logger().info(
             f"  Circular buffer: {buffer_duration}s ({self.buffer_max_chunks} chunks)"
         )
@@ -190,124 +187,54 @@ class AudioCaptureNode(Node):
         except Exception as e:
             self.get_logger().error(f"Error loading config: {e}")
 
-    def _find_audio_device(self) -> Tuple[str, int]:
-        """Find the ALSA device name and hardware sample rate.
-
-        Returns:
-            Tuple of (alsa_device_name, hardware_sample_rate)
+    def _find_audio_device(self) -> str:
+        """
+        Detects the first USB microphone available via 'arecord -l'.
+        Returns the ALSA device string (e.g., 'plughw:1,0') or 'default'.
+        Using 'plughw' ensures automatic sample rate conversion.
         """
         try:
-            # Run arecord -l to list devices
-            result = subprocess.run(["arecord", "-l"], capture_output=True, text=True, check=True)
+            result = subprocess.run(["arecord", "-l"], capture_output=True, text=True)
             output = result.stdout
 
-            # Parse output to find device matching self.device_name
-            # Format: card X: Device [USB PnP Sound Device], device Y: ...
-            card_pattern = re.compile(r"card (\d+):.*\[(.*)\], device (\d+):")
+            # Look for lines like: card 1: Device [USB PnP Sound Device],
+            # device 0: USB Audio [USB Audio]
+            # Regex to capture card number and device number for USB devices
+            match = re.search(r"card (\d+):.*USB.*device (\d+):", output, re.IGNORECASE)
 
-            for line in output.splitlines():
-                match = card_pattern.search(line)
-                if match:
-                    card_num = match.group(1)
-                    name = match.group(2)
-                    device_num = match.group(3)
-
-                    if self.device_name in name:
-                        self.get_logger().info(
-                            f"Found microphone: {name} (card {card_num}, device {device_num})"
-                        )
-                        # Construct ALSA device string
-                        alsa_device = f"plughw:{card_num},{device_num}"
-
-                        # Detect actual hardware sample rate
-                        # Try common rates: 16000 (target), 44100 (common USB), 48000 (high-end)
-                        for test_rate in [16000, 44100, 48000]:
-                            try:
-                                # Test if device supports this rate with a short recording
-                                test_cmd = [
-                                    "arecord",
-                                    "-D",
-                                    alsa_device,
-                                    "-r",
-                                    str(test_rate),
-                                    "-c",
-                                    "1",
-                                    "-f",
-                                    "S16_LE",
-                                    "-d",
-                                    "0.1",  # 100ms test
-                                    "-t",
-                                    "raw",
-                                    "/dev/null",  # Discard output
-                                ]
-                                result = subprocess.run(
-                                    test_cmd,
-                                    capture_output=True,
-                                    timeout=1.0,
-                                    check=False,
-                                )
-                                if result.returncode == 0:
-                                    self.get_logger().info(
-                                        f"Detected hardware sample rate: {test_rate}Hz"
-                                    )
-                                    if test_rate != self.target_sample_rate:
-                                        self.get_logger().info(
-                                            f"Will resample from {test_rate}Hz to \
-                                                {self.target_sample_rate}Hz"
-                                        )
-                                    return alsa_device, test_rate
-                            except (subprocess.TimeoutExpired, Exception) as e:
-                                self.get_logger().debug(f"Rate {test_rate}Hz not supported: {e}")
-                                continue
-
-                        # Fallback to 44100Hz if no rate detected (common USB mic rate)
-                        self.get_logger().warn(
-                            "Could not detect hardware rate, defaulting to 44100Hz"
-                        )
-                        return alsa_device, 44100
-
-            # Device not found by name, try to find any USB audio device
-            self.get_logger().warn(
-                f"Device '{self.device_name}' not found, looking for any USB Audio device"
-            )
-            if "USB Audio" in output:
-                # Try to find it again with looser matching if needed, or just fail
-                pass
-
-            # Fallback to default "default" device
-            self.get_logger().warn("Using default ALSA device with 44100Hz")
-            return "default", 44100
+            if match:
+                card_num = match.group(1)
+                dev_num = match.group(2)
+                device = f"plughw:{card_num},{dev_num}"
+                self.get_logger().info(f"Found USB microphone: {device}")
+                return device
 
         except Exception as e:
-            self.get_logger().error(f"Error finding audio device: {e}")
-            # Fallback to common USB audio rate
-            return "default", 44100
+            self.get_logger().error(f"Error detecting USB microphone: {e}")
 
-    def _resample_audio(
-        self, audio_data: np.ndarray, source_rate: int, target_rate: int
+        self.get_logger().warn("USB microphone not found, using 'default'")
+        return "default"
+
+    def _normalize_audio(
+        self, audio_data: np.ndarray, target_peak: int = 20000, max_gain: float = 15.0
     ) -> np.ndarray:
-        """Resample audio data using high-quality polyphase filtering.
+        """Normalize audio volume to a target peak amplitude.
 
         Args:
-            audio_data: Input audio data (float32, range -1 to 1)
-            source_rate: Source sample rate
-            target_rate: Target sample rate
+            audio_data: Input audio array (int16)
+            target_peak: Target peak amplitude (default 20000 out of 32767)
+            max_gain: Maximum allowed gain factor
 
         Returns:
-            Resampled audio data
+            Normalized audio array
         """
-        if source_rate == target_rate:
-            return audio_data
-
-        # Find GCD for optimal resampling
-        g = gcd(source_rate, target_rate)
-        up = target_rate // g
-        down = source_rate // g
-
-        # Use polyphase resampling for high quality
-        resampled = resample_poly(audio_data, up, down)
-
-        return resampled.astype(np.float32)
+        max_val = np.max(np.abs(audio_data))
+        if max_val > 0:
+            gain = min(target_peak / max_val, max_gain)
+            # Only apply gain if signal is weak but not silent (noise floor check)
+            if max_val > 100 and gain > 1.0:
+                return (audio_data * gain).astype(np.int16)
+        return audio_data
 
     def _initialize_audio(self):
         """Initialize arecord subprocess."""
@@ -317,15 +244,16 @@ class AudioCaptureNode(Node):
             cmd = [
                 "arecord",
                 "-D",
-                str(self.device_index),  # device_index is now the ALSA string
+                self.device_string,
                 "-r",
-                str(self.hardware_sample_rate),
+                str(self.target_sample_rate),
                 "-c",
                 str(self.channels),
                 "-f",
                 "S16_LE",
                 "-t",
                 "raw",
+                "--buffer-size=8192",
             ]
 
             self.get_logger().info(f"Starting audio capture: {' '.join(cmd)}")
@@ -334,7 +262,7 @@ class AudioCaptureNode(Node):
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                bufsize=self.hardware_chunk_size * 2 * 4,  # Buffer a few chunks
+                bufsize=0,
             )
 
             self.is_streaming = True
@@ -344,10 +272,7 @@ class AudioCaptureNode(Node):
             self.capture_thread.daemon = True
             self.capture_thread.start()
 
-            self.get_logger().info(
-                f"Audio stream started: {self.hardware_sample_rate}Hz, "
-                f"{self.hardware_chunk_size} samples/chunk"
-            )
+            self.get_logger().info("Audio stream started")
 
         except Exception as e:
             self.get_logger().error(f"Failed to initialize audio: {e}")
@@ -357,7 +282,7 @@ class AudioCaptureNode(Node):
     def _read_audio_stream(self):
         """Read raw audio data from arecord stdout."""
         bytes_per_sample = 2  # S16_LE
-        chunk_bytes = self.hardware_chunk_size * self.channels * bytes_per_sample
+        chunk_bytes = self.chunk_size * self.channels * bytes_per_sample
         buffer = b""
 
         while self.is_streaming and self.capture_process:
@@ -373,10 +298,6 @@ class AudioCaptureNode(Node):
 
             try:
                 # Read raw bytes
-                # We use read1() if available to avoid blocking for full chunk if not ready,
-                # but standard read() is fine if we want to block.
-                # However, to handle partials properly:
-
                 needed = chunk_bytes - len(buffer)
                 data = self.capture_process.stdout.read(needed)
 
@@ -395,10 +316,7 @@ class AudioCaptureNode(Node):
                     # S16_LE -> int16
                     audio_int16 = np.frombuffer(process_data, dtype=np.int16)
 
-                    # Normalize to float32 (-1.0 to 1.0)
-                    audio_float32 = audio_int16.astype(np.float32) / 32768.0
-
-                    self._process_audio_chunk(audio_float32)
+                    self._process_audio_chunk(audio_int16)
 
             except Exception as e:
                 self.get_logger().error(f"Error reading audio stream: {e}")
@@ -412,33 +330,15 @@ class AudioCaptureNode(Node):
     def _process_audio_chunk(self, audio_chunk: np.ndarray):
         """Process incoming audio data."""
         try:
-            # Extract mono audio if needed
-            if len(audio_chunk.shape) > 1:
-                # This shouldn't happen with flat buffer from arecord unless we reshape,
-                # but if we did:
-                pass
-
-            # If channels > 1, we need to reshape or slice.
-            # np.frombuffer gives a 1D array.
-            if self.channels > 1:
-                # Reshape to (samples, channels)
-                audio_chunk = audio_chunk.reshape(-1, self.channels)
-                audio_chunk = audio_chunk[:, 0]  # Take first channel
-
-            # Resample if hardware rate differs from target rate
-            if self.hardware_sample_rate != self.target_sample_rate:
-                audio_resampled = self._resample_audio(
-                    audio_chunk, self.hardware_sample_rate, self.target_sample_rate
-                )
-            else:
-                audio_resampled = audio_chunk
+            # Normalize audio (Dynamic Gain Control)
+            audio_normalized = self._normalize_audio(audio_chunk)
 
             # Add to circular buffer
             with self.buffer_lock:
-                self.audio_buffer.append(audio_resampled.copy())
+                self.audio_buffer.append(audio_normalized.copy())
 
             # Publish to ROS2 topic
-            self._publish_audio(audio_resampled)
+            self._publish_audio(audio_normalized)
 
             self.frames_captured += 1
 
@@ -448,15 +348,8 @@ class AudioCaptureNode(Node):
     def _publish_audio(self, audio_array: np.ndarray):
         """Publish audio data to ROS2 topic."""
         try:
-            # Apply software gain if needed
-            if self.audio_gain != 1.0:
-                audio_array = audio_array * self.audio_gain
-                # Clip to prevent overflow
-                audio_array = np.clip(audio_array, -1.0, 1.0)
-
-            # Convert float32 to int16 for efficient transmission
-            audio_int16 = (audio_array * 32767).astype(np.int16)
-            audio_bytes = audio_int16.tobytes()
+            # audio_array is already int16 and normalized
+            audio_bytes = audio_array.tobytes()
 
             msg = AudioData()
 
@@ -477,7 +370,7 @@ class AudioCaptureNode(Node):
             if hasattr(msg, "encoding"):
                 msg.encoding = "S16_LE"
             if hasattr(msg, "chunk_size"):
-                msg.chunk_size = len(audio_int16)
+                msg.chunk_size = len(audio_array)
 
             self.audio_publisher.publish(msg)
 
@@ -491,7 +384,7 @@ class AudioCaptureNode(Node):
 
         if elapsed > 0 and self.is_streaming:
             capture_rate = self.frames_captured / elapsed
-            expected_rate = self.target_sample_rate / self.target_chunk_size
+            expected_rate = self.target_sample_rate / self.chunk_size
 
             self.get_logger().info(
                 f"Audio stats: {capture_rate:.1f} chunks/s "
@@ -531,13 +424,7 @@ class AudioCaptureNode(Node):
             # Try to initialize
             try:
                 # Re-detect device in case it changed
-                self.device_index, self.hardware_sample_rate = self._find_audio_device()
-                self.hardware_chunk_size = int(
-                    self.hardware_sample_rate
-                    * self.get_parameter("chunk_duration_ms").get_parameter_value().integer_value
-                    / 1000
-                )
-
+                self.device_string = self._find_audio_device()
                 self._initialize_audio()
                 if self.is_streaming:
                     self.get_logger().info("Successfully reconnected to audio device")
@@ -561,7 +448,6 @@ class AudioCaptureNode(Node):
                 self.capture_process = None
 
             if self.capture_thread and self.capture_thread.is_alive():
-                # Thread should exit when process is killed and read returns empty
                 self.capture_thread.join(timeout=1.0)
 
         except Exception as e:
