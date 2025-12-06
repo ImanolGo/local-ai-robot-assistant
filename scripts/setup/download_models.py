@@ -28,10 +28,6 @@ import zipfile
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import gdown
-import torch
-from transformers import AutoProcessor, Gemma3nForConditionalGeneration
-
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -123,23 +119,6 @@ definition. This approach creates a much more optimized ONNX graph compared to \
         "required": True,
         "extract": False,
     },
-    "gemma_3n_e2b": {
-        "name": "Gemma 3n E2B Multimodal Model (Full Download)",
-        "description": "Google DeepMind Gemma 3n E2B - 5B parameter multimodal model with\
-              2B effective footprint for text, audio, and vision processing. Downloads complete\
-                  model for offline use.",
-        "url": "google/gemma-3n-e2b",  # HuggingFace model ID
-        "filename": "config.json",  # Main indicator file
-        "destination": "models/gemma_3n_e2b/",
-        "size_mb": 4800.0,  # Full model size
-        "sha256": "",  # Will be calculated during download
-        "license": "Gemma Terms of Use",
-        "source": "Google DeepMind",
-        "required": True,
-        "download_method": "transformers_offline",
-        "note": "Downloads complete model and processor using transformers for full offline \
-            capability. Includes model weights, tokenizer, and all required files.",
-    },
 }
 
 
@@ -200,6 +179,7 @@ class ModelDownloader:
 
     def download_from_gdrive(self, url: str, filepath: Path) -> bool:
         """Download file from Google Drive using gdown."""
+        import gdown
 
         try:
             print(f"Downloading {filepath.name} from Google Drive...")
@@ -285,33 +265,15 @@ class ModelDownloader:
             # Create directory if it doesn't exist
             destination_dir.mkdir(parents=True, exist_ok=True)
 
-            # Determine model type based on repo_id
-            if "gemma" in repo_id.lower():
-                # Download and save Gemma 3n model
-                print("   Downloading Gemma 3n model weights...")
-                model = Gemma3nForConditionalGeneration.from_pretrained(
-                    repo_id,
-                    torch_dtype=torch.bfloat16,
-                    # Don't load to GPU during download
-                    device_map=None,
-                )
-                model.save_pretrained(destination_dir)
+            # Generic model download
+            print("   Downloading generic model...")
+            from transformers import AutoModel, AutoProcessor
 
-                # Download and save processor
-                print("   Downloading processor (tokenizer, etc.)...")
-                processor = AutoProcessor.from_pretrained(repo_id)
-                processor.save_pretrained(destination_dir)
+            model = AutoModel.from_pretrained(repo_id, device_map=None)
+            model.save_pretrained(destination_dir)
 
-            else:
-                # Generic model download
-                print("   Downloading generic model...")
-                from transformers import AutoModel, AutoProcessor
-
-                model = AutoModel.from_pretrained(repo_id, device_map=None)
-                model.save_pretrained(destination_dir)
-
-                processor = AutoProcessor.from_pretrained(repo_id)
-                processor.save_pretrained(destination_dir)
+            processor = AutoProcessor.from_pretrained(repo_id)
+            processor.save_pretrained(destination_dir)
 
             print(f"✅ Model and processor saved to {destination_dir}")
             return True

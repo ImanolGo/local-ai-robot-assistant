@@ -79,7 +79,8 @@ conversion = [
 audio = [
     # Audio processing dependencies
     "sounddevice>=0.4.0",
-    "webrtcvad>=2.0.0"
+    "webrtcvad>=2.0.0",
+    "silero-vad>=6.2.0",
 ]
 jetson = [
     # Jetson-specific dependencies installed via setup_pytorch_jetson.sh

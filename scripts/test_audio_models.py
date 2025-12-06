@@ -30,9 +30,11 @@ from typing import Dict, Generator, List, Optional, Tuple
 import numpy as np
 import psutil
 import soundfile as sf
+import torch
 import yaml
 from faster_whisper import WhisperModel
 from openwakeword import Model as WakeWordModel
+from silero_vad import VADIterator, load_silero_vad
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -126,6 +128,8 @@ class AudioModelTester:
         self.audio_config = AudioConfig(config_file)
         self.wake_word_model = None
         self.whisper_model = None
+        self.vad_model = None
+        self.vad_iterator = None
 
         # Use configuration values
         self.sample_rate = self.audio_config.speech_sample_rate
@@ -468,6 +472,158 @@ class AudioModelTester:
             logger.error(f"Failed to load whisper model: {e}")
             return False
 
+    def setup_silero_vad_model(self) -> bool:
+        """Set up the Silero VAD model using silero-vad package."""
+        try:
+            logger.info("Loading Silero VAD model (package)...")
+            # Load model with force_onnx_cpu=True (implicit in onnx=True for this package version)
+            self.vad_model = load_silero_vad(onnx=True)
+            self.vad_iterator = VADIterator(self.vad_model, sampling_rate=16000)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to load Silero VAD model: {e}")
+            return False
+
+    def test_silero_vad_benchmark(self) -> Dict:
+        """Benchmark Silero VAD performance using package."""
+        if not self.vad_model:
+            return {}
+
+        logger.info("\n=== Silero VAD Benchmark ===")
+
+        batch_size = 1
+        sequence_length = 512  # 32ms at 16k
+
+        # Inputs: torch tensor [batch, time]
+        dummy_input = torch.zeros((batch_size, sequence_length), dtype=torch.float32)
+
+        # Warmup
+        self.vad_model(dummy_input, 16000)
+
+        # Benchmark
+        iterations = 1000
+        start_time = time.perf_counter()
+
+        with torch.no_grad():
+            for _ in range(iterations):
+                self.vad_model(dummy_input, 16000)
+
+        total_time = time.perf_counter() - start_time
+        avg_time_ms = (total_time / iterations) * 1000
+
+        # Real-time factor calculation
+        chunk_duration_ms = (sequence_length / 16000) * 1000
+        rtf = avg_time_ms / chunk_duration_ms
+
+        logger.info(f"Average inference time: {avg_time_ms:.3f} ms / chunk")
+        logger.info(f"Real-time factor: {rtf:.4f}x (lower is better)")
+
+        if rtf < 0.1:
+            logger.info("✅ Silero VAD Performance: Excellent")
+        else:
+            logger.info("⚠️ Silero VAD Performance: Acceptable but could be better")
+
+        return {"avg_inference_time_ms": avg_time_ms, "real_time_factor": rtf}
+
+    def test_silero_vad_from_file(self, audio_file: Path) -> Dict:
+        """Test Silero VAD on audio file."""
+        if not self.vad_model:
+            return {}
+
+        logger.info(f"Testing VAD on file: {audio_file}")
+
+        # Load audio using soundfile (returns float32)
+        audio_data, sr = sf.read(str(audio_file), dtype="float32")
+
+        # Resample if needed
+        if sr != 16000:
+            logger.info(f"Resampling from {sr} to 16000 Hz...")
+            # Simple resampling or use existing method
+            from scipy.signal import resample_poly
+
+            audio_data = resample_poly(audio_data, 16000, sr)
+            sr = 16000
+
+        # Create iterator fresh
+        vad_iterator = VADIterator(self.vad_model, sampling_rate=16000)
+
+        # Process in chunks of 512 samples (32ms)
+        chunk_size = 512
+        speech_chunks = []
+
+        logger.info("Processing...")
+        start_time = time.perf_counter()
+
+        # Convert to torch tensor
+        wav = torch.tensor(audio_data)
+
+        for i in range(0, len(wav), chunk_size):
+            chunk = wav[i : i + chunk_size]
+            if len(chunk) < chunk_size:
+                break
+
+            speech_dict = vad_iterator(chunk, return_seconds=True)
+            if speech_dict:
+                speech_chunks.append(speech_dict)
+                logger.info(f"Activity detected: {speech_dict}")
+
+        inference_time = time.perf_counter() - start_time
+        logger.info(f"Found {len(speech_chunks)} speech segments")
+
+        return {
+            "file": str(audio_file),
+            "segments": len(speech_chunks),
+            "inference_time": inference_time,
+        }
+
+    def test_silero_vad_realtime(self):
+        """Test Silero VAD with Microphone."""
+        if not self.vad_model:
+            return
+
+        logger.info("\n=== Real-time VAD Test ===")
+        logger.info("Speak into the microphone... (Ctrl+C to stop)")
+
+        vad_iterator = VADIterator(self.vad_model, sampling_rate=16000)
+        chunk_size = 512  # 32ms
+
+        try:
+            # Reusing capture logic but asking for specific chunk size
+            # Note: _capture_audio_stream yields bytes
+            for raw_chunk in self._capture_audio_stream(
+                duration=30.0,  # 30 seconds test
+                sample_rate=16000,
+                chunk_size=chunk_size * 2,  # bytes
+            ):
+                # Convert bytes to float32 tensor
+                audio_int16 = np.frombuffer(raw_chunk, dtype=np.int16)
+                audio_float32 = audio_int16.astype(np.float32) / 32768.0
+                tensor_chunk = torch.tensor(audio_float32)
+
+                # Check size match
+                if len(tensor_chunk) >= chunk_size:
+                    # If we got more, just take first chunk for simplicity or iterate
+                    # Ideally we buffer, but for quick test:
+                    process_chunk = tensor_chunk[:chunk_size]
+
+                    speech_dict = vad_iterator(process_chunk, return_seconds=True)
+                    if speech_dict:
+                        logger.info(f"🎤 VAD Event: {speech_dict}")
+
+                        # Visualization
+                        print(
+                            (
+                                "🔴 SPEECH DETECTED"
+                                if "start" in speech_dict or "end" not in speech_dict
+                                else "⚪ SILENCE"
+                            ),
+                            end="\r",
+                        )
+
+        except KeyboardInterrupt:
+            pass
+        print("\nTest finished.")
+
     def test_wake_word_detection(self, test_duration: float = 10.0) -> Dict:
         """Test wake word detection performance using arecord."""
         if not self.wake_word_model:
@@ -601,6 +757,9 @@ class AudioModelTester:
             }
             logger.info(f"Real-time factor: {results['whisper']['real_time_factor']:.2f}x")
 
+        if self.vad_model:
+            results["silero_vad"] = self.test_silero_vad_benchmark()
+
         return results
 
     def validate_audio_setup(self) -> bool:
@@ -626,6 +785,8 @@ def main():
     parser = argparse.ArgumentParser(description="Test and benchmark audio models")
     parser.add_argument("--test-wake-word", action="store_true", help="Test wake word detection")
     parser.add_argument("--test-whisper", action="store_true", help="Test speech recognition")
+    parser.add_argument("--test-silero", action="store_true", help="Test Silero VAD")
+    parser.add_argument("--test-silero-file", action="store_true", help="Test VAD on audio file")
     parser.add_argument("--benchmark", action="store_true", help="Run comprehensive benchmarks")
     parser.add_argument("--test-audio-files", action="store_true", help="Test with audio files")
     parser.add_argument("--all", action="store_true", help="Run all tests")
@@ -638,6 +799,8 @@ def main():
         [
             args.test_wake_word,
             args.test_whisper,
+            args.test_silero,
+            args.test_silero_file,
             args.benchmark,
             args.test_audio_files,
             args.all,
@@ -664,9 +827,20 @@ def main():
         if not tester.setup_whisper_model():
             return 1
 
+    if args.test_silero or args.test_silero_file or args.benchmark or args.all:
+        if not tester.setup_silero_vad_model():
+            return 1
+
     # Run tests
     if args.test_audio_files or args.all:
         tester.test_audio_files()
+
+    if args.test_silero_file or args.all:
+        rain_file = ASSETS_DIR / "TheRainInSpain.wav"
+        if rain_file.exists():
+            tester.test_silero_vad_from_file(rain_file)
+        else:
+            logger.error("Audio file not found for VAD test")
 
     if args.benchmark:
         tester.benchmark_models()
@@ -674,6 +848,8 @@ def main():
         tester.test_wake_word_detection()
     elif args.test_whisper:
         tester.test_speech_recognition()
+    elif args.test_silero:
+        tester.test_silero_vad_realtime()
 
     return 0
 
