@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """
-Audio Capture Node for Local AI Robot Assistant.
+Self-Contained Audio Processing Pipeline for Local AI Robot Assistant.
 
-Captures audio from USB microphone and publishes to /audio/raw topic.
-Implements circular buffer management for wake word detection and
-automatic USB device reconnection.
+This node implements a complete audio processing pipeline:
+1. Captures audio from USB microphone (no ROS2 streaming)
+2. Runs wake word detection continuously (openWakeWord)
+3. Activates VAD after wake word detection (Silero VAD)
+4. Transcribes speech using faster-whisper
+5. Publishes only lightweight control messages
+
+State Machine:
+  IDLE -> WAKE_WORD_DETECTED -> RECORDING -> TRANSCRIBING -> IDLE
 """
 
 import os
@@ -13,49 +19,67 @@ import subprocess
 import threading
 import time
 from collections import deque
+from enum import Enum
 from typing import Optional
 
 import numpy as np
 import rclpy
+import torch
 import yaml
 from rclpy.node import Node
-from std_msgs.msg import Bool, Float32, Header
 
 try:
-    from audio_common_msgs.msg import AudioData
-except ImportError:
-    # Fallback to custom message if audio_common_msgs not available
-    from robot_interfaces.msg import AudioData
-
-try:
-    from robot_interfaces.msg import AudioEvent
+    from robot_interfaces.msg import AudioEvent, TranscriptionResult
 except ImportError:
     AudioEvent = None
+    TranscriptionResult = None
 
 try:
-    from openwakeword.model import Model
+    from openwakeword.model import Model as WakeWordModel
 
     OPENWAKEWORD_AVAILABLE = True
 except ImportError:
     OPENWAKEWORD_AVAILABLE = False
 
+try:
+    from faster_whisper import WhisperModel
+
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+
+try:
+    from silero_vad import VADIterator, load_silero_vad
+
+    SILERO_VAD_AVAILABLE = True
+except ImportError:
+    SILERO_VAD_AVAILABLE = False
+
+
+class PipelineState(Enum):
+    """Audio pipeline state machine states."""
+
+    IDLE = "idle"  # Listening for wake word
+    WAKE_WORD_DETECTED = "wake_word_detected"  # Wake word triggered
+    RECORDING = "recording"  # VAD active, capturing speech
+    TRANSCRIBING = "transcribing"  # Running Whisper
+    ERROR = "error"  # Error state
+
 
 class AudioCaptureNode(Node):
-    """ROS2 node for capturing audio from USB microphone."""
+    """Self-contained audio processing pipeline node."""
 
     def __init__(self):
         super().__init__("audio_capture_node")
 
         # Declare parameters
         self.declare_parameter("config_file", "config/audio_config.yaml")
-        self.declare_parameter("audio_topic", "/audio/raw")
         self.declare_parameter("target_sample_rate", 16000)
         self.declare_parameter("channels", 1)
         self.declare_parameter("chunk_duration_ms", 80)  # 80ms chunks for openWakeWord
         self.declare_parameter("buffer_duration", 5.0)  # 5 seconds circular buffer
         self.declare_parameter("device_name", "USB PnP Sound Device")
         self.declare_parameter("reconnect_interval", 2.0)  # seconds
-        self.declare_parameter("audio_gain", 1.0)  # Default gain (will be dynamic)
 
         # Wake Word Parameters
         self.declare_parameter("wake_word", "hey_rover")
@@ -63,6 +87,17 @@ class AudioCaptureNode(Node):
         self.declare_parameter("cooldown_seconds", 2.0)
         self.declare_parameter("model_path", "")
         self.declare_parameter("enable_verbose_logging", False)
+
+        # VAD Parameters
+        self.declare_parameter("vad_threshold", 0.5)
+        self.declare_parameter("min_speech_duration_ms", 250)
+        self.declare_parameter("min_silence_duration_ms", 500)
+
+        # Whisper Parameters
+        self.declare_parameter("whisper_model_size", "tiny.en")
+        self.declare_parameter("whisper_compute_type", "int8")
+        self.declare_parameter("whisper_device", "cpu")
+        self.declare_parameter("max_recording_duration", 15)
 
         # Load configuration
         self._load_config()
@@ -80,7 +115,6 @@ class AudioCaptureNode(Node):
         self.reconnect_interval = (
             self.get_parameter("reconnect_interval").get_parameter_value().double_value
         )
-        self.audio_gain = self.get_parameter("audio_gain").get_parameter_value().double_value
 
         # Wake Word Config
         self.wake_word = self.get_parameter("wake_word").value
@@ -89,10 +123,38 @@ class AudioCaptureNode(Node):
         self.model_path = self.get_parameter("model_path").value
         self.verbose_logging = self.get_parameter("enable_verbose_logging").value
 
+        # VAD Config
+        self.vad_threshold = self.get_parameter("vad_threshold").value
+        self.min_speech_duration_ms = self.get_parameter("min_speech_duration_ms").value
+        self.min_silence_duration_ms = self.get_parameter("min_silence_duration_ms").value
+
+        # Whisper Config
+        self.whisper_model_size = self.get_parameter("whisper_model_size").value
+        self.whisper_compute_type = self.get_parameter("whisper_compute_type").value
+        self.whisper_device = self.get_parameter("whisper_device").value
+        self.max_recording_duration = self.get_parameter("max_recording_duration").value
+
+        # Pipeline State Machine
+        self.state = PipelineState.IDLE
+        self.state_lock = threading.Lock()
+
         # Wake Word State
         self.last_detection_time = 0.0
         self.is_in_cooldown = False
-        self.model = None
+        self.wake_word_model = None
+
+        # VAD State
+        self.vad_model = None
+        self.vad_iterator = None
+        self.speech_start_time = None
+        self.recording_start_time = None
+
+        # Whisper State
+        self.whisper_model = None
+        self.transcription_thread: Optional[threading.Thread] = None
+
+        # Recording buffer (for VAD-captured speech)
+        self.recording_buffer = []
 
         # Find audio device
         self.device_string = self._find_audio_device()
@@ -108,16 +170,13 @@ class AudioCaptureNode(Node):
         self.audio_buffer = deque(maxlen=self.buffer_max_chunks)
         self.buffer_lock = threading.Lock()
 
-        # ROS2 publisher
-        # ROS2 publisher
-        audio_topic = self.get_parameter("audio_topic").get_parameter_value().string_value
-        self.audio_publisher = self.create_publisher(AudioData, audio_topic, 10)
-
-        # Wake Word Publishers
-        self.wake_word_pub = self.create_publisher(Bool, "/audio/wake_word_detected", 10)
-        self.confidence_pub = self.create_publisher(Float32, "/audio/wake_word_confidence", 10)
+        # ROS2 Publishers (NO audio streaming, only control messages)
         if AudioEvent:
             self.event_pub = self.create_publisher(AudioEvent, "/audio/events", 10)
+        if TranscriptionResult:
+            self.transcription_pub = self.create_publisher(
+                TranscriptionResult, "/audio/transcription", 10
+            )
 
         # Audio capture process
         self.capture_process: Optional[subprocess.Popen] = None
@@ -132,8 +191,10 @@ class AudioCaptureNode(Node):
         self.frames_captured = 0
         self.last_stats_time = time.time()
 
-        # Initialize Wake Word Model
-        self._initialize_model()
+        # Initialize Models
+        self._initialize_wake_word_model()
+        self._initialize_vad_model()
+        self._initialize_whisper_model()
 
         # Start audio capture
         self._initialize_audio()
@@ -162,7 +223,6 @@ class AudioCaptureNode(Node):
         self.get_logger().info(
             f"  Circular buffer: {buffer_duration}s ({self.buffer_max_chunks} chunks)"
         )
-        self.get_logger().info(f"  Publishing to: {audio_topic}")
 
     def _load_config(self):
         """Load audio configuration from YAML file."""
@@ -392,27 +452,45 @@ class AudioCaptureNode(Node):
             self._schedule_reconnect()
 
     def _process_audio_chunk(self, audio_chunk: np.ndarray):
-        """Process incoming audio data."""
+        """Process incoming audio data based on current state."""
         try:
             # Normalize audio (Dynamic Gain Control)
             audio_normalized = self._normalize_audio(audio_chunk)
 
-            # Add to circular buffer
+            # Add to circular buffer (for pre-roll)
             with self.buffer_lock:
                 self.audio_buffer.append(audio_normalized.copy())
 
-            # Publish to ROS2 topic (IMMEDIATELY - Non-blocking for Whisper)
-            self._publish_audio(audio_normalized)
-
+            # NO AUDIO PUBLISHING - process locally based on state
             self.frames_captured += 1
 
-            # Run Wake Word Detection (After publishing)
-            self._detect_wake_word(audio_normalized)
+            # State machine processing
+            with self.state_lock:
+                current_state = self.state
+
+            if current_state == PipelineState.IDLE:
+                # Only run wake word detection in IDLE state
+                self._detect_wake_word(audio_normalized)
+
+            elif current_state == PipelineState.WAKE_WORD_DETECTED:
+                # Transition to RECORDING and start VAD
+                with self.state_lock:
+                    self.state = PipelineState.RECORDING
+                    self.speech_start_time = None
+                self.get_logger().info("Starting VAD...")
+
+            elif current_state == PipelineState.RECORDING:
+                # Run VAD and accumulate audio
+                self._process_vad(audio_normalized)
+
+            elif current_state == PipelineState.TRANSCRIBING:
+                # Transcription running in background, skip processing
+                pass
 
         except Exception as e:
             self.get_logger().error(f"Error in audio processing: {e}")
 
-    def _initialize_model(self):
+    def _initialize_wake_word_model(self):
         """Initialize openWakeWord model."""
         if not OPENWAKEWORD_AVAILABLE:
             self.get_logger().error("openWakeWord library not found. Wake word detection disabled.")
@@ -422,31 +500,72 @@ class AudioCaptureNode(Node):
         try:
             if self.model_path and os.path.exists(self.model_path):
                 if self.model_path.endswith(".onnx"):
-                    self.model = Model(
+                    self.wake_word_model = WakeWordModel(
                         wakeword_models=[self.model_path], inference_framework="onnx"
                     )
                     self.get_logger().info(f"Loaded custom ONNX model: {self.model_path}")
                 else:
-                    self.model = Model(wakeword_models=[self.model_path])
+                    self.wake_word_model = WakeWordModel(wakeword_models=[self.model_path])
                     self.get_logger().info(f"Loaded custom model: {self.model_path}")
             else:
-                self.model = Model()
+                self.wake_word_model = WakeWordModel()
                 self.get_logger().info("Loaded default openWakeWord models")
         except Exception as e:
             self.get_logger().error(f"Failed to initialize wake word model: {e}")
-            self.model = None
+            self.wake_word_model = None
+
+    def _initialize_vad_model(self):
+        """Initialize Silero VAD model."""
+        if not SILERO_VAD_AVAILABLE:
+            self.get_logger().warn("Silero VAD library not found. VAD disabled.")
+            return
+
+        self.get_logger().info("Initializing Silero VAD model...")
+        try:
+            self.vad_model = load_silero_vad(onnx=True)
+            self.vad_iterator = VADIterator(self.vad_model, sampling_rate=self.target_sample_rate)
+            self.get_logger().info("Silero VAD model loaded successfully")
+        except Exception as e:
+            self.get_logger().error(f"Failed to initialize VAD model: {e}")
+            self.vad_model = None
+            self.vad_iterator = None
+
+    def _initialize_whisper_model(self):
+        """Initialize faster-whisper model."""
+        if not WHISPER_AVAILABLE:
+            self.get_logger().warn("faster-whisper library not found. Transcription disabled.")
+            return
+
+        self.get_logger().info(f"Initializing Whisper model ({self.whisper_model_size})...")
+        try:
+            self.whisper_model = WhisperModel(
+                self.whisper_model_size,
+                device=self.whisper_device,
+                compute_type=self.whisper_compute_type,
+                cpu_threads=4,
+                num_workers=1,
+            )
+            self.get_logger().info("Whisper model loaded successfully")
+        except Exception as e:
+            self.get_logger().error(f"Failed to initialize Whisper model: {e}")
+            self.whisper_model = None
 
     def _detect_wake_word(self, audio_chunk: np.ndarray):
-        """Run wake word detection on audio chunk."""
-        if self.model is None:
+        """Run wake word detection on audio chunk (only in IDLE state)."""
+        if self.wake_word_model is None:
             return
+
+        # Only detect wake word in IDLE state
+        with self.state_lock:
+            if self.state != PipelineState.IDLE:
+                return
 
         try:
             # Measure inference time
             start_time = time.time()
 
             # Predict
-            prediction = self.model.predict(audio_chunk)
+            prediction = self.wake_word_model.predict(audio_chunk)
 
             # Check inference time
             inference_time = (time.time() - start_time) * 1000
@@ -457,20 +576,12 @@ class AudioCaptureNode(Node):
             if self.wake_word in prediction:
                 confidence = prediction[self.wake_word]
 
-                # Publish confidence
-                conf_msg = Float32()
-                conf_msg.data = float(confidence)
-                self.confidence_pub.publish(conf_msg)
-
                 current_time = time.time()
 
                 if confidence >= self.confidence_threshold:
                     # Check cooldown
                     if not self.is_in_cooldown:
                         self.get_logger().info(f"🎤 WAKE WORD DETECTED! ({confidence:.3f})")
-
-                        # Publish detection
-                        self.wake_word_pub.publish(Bool(data=True))
 
                         # Publish event
                         if AudioEvent:
@@ -480,6 +591,12 @@ class AudioCaptureNode(Node):
                             event.confidence = float(confidence)
                             event.data = f"Wake word: {self.wake_word}"
                             self.event_pub.publish(event)
+
+                        # Transition to WAKE_WORD_DETECTED state
+                        with self.state_lock:
+                            self.state = PipelineState.WAKE_WORD_DETECTED
+                            self.recording_start_time = current_time
+                            self.recording_buffer = []
 
                         self.last_detection_time = current_time
                         self.is_in_cooldown = True
@@ -493,37 +610,143 @@ class AudioCaptureNode(Node):
         except Exception as e:
             self.get_logger().error(f"Error in wake word detection: {e}")
 
-    def _publish_audio(self, audio_array: np.ndarray):
-        """Publish audio data to ROS2 topic."""
+    def _process_vad(self, audio_chunk: np.ndarray):
+        """Process audio with VAD to detect speech start/end."""
+        if self.vad_model is None or self.vad_iterator is None:
+            self.get_logger().warn("VAD not available, skipping")
+            return
+
         try:
-            # audio_array is already int16 and normalized
-            audio_bytes = audio_array.tobytes()
+            # Convert to float32 tensor for VAD
+            audio_float32 = audio_chunk.astype(np.float32) / 32768.0
+            audio_tensor = torch.tensor(audio_float32)
 
-            msg = AudioData()
+            # Run VAD
+            speech_dict = self.vad_iterator(audio_tensor, return_seconds=False)
 
-            # Set header
-            if hasattr(msg, "header"):
-                msg.header = Header()
-                msg.header.stamp = self.get_clock().now().to_msg()
-                msg.header.frame_id = "microphone"
+            # Accumulate audio
+            self.recording_buffer.append(audio_chunk.copy())
 
-            # Set audio data
-            msg.data = audio_bytes
+            # Check for speech events
+            if speech_dict:
+                if "start" in speech_dict and self.speech_start_time is None:
+                    self.speech_start_time = time.time()
+                    self.get_logger().info("🎤 Speech started")
 
-            # Set metadata if available
-            if hasattr(msg, "sample_rate"):
-                msg.sample_rate = self.target_sample_rate
-            if hasattr(msg, "channels"):
-                msg.channels = self.channels
-            if hasattr(msg, "encoding"):
-                msg.encoding = "S16_LE"
-            if hasattr(msg, "chunk_size"):
-                msg.chunk_size = len(audio_array)
+                    # Publish event
+                    if AudioEvent:
+                        event = AudioEvent()
+                        event.header.stamp = self.get_clock().now().to_msg()
+                        event.event_type = "speech_started"
+                        self.event_pub.publish(event)
 
-            self.audio_publisher.publish(msg)
+                elif "end" in speech_dict and self.speech_start_time is not None:
+                    self.get_logger().info("🎤 Speech ended")
+
+                    # Publish event
+                    if AudioEvent:
+                        event = AudioEvent()
+                        event.header.stamp = self.get_clock().now().to_msg()
+                        event.event_type = "speech_ended"
+                        duration = time.time() - self.speech_start_time
+                        event.duration = float(duration)
+                        self.event_pub.publish(event)
+
+                    # Transition to TRANSCRIBING state
+                    with self.state_lock:
+                        self.state = PipelineState.TRANSCRIBING
+
+                    # Start transcription in background thread
+                    self._start_transcription()
+
+            # Check for timeout
+            if self.recording_start_time is not None:
+                recording_duration = time.time() - self.recording_start_time
+                if recording_duration > self.max_recording_duration:
+                    self.get_logger().warn(f"Recording timeout ({self.max_recording_duration}s)")
+
+                    # Force end recording
+                    with self.state_lock:
+                        self.state = PipelineState.TRANSCRIBING
+                    self._start_transcription()
 
         except Exception as e:
-            self.get_logger().error(f"Error publishing audio: {e}")
+            self.get_logger().error(f"Error in VAD processing: {e}")
+
+    def _start_transcription(self):
+        """Start transcription in background thread."""
+        if self.whisper_model is None:
+            self.get_logger().error("Whisper model not available")
+            with self.state_lock:
+                self.state = PipelineState.IDLE
+            return
+
+        # Start transcription thread
+        self.transcription_thread = threading.Thread(target=self._transcribe_audio)
+        self.transcription_thread.daemon = True
+        self.transcription_thread.start()
+
+    def _transcribe_audio(self):
+        """Transcribe recorded audio using Whisper (runs in background thread)."""
+        try:
+            self.get_logger().info("Starting transcription...")
+
+            # Concatenate recording buffer
+            if len(self.recording_buffer) == 0:
+                self.get_logger().warn("No audio to transcribe")
+                with self.state_lock:
+                    self.state = PipelineState.IDLE
+                return
+
+            audio_data = np.concatenate(self.recording_buffer)
+            audio_float = audio_data.astype(np.float32) / 32768.0
+
+            # Run Whisper transcription
+            start_time = time.time()
+            segments, info = self.whisper_model.transcribe(
+                audio_float,
+                beam_size=5,
+                language="en",
+                vad_filter=True,
+            )
+
+            transcription = " ".join([segment.text.strip() for segment in segments])
+            inference_time = time.time() - start_time
+
+            self.get_logger().info(f"Transcription: '{transcription}' ({inference_time:.2f}s)")
+
+            # Publish transcription result
+            if TranscriptionResult:
+                result = TranscriptionResult()
+                result.header.stamp = self.get_clock().now().to_msg()
+                result.text = transcription
+                result.confidence = 1.0  # Whisper doesn't provide confidence
+                result.duration = float(len(audio_data) / self.target_sample_rate)
+                result.language = info.language if hasattr(info, "language") else "en"
+                self.transcription_pub.publish(result)
+
+            # Publish event
+            if AudioEvent:
+                event = AudioEvent()
+                event.header.stamp = self.get_clock().now().to_msg()
+                event.event_type = "asr_complete"
+                event.data = transcription
+                event.duration = float(inference_time)
+                self.event_pub.publish(event)
+
+            # Return to IDLE state
+            with self.state_lock:
+                self.state = PipelineState.IDLE
+                self.recording_buffer = []
+                self.speech_start_time = None
+                self.recording_start_time = None
+
+            self.get_logger().info("Returned to IDLE state")
+
+        except Exception as e:
+            self.get_logger().error(f"Error in transcription: {e}")
+            with self.state_lock:
+                self.state = PipelineState.IDLE
 
     def _report_statistics(self):
         """Report audio capture statistics."""

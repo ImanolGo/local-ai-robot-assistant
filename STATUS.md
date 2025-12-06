@@ -1,8 +1,8 @@
 # Implementation Status
 
-**Last Updated**: 29 Nov 2025
-**Current Phase**: Phase 5 (Audio Detection Pipeline)
-**Overall Progress**: 65%
+**Last Updated**: 6 Dec 2025
+**Current Phase**: Phase 5 (Audio Detection Pipeline - Self-Contained Pipeline)
+**Overall Progress**: 70%
 
 ## Legend
 - ✅ Complete
@@ -334,87 +334,86 @@
 
 ---
 
-## Phase 5: Audio Detection Pipeline (35% Complete 🚧)
+## Phase 5: Audio Detection Pipeline (65% Complete 🚧)
 
-### 5.1 Audio Capture & Playback Infrastructure (100% Complete ✅)
+### 5.1 Audio Pipeline Refactoring - Self-Contained Pipeline (100% Complete ✅)
 
-- ✅ Implement audio_capture_node.py
-  - ✅ sounddevice initialization with USB microphone configuration
-  - ✅ Continuous audio streaming at 16 kHz (with hardware resampling from 44.1kHz/48kHz)
-  - ✅ Publish to `/audio/raw` topic (robot_interfaces/AudioData)
+- ✅ **Refactored `audio_capture_node.py` into self-contained pipeline**
+  - ✅ Audio capture via `arecord` subprocess
   - ✅ Circular buffer management (5-second rolling buffer)
-  - ✅ USB device health monitoring and auto-reconnection
-  - ✅ Configurable sample rate and channels from `config/audio_config.yaml`
+  - ✅ Wake word detection integrated (openWakeWord)
+  - ✅ Integrated Silero VAD model
+    - ✅ Load Silero VAD using `silero-vad` package
+    - ✅ Activate VAD after wake word detection
+    - ✅ Detect speech start/end boundaries
+    - ✅ Publish speech events to `/audio/events`
+  - ✅ Integrated faster-whisper for transcription
+    - ✅ Load Whisper model (`tiny.en`, INT8)
+    - ✅ Transcribe audio segment captured by VAD
+    - ✅ Run transcription in separate thread (non-blocking)
+    - ✅ Publish to `/audio/transcription` (TranscriptionResult message)
+  - ✅ Implemented state machine
+    - ✅ `IDLE`: Listening for wake word continuously
+    - ✅ `WAKE_WORD_DETECTED`: Wake word triggered, activating VAD
+    - ✅ `RECORDING`: VAD detected speech start, capturing audio
+    - ✅ `TRANSCRIBING`: VAD detected speech end, running Whisper
+    - ✅ Return to IDLE: Transcription complete
+  - ✅ Audio buffer management for transcription
+    - ✅ Maintain pre-roll buffer (audio before wake word)
+    - ✅ Accumulate audio during RECORDING state
+    - ✅ Pass complete segment to Whisper
+  - ✅ Removed `/audio/raw` publisher (no audio streaming over ROS2)
+  - ✅ Add configuration parameters for VAD and Whisper
+  - ✅ Add timeout handling (max recording duration: 15s)
+  - ✅ Add error recovery and model failure handling
+
+- ✅ **Created `TranscriptionResult` message type**
+  - ✅ Define message fields (text, confidence, duration, language)
+  - ✅ Update `CMakeLists.txt` in `robot_interfaces`
+  - ✅ Rebuild workspace successfully
+
+- ✅ **Updated configuration**
+  - ✅ Added VAD settings to `audio_config.yaml`
+  - ✅ Added Whisper settings to `audio_config.yaml`
+
+- ✅ **Verification tests**
+  - ✅ Test imports and message types
+  - ✅ Verify model libraries available (with .venv)
+  - ✅ Verify configuration file structure
+  - ✅ Verify successful build and compilation
+
+- ⏳ **Real-time testing (pending)**
+  - ⏳ Test wake word → VAD → transcription flow
+  - ⏳ Test end-to-end latency (target: <3s)
+  - ⏳ Test resource usage (CPU <20%, Memory <1GB)
+  - ⏳ Test edge cases (short/long speech, noise)
+
+**Breaking Changes**:
+- Removed topics: `/audio/raw`, `/audio/wake_word_detected`, `/audio/wake_word_confidence`
+- New topics: `/audio/events` (AudioEvent), `/audio/transcription` (TranscriptionResult)
+- Behavior: Complete transcription string published (not character-by-character)
+
+### 5.2 Audio Playback Infrastructure (100% Complete ✅)
+
 - ✅ Implement audio_playback_node.py
-  - ✅ sounddevice initialization with USB speakers configuration
   - ✅ Subscribe to `/audio/tts_output`
   - ✅ Queue-based playback system with priority handling
-  - ✅ Handle playback interruptions (via priority queue)
   - ✅ Volume normalization and audio quality optimization
-  - ✅ Monitor playback errors and device status
   - ✅ Publish audio events to `/audio/events`
-- ✅ Create AudioData message definition in robot_interfaces
-- ✅ Build and test message generation
-- ✅ Create launch_node.sh script for venv+ROS2 integration
-- ✅ Create ros2_venv.sh for environment setup
-- ✅ Document venv usage in docs/ros2_venv_usage.md
-- ⏳ Test audio latency (target: <200ms round-trip)
-- ⏳ Test simultaneous capture/playback without feedback
-- ⏳ Test USB device reconnection and hot-swapping
 
-### 5.2 Wake Word Detection ("Hey Rover") ✅
+### 5.3 Text-to-Speech (Piper) (100% Complete ✅)
 
-- ✅ Install openWakeWord library and dependencies (openwakeword, onnxruntime, tflite-runtime)
-- ✅ Implement wake_word_detector_node.py
-  - ✅ Load openWakeWord model with default models
-  - ✅ Subscribe to `/audio/raw` with real-time processing
-  - ✅ Run continuous detection in dedicated thread
-  - ✅ Publish to `/audio/wake_word_detected` (std_msgs/Bool + confidence)
-  - ✅ Add detection confidence threshold (configurable, default: 0.6)
-  - ✅ Implement cooldown period to prevent multiple triggers (default: 2 seconds)
-  - ✅ Always-on operation with minimal resource footprint
-- ✅ Add wake word configuration to audio_config.yaml
-- ✅ Create unit tests (tests/test_wake_word.py)
-- ✅ Build and integrate with audio_interface_nodes package
-- ⏳ Train or fine-tune custom wake word model for "Hey Rover" (using default models for now)
-- ⏳ Test false positive rate (target: <1 per hour in quiet environment)
-- ⏳ Test detection latency (target: <100ms from word completion)
-- ⏳ Optimize for ultra-low CPU usage (target: <5% continuously)
-- ⏳ Test robustness across different voices, accents, and distances
+- ✅ `tts_node.py` already implemented with Piper
+  - ✅ Subscribes to `/audio/tts_request`
+  - ✅ Synthesizes speech with ONNX inference
+  - ✅ Publishes to `/audio/tts_output`
 
-### 5.3 Voice Activity Detection (VAD)
+### 5.4 Integration Testing (Pending)
 
-- ⏳ Install VAD libraries (webrtcvad and/or silero-vad)
-- ⏳ Implement vad_node.py
-- ⏳ Configure VAD sensitivity for different environments
-- ⏳ Test speech segmentation accuracy (target: >95% correct segmentation)
-- ⏳ Test detection latency (target: <50ms)
-- ⏳ Optimize resource usage (target: <2% CPU when active)
-
-### 5.4 Enhanced Speech-to-Text with VAD Integration
-
-- ⏳ Set up faster-whisper (PRIMARY) with optimizations
-- ⏳ Implement enhanced stt_node.py
-- ⏳ Test transcription accuracy (target: WER <8% for clean speech)
-- ⏳ Test with various accents, speaking styles, and command types
-- ⏳ Benchmark inference time (target: <2s for 5s audio, real-time factor <0.4x)
-
-### 5.5 Text-to-Speech (Piper) with State Management
-
-- ⏳ Install Piper TTS with ONNX runtime support
-- ⏳ Download and validate voice model (recommended: en_US-lessac-medium)
-- ⏳ Implement enhanced tts_node.py
-- ⏳ Test voice quality and naturalness (subjective evaluation)
-- ⏳ Test synthesis latency (target: <500ms for 20 words)
-- ⏳ Test various sentence types, lengths, and punctuation handling
-
-### 5.6 Comprehensive Audio Detection Pipeline Integration
-
-- ⏳ Implement audio_detection_pipeline.py - Central state machine coordinator
-- ⏳ Create launch/audio_detection_pipeline_launch.py
-- ⏳ Test complete audio detection flow
-- ⏳ Implement comprehensive integration tests
-- ⏳ Optimize pipeline performance
+- ⏳ Test complete audio pipeline flow
+- ⏳ Test end-to-end latency
+- ⏳ Test resource usage and performance
+- ⏳ Create integration test scripts
 
 ---
 
@@ -532,6 +531,13 @@
 
 ## Recent Updates
 
+- **6 Dec 2025**: Completed Audio Pipeline Refactoring (Phase 5.1) - Self-contained pipeline with integrated VAD and Whisper
+- **6 Dec 2025**: Refactored `audio_capture_node.py` into self-contained pipeline with state machine (IDLE → WAKE_WORD_DETECTED → RECORDING → TRANSCRIBING)
+- **6 Dec 2025**: Integrated Silero VAD for speech boundary detection and faster-whisper for transcription
+- **6 Dec 2025**: Created `TranscriptionResult` message type for standardized transcription output
+- **6 Dec 2025**: Removed audio streaming over ROS2 - now publishes only lightweight control messages
+- **6 Dec 2025**: Updated architecture and implementation plan to reflect self-contained pipeline design
+- **6 Dec 2025**: All verification tests passing - ready for real-time microphone testing
 - **29 Nov 2025**: Completed Perception Models Integration (Phase 4) - Depth Estimation, Point Cloud, and Integration verified
 - **24 Nov 2025**: Completed Cognitive Core Setup (Phase 3.4) - Ollama + Moondream integration
 - **24 Nov 2025**: Architectural pivot from Gemma 3n to Moondream (1.6B VLM) for better memory efficiency

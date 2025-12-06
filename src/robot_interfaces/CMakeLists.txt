@@ -17,6 +17,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ChassisState.msg"
   "msg/AudioData.msg"
   "msg/AudioEvent.msg"
+  "msg/TranscriptionResult.msg"
   "msg/CognitiveCommand.msg"
   "msg/ObjectDetection.msg"
   "msg/DepthImage.msg"

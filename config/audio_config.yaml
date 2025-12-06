@@ -80,12 +80,28 @@ pipeline:
     enable_verbose_logging: false # Log all confidence scores
     target_cpu_usage: 5.0 # Target <5% CPU usage
 
-  # Speech-to-text (Whisper)
+  # Voice Activity Detection (Silero VAD)
+  vad:
+    model: "silero" # Silero VAD via silero-vad package
+    threshold: 0.5 # Speech probability threshold (0.0-1.0)
+    min_speech_duration_ms: 250 # Minimum speech duration to consider
+    min_silence_duration_ms: 500 # Silence duration to end speech segment
+    speech_pad_ms: 30 # Padding around speech segments
+    chunk_size: 512 # 32ms chunks at 16kHz for VAD processing
+
+  # Speech-to-text (faster-whisper)
   speech_to_text:
     sample_rate: 16000
     channels: 1
-    max_recording_duration: 10 # seconds
-    silence_threshold_db: -50
+    model_size: "tiny.en" # Options: tiny.en, base.en, small.en
+    compute_type: "int8" # Quantization: int8, float16, float32
+    device: "cpu" # Device: cpu or cuda
+    cpu_threads: 4 # Number of CPU threads for inference
+    beam_size: 5 # Beam size for decoding
+    language: "en" # Language code
+    vad_filter: true # Use Whisper's built-in VAD
+    max_recording_duration: 15 # Maximum recording duration (seconds)
+    silence_threshold_db: -50 # Silence threshold for recording
 
   # Text-to-speech (Piper)
   text_to_speech:

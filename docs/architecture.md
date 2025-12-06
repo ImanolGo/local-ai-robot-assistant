@@ -136,37 +136,45 @@ python manual_tests/test_audio_capture_playback.py
 ### 2.3. Tier 1: Continuous Perception & Localization Layer
 (Unchanged from v3.0 - YOLO, Depth, and SLAM operate independently of the LLM/VLM).
 
-### 2.4. Auditory Interface Layer (Revised)
+### 2.4. Auditory Interface Layer (Revised - Self-Contained Pipeline)
 
-This layer now includes a discrete transcription step using `faster-whisper`.
+This layer uses a **self-contained audio processing pipeline** that handles all audio input processing locally within a single node, publishing only lightweight control messages.
 
 #### Hardware Components
 - **USB Microphone** & **USB Speakers** (Separate USB ports)
 
 #### Audio Processing Pipeline
 
-**1. Audio Capture Node**
-   - Captures raw audio via PyAudio/ALSA.
-   - Circular buffer for pre-roll capture.
+**1. Audio Capture & Processing Node** (`audio_capture_node.py`) - **SELF-CONTAINED PIPELINE**
+   - **Audio Capture**: Captures raw audio via `arecord` subprocess (no ROS2 audio streaming).
+   - **Circular Buffer**: Maintains 5-second rolling buffer for pre-roll capture.
+   - **Wake Word Detection**:
+     - Uses **openWakeWord** (ONNX) from https://github.com/dscripka/openWakeWord.
+     - Model: Pre-trained `hey_roe_ver.onnx` included in the repository.
+     - Runs continuously on every audio chunk.
+     - Publishes wake word detection events to `/audio/events`.
+     - **Custom Model Training**: openWakeWord provides automated utilities for training custom models:
+       - **Quick Training**: Google Colab notebook with easy interface (<1 hour, no dev experience needed)
+       - **Advanced Training**: Detailed notebook with full customization (higher quality, requires dev experience)
+   - **Voice Activity Detection (VAD)**:
+     - Uses **Silero VAD** (ONNX) via `silero-vad` package.
+     - Activates after wake word detection.
+     - Detects speech start/end boundaries.
+     - Publishes speech events to `/audio/events`.
+   - **Automatic Speech Recognition (ASR)**:
+     - **Model**: `faster-whisper` (CTranslate2 backend).
+     - **Size**: `tiny.en` or `base.en` (Quantized to INT8).
+     - Transcribes audio segment captured by VAD.
+     - **Output**: Transcribed text published to `/audio/transcription`.
+     - **Performance**: <500ms for typical commands on Jetson Orin.
+     - **Memory**: ~400MB RAM.
+   - **State Machine**: Manages pipeline flow (IDLE → WAKE_WORD_DETECTED → RECORDING → TRANSCRIBING → IDLE).
+   - **Published Topics**:
+     - `/audio/events` (AudioEvent): Wake word detections, VAD events
+     - `/audio/transcription` (TranscriptionResult): Transcribed text with confidence
+   - **No Audio Streaming**: All audio processing happens locally; no raw audio published over ROS2.
 
-**2. Wake Word Detection** (`wake_word_detector_node.py`)
-   - Uses **openWakeWord** (ONNX) from https://github.com/dscripka/openWakeWord.
-   - Model: Pre-trained `hey_roe_ver.onnx` included in the repository.
-   - Triggers the recording state when wake phrase is detected.
-   - **Custom Model Training**: openWakeWord provides automated utilities for training custom models:
-     - **Quick Training**: Google Colab notebook with easy interface (<1 hour, no dev experience needed)
-     - **Advanced Training**: Detailed notebook with full customization (higher quality, requires dev experience)
-   - See openWakeWord documentation for training new models with custom wake phrases.
-
-**3. Automatic Speech Recognition** (`asr_node.py`) - **CHANGED**
-   - **Model**: `faster-whisper` (CTranslate2 backend).
-   - **Size**: `tiny.en` or `base.en` (Quantized to INT8).
-   - **Input**: WAV buffer from Audio Capture.
-   - **Output**: Transcribed text string published to `/audio/transcription`.
-   - **Performance**: <500ms for typical commands on Jetson Orin.
-   - **Memory**: ~400MB RAM.
-
-**4. Text-to-Speech** (`tts_node.py`)
+**2. Text-to-Speech** (`tts_node.py`)
    - Uses **Piper** (ONNX).
    - Subscribes to `/audio/tts_request`.
 
