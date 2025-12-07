@@ -48,7 +48,7 @@ if command -v tmux &> /dev/null; then
     # Set up pane 0 (top left) - Audio playback node
     tmux send-keys -t $SESSION:0.0 "cd $WORKSPACE_ROOT" C-m
     tmux send-keys -t $SESSION:0.0 "echo -e '${GREEN}Starting audio_playback_node with venv...${NC}'" C-m
-    tmux send-keys -t $SESSION:0.0 "./scripts/run_audio_playback_node.sh" C-m
+    tmux send-keys -t $SESSION:0.0 "./scripts/launch/run_audio_playback_node.sh" C-m
 
     # Set up pane 1 (bottom left) - TTS request publisher
     tmux send-keys -t $SESSION:0.1 "cd $WORKSPACE_ROOT" C-m

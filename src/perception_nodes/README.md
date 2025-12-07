@@ -180,13 +180,13 @@ python -m pytest src/perception_nodes/test/test_camera_pipeline_integration.py -
 ### Performance Benchmarks
 ```bash
 # Run comprehensive benchmark
-python scripts/benchmark_camera_pipeline.py
+python scripts/testing/vision/benchmark_camera_pipeline.py
 
 # Save results to file
-python scripts/benchmark_camera_pipeline.py --output benchmark_results.json
+python scripts/testing/vision/benchmark_camera_pipeline.py --output benchmark_results.json
 
 # Skip GPU benchmarks
-python scripts/benchmark_camera_pipeline.py --no-gpu
+python scripts/testing/vision/benchmark_camera_pipeline.py --no-gpu
 ```
 
 ## Troubleshooting

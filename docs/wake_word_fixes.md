@@ -19,8 +19,8 @@ export PYTHONPATH="$WORKSPACE_DIR/.venv/lib/python3.10/site-packages:$PYTHONPATH
 ```
 
 This was applied to:
-- `scripts/test_wake_word_full.sh` (updated)
-- `scripts/run_perception_node.sh` (already had this pattern)
+- `scripts/testing/audio/test_wake_word_full.sh` (updated)
+- `scripts/launch/run_perception_node.sh` (already had this pattern)
 
 ### Issue 2: Node Initialization Error Handling Bug
 
@@ -104,7 +104,7 @@ Application
 
 ### Full System Test
 ```bash
-./scripts/test_wake_word_full.sh
+./scripts/testing/audio/test_wake_word_full.sh
 ```
 
 This script:
@@ -117,7 +117,7 @@ This script:
 
 ### Standalone Model Test
 ```bash
-python scripts/test_audio_models.py --test-wake-word
+python scripts/testing/audio/test_audio_models.py --test-wake-word
 ```
 
 Tests the wake word model directly without ROS2.
@@ -145,7 +145,7 @@ Or use the provided helper scripts which handle this automatically.
 
 ## Files Modified
 
-1. `scripts/test_wake_word_full.sh` - Added PYTHONPATH config, use direct executables
+1. `scripts/testing/audio/test_wake_word_full.sh` - Added PYTHONPATH config, use direct executables
 2. `src/audio_interface_nodes/audio_interface_nodes/wake_word_detector_node.py` - Fixed error handling bug
 3. `docs/wake_word_fixes.md` - This documentation
 

@@ -16,31 +16,31 @@ The Piper TTS test script now includes real-time audio streaming capabilities, s
 #### Basic Streaming
 ```bash
 # Stream text directly to speakers
-python scripts/test_piper_tts.py --stream --text "Hello, this is streaming TTS!"
+python scripts/testing/audio/test_piper_tts.py --stream --text "Hello, this is streaming TTS!"
 ```
 
 #### Streaming vs File-based Comparison
 ```bash
 # Regular synthesis (saves to file)
-python scripts/test_piper_tts.py --text "Test sentence"
+python scripts/testing/audio/test_piper_tts.py --text "Test sentence"
 
 # Streaming synthesis (plays through speakers)
-python scripts/test_piper_tts.py --stream --text "Test sentence"
+python scripts/testing/audio/test_piper_tts.py --stream --text "Test sentence"
 ```
 
 #### Performance Benchmarking
 ```bash
 # Regular synthesis benchmark
-python scripts/test_piper_tts.py --benchmark
+python scripts/testing/audio/test_piper_tts.py --benchmark
 
 # Streaming synthesis benchmark (includes playback time)
-python scripts/test_piper_tts.py --stream-benchmark
+python scripts/testing/audio/test_piper_tts.py --stream-benchmark
 ```
 
 #### Combined Testing
 ```bash
 # Run all tests including streaming
-python scripts/test_piper_tts.py --benchmark --stream-benchmark --quality --text "Comprehensive test"
+python scripts/testing/audio/test_piper_tts.py --benchmark --stream-benchmark --quality --text "Comprehensive test"
 ```
 
 ### Technical Implementation

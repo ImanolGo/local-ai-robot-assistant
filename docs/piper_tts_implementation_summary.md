@@ -6,7 +6,7 @@ Successfully implemented Piper TTS integration for the local AI robot assistant 
 ## Implementation Details
 
 ### Components Implemented
-1. **Core Integration Script**: `scripts/test_piper_tts.py`
+1. **Core Integration Script**: `scripts/testing/audio/test_piper_tts.py`
    - Comprehensive testing framework for quality and performance
    - Audio synthesis with configurable output
    - Latency benchmarking and quality assessment
@@ -17,7 +17,7 @@ Successfully implemented Piper TTS integration for the local AI robot assistant 
    - Rate limiting and thread safety
    - Audio output publishing
 
-3. **ROS2 Integration Test**: `scripts/test_piper_ros2.py`
+3. **ROS2 Integration Test**: `scripts/testing/audio/test_piper_ros2.py`
    - End-to-end testing of ROS2 integration
    - Multi-phrase testing framework
    - Audio data verification
@@ -51,9 +51,9 @@ Successfully implemented Piper TTS integration for the local AI robot assistant 
 
 #### New Files
 ```
-scripts/test_piper_tts.py          # Main testing framework
+scripts/testing/audio/test_piper_tts.py          # Main testing framework
 src/audio_interface_nodes/piper_tts_node.py  # ROS2 integration
-scripts/test_piper_ros2.py         # ROS2 integration test
+scripts/testing/audio/test_piper_ros2.py         # ROS2 integration test
 piper_test_output/                 # Generated audio samples
 ├── custom_synthesis.wav
 ├── quality_test_1.wav
@@ -108,13 +108,13 @@ Text Input → Piper TTS → Audio Chunks → ROS2 AudioData → Audio Output
 ### Direct Script Usage
 ```bash
 # Basic synthesis
-python scripts/test_piper_tts.py --text "Hello world"
+python scripts/testing/audio/test_piper_tts.py --text "Hello world"
 
 # Quality and benchmark testing
-python scripts/test_piper_tts.py --quality --benchmark
+python scripts/testing/audio/test_piper_tts.py --quality --benchmark
 
 # Custom model path
-python scripts/test_piper_tts.py --model ./path/to/model.onnx
+python scripts/testing/audio/test_piper_tts.py --model ./path/to/model.onnx
 ```
 
 ### ROS2 Integration

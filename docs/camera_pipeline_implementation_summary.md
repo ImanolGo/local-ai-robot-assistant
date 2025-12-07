@@ -62,7 +62,7 @@ I have successfully implemented the complete Camera Pipeline (DeepStream-Acceler
 
 ### 4. Performance Tools
 
-#### A. Benchmark Script (`scripts/benchmark_camera_pipeline.py`)
+#### A. Benchmark Script (`scripts/testing/vision/benchmark_camera_pipeline.py`)
 - Comprehensive performance analysis
 - CPU vs GPU comparison
 - Memory usage profiling

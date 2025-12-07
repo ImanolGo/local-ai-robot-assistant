@@ -100,7 +100,7 @@ This document summarizes the implementation of Section 2.4 "Configuration Manage
 
 ### 5. Documentation and Examples ✅
 
-#### `scripts/config_demo.py` ✅
+#### `scripts/utils/config_demo.py` ✅
 - **Purpose**: Demonstrates best practices for using configuration utilities
 - **Examples**:
   - `ExampleConfigNode`: Complete ROS2 node with configuration loading

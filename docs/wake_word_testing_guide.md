@@ -22,12 +22,12 @@ We have provided a comprehensive test script that automates the process of start
 
 2.  Run the test script:
     ```bash
-    ./scripts/test_wake_word_full.sh
+    ./scripts/testing/audio/test_wake_word_full.sh
     ```
 
     **What this script does:**
     - Sources the ROS2 environment.
-    - Sets optimal audio levels (using `scripts/set_audio_levels.sh`).
+    - Sets optimal audio levels (using `scripts/utils/set_audio_levels.sh`).
     - Starts the `audio_capture_node`.
     - Starts the `wake_word_detector_node`.
     - Checks if nodes started successfully.
