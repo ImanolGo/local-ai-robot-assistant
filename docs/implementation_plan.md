@@ -567,22 +567,48 @@ float32 duration              # Audio duration in seconds
 string language               # Detected language (e.g., "en")
 ```
 
-**Status**: ✅ Completed - Message type created, built, and verified
+### 5.3 Audio Playback Node (Streamlined with Integrated TTS)
 
-### 5.3 Audio Playback Node (Unchanged)
+- [x] **Refactor `audio_playback_node.py`** to integrate Piper TTS directly
+  - [x] **Remove audio data subscription** (no more `/audio/tts_output`)
+  - [x] **Add text subscription** to `/audio/tts_request` (std_msgs/String)
+  - [x] **Add event subscription** to `/audio/events` (AudioEvent)
+  - [x] **Initialize Piper TTS model** in the node
+    - [x] Load ONNX model and voice configuration
+    - [x] Use same Piper setup as previous tts_node
+    - [x] Lazy loading: only load when first TTS request arrives
+  - [x] **Implement text-to-audio synthesis**
+    - [x] Subscribe to text messages
+    - [x] Synthesize audio using Piper ONNX inference
+    - [x] Queue synthesized audio for playback
+    - [x] Handle synthesis errors gracefully
+  - [x] **Implement event-driven notification sounds**
+    - [x] Load notification audio files on startup:
+      - `assets/audio/notify_asc.wav` (wake word detected)
+      - `assets/audio/notify_desc.wav` (speech ended)
+    - [x] Subscribe to `/audio/events`
+    - [x] Play notification sounds based on event types:
+      - `wake_word_detected` → `notify_asc.wav`
+      - `speech_ended` → `notify_desc.wav`
+    - [x] Prioritize notifications (high priority in queue)
+  - [x] **Maintain existing features**
+    - [x] Queue-based playback system with priorities
+    - [x] Volume normalization
+    - [x] Publish playback events to `/audio/events`
+    - [x] Reconnection logic for hardware failures
 
-- [x] `audio_playback_node.py` already implemented
-  - [x] Subscribes to `/audio/tts_output`
-  - [x] Queue-based playback system
-  - [x] Volume normalization
-  - [x] Publish audio events to `/audio/events`
+**Message Types**:
+- **Input**: `std_msgs/String` on `/audio/tts_request` (text to synthesize)
+- **Input**: `robot_interfaces/AudioEvent` on `/audio/events` (trigger notifications)
+- **Output**: `robot_interfaces/AudioEvent` on `/audio/events` (playback status)
 
-### 5.4 Text-to-Speech Node (Unchanged)
 
-- [x] `tts_node.py` already implemented with Piper
-  - [x] Subscribes to `/audio/tts_request`
-  - [x] Synthesizes speech with ONNX inference
-  - [x] Publishes to `/audio/tts_output`
+### 5.4 Text-to-Speech Node (DEPRECATED)
+
+- [x] `tts_node.py` **DEPRECATED** - functionality moved to audio_playback_node
+  - [ ] Update documentation to reflect deprecation
+  - [ ] Keep file for reference but remove from launch files
+  - [ ] All TTS functionality now in `audio_playback_node.py`
 
 ### 5.5 Integration Testing
 

@@ -153,3 +153,35 @@ notes:
   - "Microphone gain: 'amixer -c 1 set Mic <percentage>' (e.g., 25%)"
   - "Both devices support simultaneous record/playback (full duplex)"
   - "Estimated audio latency: ~50ms for typical USB audio operation"
+
+# Audio Playback Configuration (Streamlined Architecture)
+playback:
+  # Notification sounds (event-driven audio feedback)
+  notifications:
+    enabled: true
+    priority: 1 # Highest priority (lower number = higher priority)
+    allow_interruption: true # Notifications can interrupt TTS playback
+    sounds:
+      wake_word_detected: "assets/audio/notify_asc.wav"
+      speech_ended: "assets/audio/notify_desc.wav"
+
+  # Integrated TTS (Piper - no separate tts_node needed)
+  tts:
+    enabled: true
+    priority: 5 # Normal priority
+    lazy_loading: true # Load model on first request
+
+    # Model configuration
+    model_path: "models/piper_voice/en_US-lessac-medium.onnx"
+    config_path: "models/piper_voice/en_US-lessac-medium.onnx.json"
+
+    # Synthesis parameters (from Piper voice config)
+    speaker_id: 0
+    length_scale: 1.0 # Speed: 1.0 = normal, 0.5 = 2x faster, 2.0 = 2x slower
+    noise_scale: 0.667 # Variability in speech
+    noise_w: 0.8 # Phoneme duration variability
+
+  # Queue management
+  queue:
+    max_size: 100
+    timeout_seconds: 10
