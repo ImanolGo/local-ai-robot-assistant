@@ -74,6 +74,9 @@ class AudioPlaybackNode(Node):
         self.declare_parameter("notification_priority", 1)
         self.declare_parameter("allow_interruption", True)  # Notifications can interrupt TTS
 
+        # Initialize notification event map BEFORE loading config
+        self.notification_event_map = {}
+
         # Load configuration
         self._load_config()
 
@@ -122,7 +125,7 @@ class AudioPlaybackNode(Node):
 
         # Notification sounds (preloaded)
         self.notification_sounds = {}
-        self.notification_event_map = {}
+        # NOTE: notification_event_map already initialized before _load_config()
 
         # ROS2 Subscribers
         if self.tts_enabled:
@@ -298,9 +301,16 @@ class AudioPlaybackNode(Node):
                     # Store sound mapping
                     if "sounds" in notif_config:
                         self.notification_event_map = notif_config["sounds"]
+                        self.get_logger().info(
+                            f"Loaded notification sound mapping: {self.notification_event_map}"
+                        )
+                    else:
+                        self.get_logger().warn("No 'sounds' key found in notification config")
 
                     if params:
                         self.set_parameters(params)
+                else:
+                    self.get_logger().warn("No 'notifications' section found in playback config")
 
             self.get_logger().info(f"Loaded configuration from {config_file}")
 
@@ -315,6 +325,8 @@ class AudioPlaybackNode(Node):
         """Find the audio output device index by name."""
         try:
             devices = sd.query_devices()
+
+            # First, try to find device by name
             for i, device in enumerate(devices):
                 if device["max_output_channels"] > 0 and self.device_name in device["name"]:
                     self.get_logger().info(f"Found speaker: {device['name']} (index: {i})")
@@ -333,15 +345,32 @@ class AudioPlaybackNode(Node):
                         self.get_logger().warn(f"Device {i} doesn't support config: {e}")
                         continue
 
+            # If device name not found, try any stereo output device
             self.get_logger().warn(
-                f"Device '{self.device_name}' not found, using default output device"
+                f"Device '{self.device_name}' not found by name, searching for any stereo output..."
             )
-            default_device = sd.query_devices(kind="output")
-            if default_device:
-                self.get_logger().info(f"Default device: {default_device['name']}")
-                return None
-            else:
-                raise RuntimeError("No output audio device available")
+            for i, device in enumerate(devices):
+                if device["max_output_channels"] >= 2:
+                    self.get_logger().info(f"Trying device {i}: {device['name']}")
+                    try:
+                        sd.check_output_settings(
+                            device=i,
+                            samplerate=self.sample_rate,
+                            channels=self.channels,
+                        )
+                        self.get_logger().info(
+                            f"✓ Found working stereo device: {device['name']} (index: {i})"
+                        )
+                        return i
+                    except sd.PortAudioError as e:
+                        self.get_logger().debug(f"Device {i} check failed: {e}")
+                        continue
+
+            # If still nothing found, raise error (don't use default)
+            raise RuntimeError(
+                f"No suitable audio output device found. "
+                f"Searched for '{self.device_name}' and any stereo output."
+            )
 
         except Exception as e:
             self.get_logger().error(f"Error finding audio device: {e}")
@@ -357,15 +386,23 @@ class AudioPlaybackNode(Node):
                 "latency": "low",
             }
 
+            # CRITICAL: Always use explicit device index (default device doesn't work)
             if self.device_index is not None:
                 stream_kwargs["device"] = (None, self.device_index)
+                self.get_logger().info(f"Using explicit device index: {self.device_index}")
+            else:
+                self.get_logger().error(
+                    "No device index found! Audio will likely fail. "
+                    "Check device detection logs above."
+                )
 
             self.stream = sd.OutputStream(**stream_kwargs)
             self.stream.start()
             self.is_streaming = True
 
             self.get_logger().info(
-                f"Audio output stream started: {self.sample_rate}Hz, {self.channels}ch"
+                f"✓ Audio output stream started: {self.sample_rate}Hz, {self.channels}ch, "
+                f"device={self.device_index}"
             )
 
         except Exception as e:

@@ -46,19 +46,15 @@ if command -v tmux &> /dev/null; then
 
     # Set up pane 1 (top right) - Events monitor
     tmux send-keys -t $SESSION:0.1 "cd $WORKSPACE_ROOT" C-m
-    tmux send-keys -t $SESSION:0.1 "source /opt/ros/humble/setup.bash" C-m
-    tmux send-keys -t $SESSION:0.1 "source install/setup.bash" C-m
-    tmux send-keys -t $SESSION:0.1 "source .venv/bin/activate" C-m
+    tmux send-keys -t $SESSION:0.1 "source /opt/ros/humble/setup.bash && source install/setup.bash && source .venv/bin/activate" C-m
     tmux send-keys -t $SESSION:0.1 "echo 'Monitoring /audio/events...'" C-m
-    tmux send-keys -t $SESSION:0.1 "sleep 2 && ros2 topic echo /audio/events" C-m
+    tmux send-keys -t $SESSION:0.1 "sleep 5 && ros2 topic echo /audio/events" C-m
 
     # Set up pane 2 (bottom right) - Transcription monitor
     tmux send-keys -t $SESSION:0.2 "cd $WORKSPACE_ROOT" C-m
-    tmux send-keys -t $SESSION:0.2 "source /opt/ros/humble/setup.bash" C-m
-    tmux send-keys -t $SESSION:0.2 "source install/setup.bash" C-m
-    tmux send-keys -t $SESSION:0.2 "source .venv/bin/activate" C-m
+    tmux send-keys -t $SESSION:0.2 "source /opt/ros/humble/setup.bash && source install/setup.bash && source .venv/bin/activate" C-m
     tmux send-keys -t $SESSION:0.2 "echo 'Monitoring /audio/transcription...'" C-m
-    tmux send-keys -t $SESSION:0.2 "sleep 2 && ros2 topic echo /audio/transcription" C-m
+    tmux send-keys -t $SESSION:0.2 "sleep 5 && ros2 topic echo /audio/transcription" C-m
 
     # Attach to the session
     echo -e "${GREEN}Attaching to tmux session...${NC}"
