@@ -12,7 +12,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-WORKSPACE_ROOT="$(dirname "$SCRIPT_DIR")"
+WORKSPACE_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 echo -e "${BLUE}Full Audio Pipeline Monitor${NC}"
 echo -e "${YELLOW}This will open 4 terminals:${NC}"

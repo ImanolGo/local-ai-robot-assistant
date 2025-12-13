@@ -143,6 +143,11 @@ class AudioCaptureNode(Node):
         self.is_in_cooldown = False
         self.wake_word_model = None
 
+        # Playback suppression (prevent speaker audio from triggering wake word)
+        self.playback_active = False
+        self.playback_suppression_extend = 2.0  # Extra 2s after state transitions
+        self.last_playback_end_time = 0.0
+
         # VAD State
         self.vad_model = None
         self.vad_iterator = None
@@ -173,6 +178,10 @@ class AudioCaptureNode(Node):
         # ROS2 Publishers (NO audio streaming, only control messages)
         if AudioEvent:
             self.event_pub = self.create_publisher(AudioEvent, "/audio/events", 10)
+            # Subscribe to events for playback coordination
+            self.event_sub = self.create_subscription(
+                AudioEvent, "/audio/events", self._event_callback, 10
+            )
         if TranscriptionResult:
             self.transcription_pub = self.create_publisher(
                 TranscriptionResult, "/audio/transcription", 10
@@ -547,18 +556,42 @@ class AudioCaptureNode(Node):
             self.get_logger().error(f"Failed to initialize Whisper model: {e}")
             self.whisper_model = None
 
+    def _event_callback(self, msg: AudioEvent):
+        """Handle audio events for playback coordination."""
+        try:
+            if msg.event_type == "playback_started":
+                self.playback_active = True
+                self.get_logger().debug("Playback started - suppressing wake word detection")
+            elif msg.event_type == "playback_complete":
+                self.playback_active = False
+                self.last_playback_end_time = time.time()
+                self.get_logger().debug(
+                    f"Playback ended - suppressing wake word for \
+                        {self.playback_suppression_extend}s"
+                )
+            elif msg.event_type in ["wake_word_detected", "speech_ended"]:
+                # These events trigger notification sounds, so suppress detection preemptively
+                self.playback_active = True
+                self.get_logger().debug(
+                    f"Event {msg.event_type} triggers notification - preemptively \
+                        suppressing wake word"
+                )
+        except Exception as e:
+            self.get_logger().error(f"Error in event callback: {e}")
+
     def _detect_wake_word(self, audio_chunk: np.ndarray):
         """Run wake word detection on audio chunk (only in IDLE state)."""
-        if self.wake_word_model is None:
+        if not self.wake_word_model:
             return
 
-        # Only detect wake word in IDLE state
-        with self.state_lock:
-            if self.state != PipelineState.IDLE:
-                return
-
         try:
-            # Measure inference time
+            # Check if playback is active or recently ended
+            current_time = time.time()
+            if self.playback_active:
+                return  # Skip detection during playback
+            if current_time - self.last_playback_end_time < self.playback_suppression_extend:
+                return  # Skip detection for brief period after playback
+
             start_time = time.time()
 
             # Predict
@@ -652,6 +685,10 @@ class AudioCaptureNode(Node):
 
                     elif "end" in speech_dict and self.speech_start_time is not None:
                         self.get_logger().info("🎤 Speech ended")
+
+                        # Immediately suppress wake word detection (notification will play)
+                        self.playback_active = True
+                        self.get_logger().debug("Suppressing wake word - notification queued")
 
                         # Publish event
                         if AudioEvent:
@@ -751,8 +788,15 @@ class AudioCaptureNode(Node):
                 self.recording_buffer = []
                 self.speech_start_time = None
                 self.recording_start_time = None
+                # Clear circular buffer to prevent old wake word audio from triggering false
+                # detections
+                self.audio_buffer.clear()
+                # Extend playback suppression (notification will play soon)
+                self.last_playback_end_time = time.time()
 
-            self.get_logger().info("Returned to IDLE state")
+            self.get_logger().info(
+                "Returned to IDLE state (audio buffer cleared, wake word suppressed)"
+            )
 
         except Exception as e:
             self.get_logger().error(f"Error in transcription: {e}")
