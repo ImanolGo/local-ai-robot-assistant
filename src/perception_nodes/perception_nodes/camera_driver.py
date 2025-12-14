@@ -9,7 +9,7 @@ License: Apache-2.0
 
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import gi
 import numpy as np
@@ -61,11 +61,50 @@ class CameraDriver(Node):
         self.pipeline_thread: Optional[threading.Thread] = None
         self.running = False
 
-        # Load configuration
-        self._load_config()
+        # Helper for getting params
+        def get_param(name, default):
+            self.declare_parameter(name, default)
+            return self.get_parameter(name).value
 
-        # Set up ROS2 publishers and parameters
-        self._setup_ros2()
+        # Configuration via ROS2 parameters (defaults match previous YAML structure notion mostly)
+        self.device_id = get_param("sensor_id", 0)  # Mapped from yaml 'sensor_id'
+        self.width = get_param("capture_width", 1920)
+        self.height = get_param("capture_height", 1080)
+        self.framerate = get_param("framerate", 30)
+        self.flip_method = get_param("flip_method", 0)
+        self.ds_config = {
+            "source_element": "nvarguscamerasrc",
+            "nvmm_memory": True,
+            "format": "NV12",
+            "buffer_pool_size": 4,
+            "max_buffers": 8,
+            "do_timestamp": True,
+        }
+
+        # ROS2 config
+        self.raw_topic = get_param("raw_image_topic", "/camera/raw")
+        self.info_topic = get_param("camera_info_topic", "/camera/camera_info")
+        self.frame_id = get_param("frame_id", "camera_link")
+        self.publish_camera_info = get_param("publish_camera_info", True)
+
+        # Monitoring
+        self.enable_fps = get_param("enable_fps_monitoring", True)
+
+        # QoS profile
+        qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+
+        self.image_pub = self.create_publisher(Image, self.raw_topic, qos)
+
+        if self.publish_camera_info:
+            self.camera_info_pub = self.create_publisher(CameraInfo, self.info_topic, qos)
+
+        if self.enable_fps:
+            self.stats_timer = self.create_timer(1.0, self._publish_stats)
 
         # Load camera calibration
         self._load_calibration()
@@ -78,117 +117,52 @@ class CameraDriver(Node):
 
         self.get_logger().info("Camera driver initialized with DeepStream acceleration")
 
-    def _load_config(self) -> None:
-        """Load camera configuration from YAML file."""
-        try:
-            config_path = "/home/imanolgo/repos/local-ai-robot-assistant/config/camera_config.yaml"
-            with open(config_path, "r") as file:
-                self.config = yaml.safe_load(file)
-
-            self.get_logger().info(f"Loaded camera configuration from {config_path}")
-
-        except Exception as e:
-            self.get_logger().error(f"Failed to load camera config: {e}")
-            # Use default configuration
-            self.config = self._get_default_config()
-
-    def _get_default_config(self) -> Dict[str, Any]:
-        """Get default camera configuration."""
-        return {
-            "camera": {
-                "device_id": 0,
-                "sensor_mode": 0,
-                "width": 1640,
-                "height": 1232,
-                "framerate": 30,
-                "flip_method": 0,
-            },
-            "deepstream": {
-                "source_element": "nvarguscamerasrc",
-                "nvmm_memory": True,
-                "format": "NV12",
-                "buffer_pool_size": 4,
-                "max_buffers": 8,
-                "do_timestamp": True,
-            },
-            "ros2": {
-                "raw_image_topic": "/camera/raw",
-                "camera_info_topic": "/camera/camera_info",
-                "frame_id": "camera_link",
-                "publish_camera_info": True,
-            },
-            "monitoring": {
-                "enable_fps_monitoring": True,
-                "enable_gpu_monitoring": True,
-                "log_performance_stats": True,
-                "stats_publish_rate": 1.0,
-            },
-        }
-
-    def _setup_ros2(self) -> None:
-        """Set up ROS2 publishers and parameters."""
-        # Declare parameters
-        self.declare_parameter("device_id", self.config["camera"]["device_id"])
-        self.declare_parameter("width", self.config["camera"]["width"])
-        self.declare_parameter("height", self.config["camera"]["height"])
-        self.declare_parameter("framerate", self.config["camera"]["framerate"])
-        self.declare_parameter("flip_method", self.config["camera"]["flip_method"])
-
-        # QoS profile for real-time performance
-        _ = self.config.get("ros2", {}).get("qos_profile", {})
-        qos = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1,
-        )
-
-        # Publishers
-        raw_topic = self.config["ros2"]["raw_image_topic"]
-        info_topic = self.config["ros2"]["camera_info_topic"]
-
-        self.image_pub = self.create_publisher(Image, raw_topic, qos)
-
-        if self.config["ros2"]["publish_camera_info"]:
-            self.camera_info_pub = self.create_publisher(CameraInfo, info_topic, qos)
-
-        # Performance monitoring timer
-        if self.config["monitoring"]["enable_fps_monitoring"]:
-            stats_rate = self.config["monitoring"]["stats_publish_rate"]
-            self.stats_timer = self.create_timer(1.0 / stats_rate, self._publish_stats)
-
     def _load_calibration(self) -> None:
         """Load camera calibration data."""
         try:
-            calib_path = self.config.get(
+            # We assume calibration file might be passed as param or standard location
+            # For now hardcoding standard location or reading a param 'calibration_file'
+            self.declare_parameter(
                 "calibration_file",
                 "/home/imanolgo/repos/local-ai-robot-assistant/config/camera_calibration.yaml",
             )
+            calib_path = self.get_parameter("calibration_file").value
 
             with open(calib_path, "r") as file:
                 calib_data = yaml.safe_load(file)
+                # Handle ros2 param wrapped yaml if that's what we read
+                if (
+                    "image_undistort_node" in calib_data
+                    and "ros__parameters" in calib_data["image_undistort_node"]
+                ):
+                    calib_data = calib_data["image_undistort_node"]["ros__parameters"]
 
             # Create CameraInfo message
             self.camera_info = CameraInfo()
-            self.camera_info.header.frame_id = self.config["ros2"]["frame_id"]
-            self.camera_info.width = calib_data["image_width"]
-            self.camera_info.height = calib_data["image_height"]
+            self.camera_info.header.frame_id = self.frame_id
+            self.camera_info.width = calib_data.get("image_width", 1920)
+            self.camera_info.height = calib_data.get("image_height", 1080)
 
             # Camera matrix (K)
-            K = np.array(calib_data["camera_matrix"]).flatten()
+            K = np.array(
+                calib_data.get("camera_matrix", {}).get("data", np.eye(3).flatten())
+            ).flatten()
             self.camera_info.k = K.tolist()
 
             # Distortion coefficients (D)
-            D = np.array(calib_data["distortion_coefficients"]).flatten()
+            D = np.array(
+                calib_data.get("distortion_coefficients", {}).get("data", np.zeros(5))
+            ).flatten()
             self.camera_info.d = D.tolist()
-            self.camera_info.distortion_model = "plumb_bob"
+            self.camera_info.distortion_model = calib_data.get("distortion_model", "plumb_bob")
 
-            # Projection matrix (P) - same as K for monocular camera with no rectification
-            P = np.zeros((3, 4))
-            P[:3, :3] = np.array(calib_data["camera_matrix"])
-            self.camera_info.p = P.flatten().tolist()
+            # Projection matrix (P)
+            P = np.array(
+                calib_data.get("projection_matrix", {}).get("data", np.zeros(12))
+            ).flatten()
+            self.camera_info.p = P.tolist()
 
-            # Rectification matrix (R) - identity for monocular camera
+            # Rectification matrix (R)
             self.camera_info.r = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
 
             self.get_logger().info(f"Loaded camera calibration from {calib_path}")
@@ -200,59 +174,21 @@ class CameraDriver(Node):
     def _setup_deepstream_pipeline(self) -> None:
         """Set up the DeepStream GStreamer pipeline."""
         try:
-            # Get camera parameters
-            cam_config = self.config["camera"]
-            ds_config = self.config["deepstream"]
-
-            # Get current parameter values
-            device_id = self.get_parameter("device_id").value
-            width = self.get_parameter("width").value
-            height = self.get_parameter("height").value
-            framerate = self.get_parameter("framerate").value
-            flip_method = self.get_parameter("flip_method").value
-
             # Create pipeline string for nvarguscamerasrc
-            # Build the source and conversion part
-            src_part = (
-                f"{ds_config['source_element']} "
-                f"sensor-id={device_id} "
-                f"sensor-mode={cam_config['sensor_mode']} "
-                f"do-timestamp={str(ds_config['do_timestamp']).lower()} "
+            pipeline_str = (
+                f"{self.ds_config['source_element']} "
+                f"sensor-id={self.device_id} "
+                f"sensor-mode=-1 "
+                f"do-timestamp={str(self.ds_config['do_timestamp']).lower()} "
                 f"! video/x-raw(memory:NVMM),"
-                f"width={width},height={height},"
-                f"framerate={framerate}/1,format={ds_config['format']} ! "
-                f"nvvidconv flip-method={flip_method} ! "
-                f"video/x-raw, width={width}, height={height}, format=BGRx ! "
+                f"width={self.width},height={self.height},"
+                f"framerate={self.framerate}/1,format={self.ds_config['format']} ! "
+                f"nvvidconv flip-method={self.flip_method} ! "
+                f"video/x-raw, width={self.width}, height={self.height}, format=BGRx ! "
                 f"videoconvert ! video/x-raw, format=BGR ! "
-            )
-
-            # Optionally insert nvdewarper (hardware-accelerated undistortion)
-            dewarper_cfg = ds_config.get("nvdewarper", {}) if isinstance(ds_config, dict) else {}
-            # In our config the nvdewarper block is at top-level, try that too
-            top_nv = self.config.get("nvdewarper", {})
-            use_dewarper = bool(
-                top_nv.get("use_nvdewarper", False) or dewarper_cfg.get("use_nvdewarper", False)
-            )
-
-            dewarper_part = ""
-            if use_dewarper:
-                # Prefer config file if provided
-                cfg_file = top_nv.get("config_file") or dewarper_cfg.get("config_file")
-                if cfg_file:
-                    dewarper_part = f"nvdewarper config-file={cfg_file} ! "
-                else:
-                    # Format inline params
-                    params = top_nv.get("params", {}) or dewarper_cfg.get("params", {})
-                    params_str = " ".join([f"{k}={v}" for k, v in params.items()])
-                    dewarper_part = f"nvdewarper {params_str} ! "
-
-            # Final appsink part
-            sink_part = (
-                f"appsink name=appsink emit-signals=true max-buffers={ds_config['max_buffers']} "
+                f"appsink name=appsink emit-signals=true max-buffers={self.ds_config['max_buffers']} "  # noqa: E501
                 f"drop=true sync=false"
             )
-
-            pipeline_str = src_part + dewarper_part + sink_part
 
             self.get_logger().info(f"Creating DeepStream pipeline: {pipeline_str}")
 
@@ -374,19 +310,19 @@ class CameraDriver(Node):
             height = structure.get_int("height")[1]
 
             # Map buffer to get data
-            map_info = buffer.map(Gst.MapFlags.READ)
-            if not map_info[0]:
+            success, map_info = buffer.map(Gst.MapFlags.READ)
+            if not success:
                 return Gst.FlowReturn.ERROR
 
             try:
                 # Convert buffer data to numpy array
-                frame_data = np.frombuffer(map_info[1], dtype=np.uint8)
+                frame_data = np.frombuffer(map_info.data, dtype=np.uint8)
                 frame = frame_data.reshape((height, width, 3))
 
                 # Create ROS2 Image message
                 header = Header()
                 header.stamp = self.get_clock().now().to_msg()
-                header.frame_id = self.config["ros2"]["frame_id"]
+                header.frame_id = self.frame_id
 
                 image_msg = self.bridge.cv2_to_imgmsg(frame, "bgr8")
                 image_msg.header = header
@@ -395,7 +331,7 @@ class CameraDriver(Node):
                 self.image_pub.publish(image_msg)
 
                 # Publish camera info if available
-                if self.camera_info and self.config["ros2"]["publish_camera_info"]:
+                if self.camera_info and self.publish_camera_info:
                     self.camera_info.header = header
                     self.camera_info_pub.publish(self.camera_info)
 
@@ -431,7 +367,7 @@ class CameraDriver(Node):
 
     def _publish_stats(self) -> None:
         """Publish performance statistics."""
-        if not self.config["monitoring"]["log_performance_stats"]:
+        if not self.enable_fps:
             return
 
         if self.processing_times:

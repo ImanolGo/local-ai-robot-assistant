@@ -1,0 +1,15 @@
+camera_driver:
+  ros__parameters:
+    sensor_id: 0
+    capture_width: 1920
+    capture_height: 1080
+    filesink: false
+    framerate: 30
+    flip_method: 0
+    exposure_time_min: 13000
+    exposure_time_max: 683709000
+    gain_min: 1.0
+    gain_max: 10.625
+    isp_digital_gain_range_min: 1
+    isp_digital_gain_range_max: 8
+    aeantibanding: 1

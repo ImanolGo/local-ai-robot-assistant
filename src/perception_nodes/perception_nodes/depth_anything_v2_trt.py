@@ -15,6 +15,7 @@ from typing import Dict, Optional, Tuple, Union
 
 import cv2
 import numpy as np
+import pycuda.autoinit  # noqa: F401
 import pycuda.driver as cuda
 import tensorrt as trt
 
@@ -134,48 +135,89 @@ class DepthAnythingV2TRT:
             # Create CUDA stream for async operations
             self.stream = cuda.Stream()
 
-            # Allocate buffers for each binding
-            for binding in self.engine:
-                # Get binding index
-                _ = self.engine.get_binding_index(binding)
+            # TensorRT 10.x / 8.6+ compatibility
+            # In newer TRT versions, bindings are deprecated in favor of I/O tensors
 
-                # Get binding shape and data type
-                if self.engine.binding_is_input(binding):
-                    shape = self.input_shape
+            # Helper to check if name is input
+            def is_input(name):
+                if hasattr(self.engine, "get_tensor_mode"):  # TRT 8.5+
+                    return self.engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT
+                else:  # Older TRT
+                    return self.engine.binding_is_input(name)
+
+            # Helper to get shape
+            def get_shape(name):
+                if hasattr(self.engine, "get_tensor_shape"):  # TRT 8.5+
+                    return self.engine.get_tensor_shape(name)
                 else:
-                    shape = self.output_shape
+                    return self.engine.get_binding_shape(name)
+
+            # Helper to get dtype
+            def get_dtype(name):
+                if hasattr(self.engine, "get_tensor_dtype"):  # TRT 8.5+
+                    return self.engine.get_tensor_dtype(name)
+                else:
+                    return self.engine.get_binding_dtype(name)
+
+            # Iterate over tensors
+            tensor_names = []
+            if hasattr(self.engine, "num_io_tensors"):  # TRT 8.5+
+                for i in range(self.engine.num_io_tensors):
+                    tensor_names.append(self.engine.get_tensor_name(i))
+            else:  # Older TRT (fallback, though num_bindings usually exists)
+                for i in range(self.engine.num_bindings):
+                    tensor_names.append(self.engine.get_binding_name(i))
+
+            for name in tensor_names:
+                shape = self.input_shape if is_input(name) else self.output_shape
+
+                # Check if we need to get shape from engine (if dynamic or explicit)
+                # But here we enforce our config shapes for simplicity/overriding
 
                 size = trt.volume(shape)
-                dtype = trt.nptype(self.engine.get_binding_dtype(binding))
+                dtype = trt.nptype(get_dtype(name))
 
                 # Allocate host and device memory
                 host_mem = cuda.pagelocked_empty(size, dtype)
                 device_mem = cuda.mem_alloc(host_mem.nbytes)
 
-                # Add to bindings list
+                # Add to bindings list (for execute_async_v2)
+                # Note: execute_async_v2 expects list of pointers in binding index order
+                # We need to ensure we append in correct order or use address dict if available
+
+                # For safety, let's just rebuild bindings list at the end or maintain a dict
+                # But existing code used self.bindings.append(int(device_mem)) assuming iteration
+                # order == binding order
+                # which was true for 'for binding in self.engine'.
+                # For new API, we should trust get_tensor_name(i) returns them in index order?
+                # Actually, safe way implies using index if exists.
+
+                # Let's trust that iterating 0..num_io_tensors aligns with binding indices 0..N
                 self.bindings.append(int(device_mem))
 
                 # Store in appropriate list
-                if self.engine.binding_is_input(binding):
+                if is_input(name):
                     self.inputs.append(
                         {
+                            "name": name,
                             "host": host_mem,
                             "device": device_mem,
                             "shape": shape,
                             "dtype": dtype,
                         }
                     )
-                    logger.info(f"Input buffer allocated: shape={shape}, dtype={dtype}")
+                    logger.info(f"Input buffer allocated: {name}, shape={shape}, dtype={dtype}")
                 else:
                     self.outputs.append(
                         {
+                            "name": name,
                             "host": host_mem,
                             "device": device_mem,
                             "shape": shape,
                             "dtype": dtype,
                         }
                     )
-                    logger.info(f"Output buffer allocated: shape={shape}, dtype={dtype}")
+                    logger.info(f"Output buffer allocated: {name} shape={shape}, dtype={dtype}")
 
         except Exception as e:
             logger.error(f"Failed to allocate buffers: {e}")

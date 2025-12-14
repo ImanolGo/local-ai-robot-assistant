@@ -121,6 +121,15 @@ def generate_launch_description():
         output="screen",
     )
 
+    # Staggered launch to prevent OOM / CPU spike
+    from launch.actions import TimerAction
+
+    object_detector_delayed = TimerAction(period=5.0, actions=[object_detector_node])
+
+    depth_estimator_delayed = TimerAction(period=10.0, actions=[depth_estimator_node])
+
+    pointcloud_generator_delayed = TimerAction(period=12.0, actions=[pointcloud_generator_node])
+
     return LaunchDescription(
         [
             debug_arg,
@@ -128,8 +137,8 @@ def generate_launch_description():
             calibration_config_arg,
             camera_driver_node,
             undistort_node,
-            object_detector_node,
-            depth_estimator_node,
-            pointcloud_generator_node,
+            object_detector_delayed,
+            depth_estimator_delayed,
+            pointcloud_generator_delayed,
         ]
     )

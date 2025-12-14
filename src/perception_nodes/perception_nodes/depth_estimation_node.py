@@ -15,6 +15,7 @@ import rclpy
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Point32, PolygonStamped
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import Header
 
@@ -104,13 +105,21 @@ class DepthEstimationNode(Node):
         if self.publish_obstacles:
             self.obstacles_pub = self.create_publisher(PolygonStamped, "/perception/obstacles", 10)
 
+        # QoS profile for sensor data (Best Effort)
+        qos_sensor = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+
         # Subscribers
         self.image_sub = self.create_subscription(
-            Image, "/camera/image_undistorted", self.image_callback, 10
+            Image, "/camera/image_undistorted", self.image_callback, qos_sensor
         )
 
         self.camera_info_sub = self.create_subscription(
-            CameraInfo, "/camera/camera_info", self.camera_info_callback, 10
+            CameraInfo, "/camera/camera_info", self.camera_info_callback, qos_sensor
         )
 
         # Performance reporting timer

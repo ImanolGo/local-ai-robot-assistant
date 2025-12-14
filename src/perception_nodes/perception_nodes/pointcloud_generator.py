@@ -21,6 +21,7 @@ import numpy as np
 import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2, PointField
 
 
@@ -53,14 +54,45 @@ class PointCloudGenerator(Node):
         self.cy: Optional[float] = None
         self.camera_frame = "camera_link"
 
+        # QoS profile for sensor data
+        qos_sensor = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+
         # Create camera info subscriber
         self.camera_info_sub = self.create_subscription(
-            CameraInfo, "/camera_info", self.camera_info_callback, 10
+            CameraInfo, "/camera_info", self.camera_info_callback, qos_sensor
         )
 
         # Create synchronized subscribers for depth and RGB
-        self.depth_sub = message_filters.Subscriber(self, Image, "/perception/depth")
-        self.rgb_sub = message_filters.Subscriber(self, Image, "/camera/undistorted")
+        self.depth_sub = message_filters.Subscriber(
+            self,
+            Image,
+            "/perception/depth",  # Depth might be reliable if published by depth node?
+            # Actually depth node publishes with default (Reliable) in my previous check of
+            # depth_estimation_node.py (line 94: depth_pub ... 10)
+            # Wait, create_publisher(..., 10) defaults to Reliable.
+            # But RGB comes from camera which is Best Effort.
+            # Syncing Reliable and Best Effort might be tricky but message_filters usually
+            #  handles queueing.
+            # However, if we want strict sync and /camera/undistorted is BEST_EFFORT,
+            # we should subscribe to it as BEST_EFFORT.
+        )
+        # Re-checking depth_estimation_node.py:
+        # self.depth_pub = self.create_publisher(Image, "/perception/depth", 10) -> Reliable.
+        # camera_driver/undistort -> /camera/undistorted -> Best Effort.
+
+        # So we need mixed QoS.
+
+        self.depth_sub = message_filters.Subscriber(
+            self, Image, "/perception/depth"
+        )  # Reliable default is fine
+        self.rgb_sub = message_filters.Subscriber(
+            self, Image, "/camera/undistorted", qos_profile=qos_sensor
+        )
 
         # Synchronize depth and RGB messages
         self.ts = message_filters.ApproximateTimeSynchronizer(

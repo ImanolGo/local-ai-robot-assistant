@@ -23,6 +23,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DepthImage.msg"
   "msg/MultimodalQuery.msg"
   "msg/MultimodalResponse.msg"
+  "msg/PerceptionEvent.msg"
   "srv/EmergencyStop.srv"
   "srv/SetMode.srv"
   "srv/CognitiveQuery.srv"

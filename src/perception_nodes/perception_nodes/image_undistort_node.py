@@ -8,7 +8,7 @@ License: Apache-2.0
 """
 
 import time
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -65,70 +65,31 @@ class ImageUndistortNode(Node):
         self.processing_times = []
         self.gpu_memory_usage = []
 
-        # Load configuration
-        self._load_config()
+        # Helper for getting params
+        def get_param(name, default):
+            self.declare_parameter(name, default)
+            return self.get_parameter(name).value
 
-        # Set up ROS2 subscribers and publishers
-        self._setup_ros2()
+        # Configuration via ROS2 parameters
+        self.use_gpu = get_param("use_gpu", True)
+        self.interpolation_method = get_param("interpolation_method", "linear")
+        self.alpha = get_param("alpha", 1.0)
 
-        # Load camera calibration and setup undistortion
-        self._setup_undistortion()
+        # ROS2 config
+        self.raw_topic = get_param("raw_image_topic", "/camera/raw")
+        self.undistorted_topic = get_param("undistorted_image_topic", "/camera/undistorted")
+        self.frame_id = get_param("frame_id", "camera_link")
 
-        self.get_logger().info(
-            f"Image undistortion node initialized "
-            f"({'GPU' if self.use_gpu else 'CPU'} acceleration)"
-        )
+        # Monitoring
+        self.enable_fps = get_param("enable_fps_monitoring", True)
+        self.enable_gpu_mon = get_param("enable_gpu_monitoring", True)
+        self.log_stats = get_param("log_performance_stats", True)
 
-    def _load_config(self) -> None:
-        """Load camera configuration from YAML file."""
-        try:
-            config_path = "/home/imanolgo/repos/local-ai-robot-assistant/config/camera_config.yaml"
-            with open(config_path, "r") as file:
-                self.config = yaml.safe_load(file)
-
-            self.get_logger().info(f"Loaded camera configuration from {config_path}")
-
-        except Exception as e:
-            self.get_logger().error(f"Failed to load camera config: {e}")
-            # Use default configuration
-            self.config = self._get_default_config()
-
-    def _get_default_config(self) -> Dict[str, Any]:
-        """Get default configuration."""
-        return {
-            "ros2": {
-                "raw_image_topic": "/camera/raw",
-                "undistorted_image_topic": "/camera/undistorted",
-                "frame_id": "camera_link",
-            },
-            "undistortion": {
-                "use_gpu_acceleration": True,
-                "interpolation_method": "linear",
-                "border_mode": "constant",
-                "border_value": [0, 0, 0],
-                "cache_maps": True,
-                "use_optimized_camera_matrix": True,
-                "alpha": 1.0,
-            },
-            "monitoring": {
-                "enable_fps_monitoring": True,
-                "enable_gpu_monitoring": True,
-                "log_performance_stats": True,
-                "stats_publish_rate": 1.0,
-            },
-            "calibration_file": (
-                "/home/imanolgo/repos/local-ai-robot-assistant/" "config/camera_calibration.yaml"
-            ),
-        }
-
-    def _setup_ros2(self) -> None:
-        """Set up ROS2 subscribers and publishers."""
-        # Declare parameters
-        self.declare_parameter("use_gpu", self.config["undistortion"]["use_gpu_acceleration"])
-        self.declare_parameter(
-            "interpolation_method", self.config["undistortion"]["interpolation_method"]
-        )
-        self.declare_parameter("alpha", self.config["undistortion"]["alpha"])
+        # Internal settings
+        self.cache_maps = True
+        self.use_optimized_matrix = True
+        self.border_mode = "constant"
+        self.border_value = [0, 0, 0]
 
         # QoS profile for real-time performance
         qos = QoSProfile(
@@ -139,38 +100,66 @@ class ImageUndistortNode(Node):
         )
 
         # Subscriber
-        raw_topic = self.config["ros2"]["raw_image_topic"]
-        self.image_sub = self.create_subscription(Image, raw_topic, self._image_callback, qos)
+        self.image_sub = self.create_subscription(Image, self.raw_topic, self._image_callback, qos)
 
         # Publisher
-        undistorted_topic = self.config["ros2"]["undistorted_image_topic"]
-        self.image_pub = self.create_publisher(Image, undistorted_topic, qos)
+        self.image_pub = self.create_publisher(Image, self.undistorted_topic, qos)
 
         # Performance monitoring timer
-        if self.config["monitoring"]["enable_fps_monitoring"]:
-            stats_rate = self.config["monitoring"]["stats_publish_rate"]
-            self.stats_timer = self.create_timer(1.0 / stats_rate, self._publish_stats)
+        if self.enable_fps:
+            self.stats_timer = self.create_timer(1.0, self._publish_stats)
+
+        # Load camera calibration and setup undistortion
+        self._setup_undistortion()
+
+        self.get_logger().info(
+            f"Image undistortion node initialized "
+            f"({'GPU' if self.use_gpu_active else 'CPU'} acceleration)"
+        )
+
+    # Removed _load_config and _get_default_config as they are replaced by params
 
     def _setup_undistortion(self) -> None:
         """Load calibration data and setup undistortion maps."""
         try:
-            # Load calibration
-            calib_path = self.config.get("calibration_file")
-            if not calib_path:
-                raise ValueError("Calibration file path not specified")
+            self.declare_parameter(
+                "calibration_file",
+                "/home/imanolgo/repos/local-ai-robot-assistant/config/camera_calibration.yaml",
+            )
+            calib_path = self.get_parameter("calibration_file").value
 
             with open(calib_path, "r") as file:
                 calib_data = yaml.safe_load(file)
+                # Handle ros2 param wrapped yaml if that's what we read
+                if (
+                    "image_undistort_node" in calib_data
+                    and "ros__parameters" in calib_data["image_undistort_node"]
+                ):
+                    calib_data = calib_data["image_undistort_node"]["ros__parameters"]
 
             # Extract calibration parameters
-            self.camera_matrix = np.array(calib_data["camera_matrix"], dtype=np.float32)
-            self.dist_coeffs = np.array(
-                calib_data["distortion_coefficients"], dtype=np.float32
-            ).flatten()
+            # Handle list or flat array
+            # Camera Matrix
+            cm_data = calib_data.get("camera_matrix", {})
+            if isinstance(cm_data, list):
+                self.camera_matrix = np.array(cm_data, dtype=np.float32)
+            else:
+                self.camera_matrix = np.array(
+                    cm_data.get("data", np.eye(3).flatten()), dtype=np.float32
+                ).reshape(3, 3)
+
+            # Distortion Coefficients
+            dc_data = calib_data.get("distortion_coefficients", {})
+            if isinstance(dc_data, list):
+                self.dist_coeffs = np.array(dc_data, dtype=np.float32).flatten()
+            else:
+                self.dist_coeffs = np.array(
+                    dc_data.get("data", np.zeros(5)), dtype=np.float32
+                ).flatten()
 
             # Image dimensions
-            self.image_width = calib_data["image_width"]
-            self.image_height = calib_data["image_height"]
+            self.image_width = calib_data.get("image_width", 1920)
+            self.image_height = calib_data.get("image_height", 1080)
 
             self.get_logger().info(f"Loaded calibration from {calib_path}")
             self.get_logger().info(f"Image size: {self.image_width}x{self.image_height}")
@@ -185,29 +174,26 @@ class ImageUndistortNode(Node):
     def _setup_undistortion_parameters(self) -> None:
         """Setup undistortion parameters and maps."""
         try:
-            alpha = self.get_parameter("alpha").value
-
             # Get optimal new camera matrix
-            if self.config["undistortion"]["use_optimized_camera_matrix"]:
+            if self.use_optimized_matrix:
                 self.new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(
                     self.camera_matrix,
                     self.dist_coeffs,
                     (self.image_width, self.image_height),
-                    alpha,
+                    self.alpha,
                     (self.image_width, self.image_height),
                 )
-                self.get_logger().info(f"Using optimized camera matrix with alpha={alpha}")
+                self.get_logger().info(f"Using optimized camera matrix with alpha={self.alpha}")
             else:
                 self.new_camera_matrix = self.camera_matrix
 
             # Setup GPU acceleration if available and requested
-            use_gpu_param = self.get_parameter("use_gpu").value
-            self.use_gpu = GPU_AVAILABLE and use_gpu_param
+            self.use_gpu_active = GPU_AVAILABLE and self.use_gpu
 
-            if self.use_gpu:
+            if self.use_gpu_active:
                 self._setup_gpu_undistortion()
             else:
-                if use_gpu_param and not GPU_AVAILABLE:
+                if self.use_gpu and not GPU_AVAILABLE:
                     self.get_logger().warning(
                         "GPU acceleration requested but OpenCV CUDA not available, using CPU"
                     )
@@ -247,13 +233,13 @@ class ImageUndistortNode(Node):
 
         except Exception as e:
             self.get_logger().error(f"Failed to setup GPU undistortion: {e}")
-            self.use_gpu = False
+            self.use_gpu_active = False
             self._setup_cpu_undistortion()
 
     def _setup_cpu_undistortion(self) -> None:
         """Setup CPU undistortion maps."""
         try:
-            if self.config["undistortion"]["cache_maps"]:
+            if self.cache_maps:
                 # Pre-compute undistortion maps for better performance
                 self.map1, self.map2 = cv2.initUndistortRectifyMap(
                     self.camera_matrix,
@@ -273,7 +259,7 @@ class ImageUndistortNode(Node):
 
     def _get_interpolation_method(self) -> int:
         """Get OpenCV interpolation method from config."""
-        method_str = self.get_parameter("interpolation_method").value
+        method_str = self.interpolation_method
         method_map = {
             "nearest": cv2.INTER_NEAREST,
             "linear": cv2.INTER_LINEAR,
@@ -284,14 +270,8 @@ class ImageUndistortNode(Node):
 
     def _get_border_mode(self) -> int:
         """Get OpenCV border mode from config."""
-        border_str = self.config["undistortion"]["border_mode"]
-        border_map = {
-            "constant": cv2.BORDER_CONSTANT,
-            "reflect": cv2.BORDER_REFLECT,
-            "wrap": cv2.BORDER_WRAP,
-            "reflect_101": cv2.BORDER_REFLECT_101,
-        }
-        return border_map.get(border_str, cv2.BORDER_CONSTANT)
+        # Using fixed default for now or expose as param if needed
+        return cv2.BORDER_CONSTANT
 
     def _image_callback(self, msg: Image) -> None:
         """Process incoming image and publish undistorted result."""
@@ -302,7 +282,7 @@ class ImageUndistortNode(Node):
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
 
             # Apply undistortion
-            if self.use_gpu:
+            if self.use_gpu_active:
                 undistorted_image = self._undistort_gpu(cv_image)
             else:
                 undistorted_image = self._undistort_cpu(cv_image)
@@ -332,16 +312,16 @@ class ImageUndistortNode(Node):
                 self.gpu_dst,
                 self.gpu_map1,
                 self.gpu_map2,
-                self._get_interpolation_method(),
-                self._get_border_mode(),
-                self.config["undistortion"]["border_value"],
+                interpolation=self._get_interpolation_method(),
+                borderMode=self._get_border_mode(),
+                borderValue=self.border_value,
             )
 
             # Download result from GPU
             result = self.gpu_dst.download()
 
             # Monitor GPU memory usage
-            if self.config["monitoring"]["enable_gpu_monitoring"]:
+            if self.enable_gpu_mon:
                 gpu_info = cv2_cuda.DeviceInfo().totalMemory()
                 self.gpu_memory_usage.append(gpu_info)
 
@@ -364,15 +344,15 @@ class ImageUndistortNode(Node):
                 self.get_logger().warning("Invalid calibration data, returning original image")
                 return image
 
-            if self.config["undistortion"]["cache_maps"] and self.map1 is not None:
+            if self.cache_maps and self.map1 is not None:
                 # Use cached maps for better performance
                 undistorted = cv2.remap(
                     image,
                     self.map1,
                     self.map2,
                     self._get_interpolation_method(),
-                    self._get_border_mode(),
-                    self.config["undistortion"]["border_value"],
+                    borderMode=self._get_border_mode(),
+                    borderValue=self.border_value,
                 )
             else:
                 # Direct undistortion (slower but uses less memory)
@@ -410,7 +390,7 @@ class ImageUndistortNode(Node):
 
     def _publish_stats(self) -> None:
         """Publish performance statistics."""
-        if not self.config["monitoring"]["log_performance_stats"]:
+        if not self.log_stats:
             return
 
         if self.processing_times:
@@ -421,10 +401,10 @@ class ImageUndistortNode(Node):
                 f"Undistortion Performance - FPS: {self.fps:.1f}, "
                 f"Avg Processing: {avg_processing_time*1000:.1f}ms, "
                 f"Max Processing: {max_processing_time*1000:.1f}ms, "
-                f"Mode: {'GPU' if self.use_gpu else 'CPU'}"
+                f"Mode: {'GPU' if self.use_gpu_active else 'CPU'}"
             )
 
-            if self.use_gpu and self.gpu_memory_usage:
+            if self.use_gpu_active and self.gpu_memory_usage:
                 avg_gpu_memory = np.mean(self.gpu_memory_usage[-10:])  # Last 10 measurements
                 stats_msg += f", GPU Memory: {avg_gpu_memory/(1024**3):.1f}GB"
 
