@@ -115,7 +115,7 @@ class DepthEstimationNode(Node):
 
         # Subscribers
         self.image_sub = self.create_subscription(
-            Image, "/camera/image_undistorted", self.image_callback, qos_sensor
+            Image, "/camera/undistorted", self.image_callback, qos_sensor
         )
 
         self.camera_info_sub = self.create_subscription(

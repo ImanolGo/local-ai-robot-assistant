@@ -100,6 +100,21 @@ class UARTIMUNode(Node):
         self.get_logger().info(f"UART IMU Node initialized on {self.uart_config.port}")
         self.get_logger().info(f"IMU query rate: {self.imu_config.query_rate} Hz")
 
+        # Enable continuous feedback at startup
+        self._enable_continuous_feedback()
+
+    def _enable_continuous_feedback(self):
+        """Enable continuous feedback mode and disable echo."""
+        self.get_logger().info('Disabling serial echo ({"T": 143, "cmd": 0})...')
+        self._send_command({"T": 143, "cmd": 0})
+
+        self.get_logger().info('Enabling continuous feedback ({"T": 131, "cmd": 1})...')
+        command = {"T": 131, "cmd": 1}
+        if self._send_command(command):
+            self.get_logger().info("Continuous feedback enabled")
+        else:
+            self.get_logger().warn("Failed to enable continuous feedback")
+
     def _declare_parameters(self):
         """Declare ROS2 parameters with default values."""
         # UART parameters
@@ -120,6 +135,40 @@ class UARTIMUNode(Node):
 
     def _load_config(self):
         """Load configuration from parameters."""
+        try:
+            # Try to find config file in common locations
+            import os
+
+            from robot_interfaces.config_utils import ConfigError, ROS2ConfigLoader
+
+            workspace_root = os.path.expanduser("~/repos/local-ai-robot-assistant")
+            config_path = os.path.join(workspace_root, "config")
+
+            loader = ROS2ConfigLoader(self, config_dir=config_path)
+
+            try:
+                # Load and declare parameters from config file
+                _ = loader.load_and_declare_parameters(
+                    "uart_config.yaml",
+                    parameter_mapping={
+                        "uart_config.port": "uart.port",
+                        "uart_config.baudrate": "uart.baudrate",
+                        "uart_config.imu_node.query_rate": "imu.query_rate",
+                        # Add other mappings as needed or use defaults
+                    },
+                )
+                self.get_logger().info("Loaded configuration from uart_config.yaml")
+            except ConfigError as e:
+                self.get_logger().warn(
+                    f"Could not load uart_config.yaml: {e}. Using defaults/launch params."
+                )
+
+        except ImportError:
+            self.get_logger().warn(
+                "robot_interfaces.config_utils not found. Using defaults/launch params."
+            )
+
+        # Load from parameters (which may have been set by launch file or ConfigLoader)
         self.uart_config = UARTConfig(
             port=self.get_parameter("uart.port").get_parameter_value().string_value,
             baudrate=self.get_parameter("uart.baudrate").get_parameter_value().integer_value,
@@ -195,7 +244,14 @@ class UARTIMUNode(Node):
                     if line:
                         try:
                             data = json.loads(line)
-                            self.get_logger().debug(f"Received IMU data: {data}")
+                            # Ignore echoes
+                            if "T" in data and data["T"] in [
+                                self.imu_config.query_command,
+                                131,
+                                143,
+                            ]:
+                                return None
+                            self.get_logger().debug(f"Received data: {data}")
                             return data
                         except json.JSONDecodeError:
                             self.get_logger().debug(f"Invalid JSON received: {line}")
@@ -212,47 +268,39 @@ class UARTIMUNode(Node):
             return True
 
         try:
-            # Check for required fields (based on Wave Rover protocol)
-            required_fields = [
-                "roll",
-                "pitch",
-                "yaw",
-                "AccX",
-                "AccY",
-                "AccZ",
-                "GyroX",
-                "GyroY",
-                "GyroZ",
-            ]
+            if "T" not in data:
+                return False
 
-            for field in required_fields:
+            cmd_type = data["T"]
+
+            # Support both Chassis Feedback (1001) and IMU Data (1002/126)
+            if cmd_type == 1001:
+                # Chassis feedback only has roll, pitch, yaw
+                required = ["r", "p", "y"]
+            elif cmd_type in [126, 1002]:
+                # IMU raw data should have more
+                required = ["r", "p", "y", "ax", "ay", "az", "gx", "gy", "gz"]
+            else:
+                return False
+
+            for field in required:
                 if field not in data:
-                    self.get_logger().debug(f"Missing required field: {field}")
                     return False
-
-                value = data[field]
-                if not isinstance(value, (int, float)):
-                    self.get_logger().debug(f"Invalid data type for {field}: {type(value)}")
+                if not isinstance(data[field], (int, float)):
                     return False
 
             # Validate angle ranges
-            for angle_field in ["roll", "pitch", "yaw"]:
+            for angle_field in ["r", "p", "y"]:
                 angle = data[angle_field]
                 if not (self.imu_config.angle_range[0] <= angle <= self.imu_config.angle_range[1]):
                     self.get_logger().debug(f"Angle out of range {angle_field}: {angle}")
-                    return False
-
-            # Validate acceleration values
-            for acc_field in ["AccX", "AccY", "AccZ"]:
-                acc = data[acc_field]
-                if abs(acc) > self.imu_config.acceleration_limit:
-                    self.get_logger().debug(f"Acceleration out of range {acc_field}: {acc}")
                     return False
 
             return True
 
         except Exception as e:
             self.get_logger().debug(f"Data validation error: {e}")
+            self.get_logger().warn(f"Validation failed for data: {data}")
             return False
 
     def _degrees_to_radians(self, degrees: float) -> float:
@@ -262,20 +310,13 @@ class UARTIMUNode(Node):
     def _euler_to_quaternion(self, roll: float, pitch: float, yaw: float) -> Quaternion:
         """Convert Euler angles (in degrees) to quaternion.
 
-        Args:
-            roll: Roll angle in degrees
-            pitch: Pitch angle in degrees
-            yaw: Yaw angle in degrees
-
-        Returns:
-            geometry_msgs/Quaternion
+        Uses the standard ZYX (aerospace) convention, matching the
+        uart_motor_controller implementation.
         """
-        # Convert to radians
         roll_rad = self._degrees_to_radians(roll)
         pitch_rad = self._degrees_to_radians(pitch)
         yaw_rad = self._degrees_to_radians(yaw)
 
-        # Compute quaternion
         cy = math.cos(yaw_rad * 0.5)
         sy = math.sin(yaw_rad * 0.5)
         cp = math.cos(pitch_rad * 0.5)
@@ -284,27 +325,22 @@ class UARTIMUNode(Node):
         sr = math.sin(roll_rad * 0.5)
 
         q = Quaternion()
-        q.w = cy * cp * cr + sy * sp * sr
-        q.x = cy * cp * sr - sy * sp * cr
-        q.y = sy * cp * sr + cy * sp * cr
-        q.z = sy * cp * cr - cy * sp * sr
+        q.w = cr * cp * cy + sr * sp * sy
+        q.x = sr * cp * cy - cr * sp * sy
+        q.y = cr * sp * cy + sr * cp * sy
+        q.z = cr * cp * sy - sr * sp * cy
 
         return q
 
     def _create_imu_message(self, data: Dict[str, Any]) -> Imu:
         """Create ROS2 IMU message from parsed data."""
         imu_msg = Imu()
-
-        # Header
         imu_msg.header = Header()
         imu_msg.header.stamp = self.get_clock().now().to_msg()
         imu_msg.header.frame_id = self.frame_id
 
-        # Orientation (quaternion from Euler angles)
-        imu_msg.orientation = self._euler_to_quaternion(data["roll"], data["pitch"], data["yaw"])
-
-        # Orientation covariance (diagonal matrix with moderate uncertainty)
-        # Since we're using Euler angles, there's some uncertainty
+        # Orientation (present in both types)
+        imu_msg.orientation = self._euler_to_quaternion(data["r"], data["p"], data["y"])
         imu_msg.orientation_covariance = [
             0.01,
             0.0,
@@ -317,82 +353,80 @@ class UARTIMUNode(Node):
             0.01,
         ]
 
-        # Angular velocity (rad/s)
-        imu_msg.angular_velocity.x = self._degrees_to_radians(data["GyroX"])
-        imu_msg.angular_velocity.y = self._degrees_to_radians(data["GyroY"])
-        imu_msg.angular_velocity.z = self._degrees_to_radians(data["GyroZ"])
+        # Handle angular velocity
+        if "gx" in data and "gy" in data and "gz" in data:
+            imu_msg.angular_velocity.x = self._degrees_to_radians(data["gx"])
+            imu_msg.angular_velocity.y = self._degrees_to_radians(data["gy"])
+            imu_msg.angular_velocity.z = self._degrees_to_radians(data["gz"])
+            imu_msg.angular_velocity_covariance = [
+                0.001,
+                0.0,
+                0.0,
+                0.0,
+                0.001,
+                0.0,
+                0.0,
+                0.0,
+                0.001,
+            ]
+        else:
+            # Set high covariance (or -1.0 according to some conventions,
+            # but robot_localization prefers large positive values if it should ignore it)
+            # Actually, standard is to set the first element to -1 if not available.
+            imu_msg.angular_velocity_covariance[0] = -1.0
 
-        # Angular velocity covariance
-        imu_msg.angular_velocity_covariance = [
-            0.001,
-            0.0,
-            0.0,
-            0.0,
-            0.001,
-            0.0,
-            0.0,
-            0.0,
-            0.001,
-        ]
-
-        # Linear acceleration (m/s²)
-        # Note: Wave Rover provides acceleration in g's, convert to m/s²
-        g = 9.80665  # Standard gravity
-        imu_msg.linear_acceleration.x = data["AccX"] * g
-        imu_msg.linear_acceleration.y = data["AccY"] * g
-        imu_msg.linear_acceleration.z = data["AccZ"] * g
-
-        # Linear acceleration covariance
-        imu_msg.linear_acceleration_covariance = [
-            0.01,
-            0.0,
-            0.0,
-            0.0,
-            0.01,
-            0.0,
-            0.0,
-            0.0,
-            0.01,
-        ]
+        # Handle linear acceleration
+        if "ax" in data and "ay" in data and "az" in data:
+            # Wave Rover sends mg
+            g_to_ms2 = 9.80665 / 1000.0
+            imu_msg.linear_acceleration.x = data["ax"] * g_to_ms2
+            imu_msg.linear_acceleration.y = data["ay"] * g_to_ms2
+            imu_msg.linear_acceleration.z = data["az"] * g_to_ms2
+            imu_msg.linear_acceleration_covariance = [
+                0.01,
+                0.0,
+                0.0,
+                0.0,
+                0.01,
+                0.0,
+                0.0,
+                0.0,
+                0.01,
+            ]
+        else:
+            imu_msg.linear_acceleration_covariance[0] = -1.0
 
         return imu_msg
 
     def _imu_timer_callback(self):
         """Periodic IMU data query."""
-        # Send IMU query command
-        command = {"T": self.imu_config.query_command}
-        success = self._send_command(command)
-
-        if not success:
-            self.get_logger().debug("Failed to send IMU query")
+        self._send_command({"T": self.imu_config.query_command})
 
     def _process_data_callback(self):
-        """Process received data and publish IMU messages."""
-        # Try to read response
-        data = self._read_response()
+        """Process all available data from UART and publish IMU messages."""
+        while self._serial and self._serial.is_open and self._serial.in_waiting > 0:
+            data = self._read_response()
+            if data is None:
+                continue
 
-        if data is None:
-            return
+            if not self._validate_imu_data(data):
+                if self._imu_sequence % 50 == 0:
+                    self.get_logger().info(f"Ignoring message of type {data.get('T')}")
+                continue
 
-        # Validate data
-        if not self._validate_imu_data(data):
-            self.get_logger().debug("Invalid IMU data received")
-            return
+            try:
+                imu_msg = self._create_imu_message(data)
+                self.imu_pub.publish(imu_msg)
 
-        try:
-            # Create and publish IMU message
-            imu_msg = self._create_imu_message(data)
-            self.imu_pub.publish(imu_msg)
+                with self._data_lock:
+                    self._last_imu_data = data
+                    self._imu_sequence += 1
 
-            # Store last valid data
-            with self._data_lock:
-                self._last_imu_data = data
-                self._imu_sequence += 1
+                if self._imu_sequence % 100 == 0:
+                    self.get_logger().info(f"Published {self._imu_sequence} IMU messages")
 
-            self.get_logger().debug(f"Published IMU data #{self._imu_sequence}")
-
-        except Exception as e:
-            self.get_logger().error(f"Error processing IMU data: {e}")
+            except Exception as e:
+                self.get_logger().error(f"Error processing IMU data: {e}")
 
     def destroy_node(self):
         """Cleanup on node shutdown."""

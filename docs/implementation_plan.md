@@ -677,18 +677,19 @@ string language               # Detected language (e.g., "en")
 ### 6.1 Robot Localization Setup (EKF Fusion)
 - [ ] Install `robot_localization` package
 - [ ] Create `config/localization_config.yaml`
-- [ ] Configure EKF parameters:
-  - [ ] IMU sensor configuration (50 Hz input)
-  - [ ] Visual odometry configuration (10-30 Hz)
-  - [ ] Dead reckoning configuration (20 Hz, high covariance)
-  - [ ] Process noise and measurement noise
-- [ ] Set up sensor inputs:
-  - `/imu/data` (orientation, angular velocity)
-  - `/rtabmap/odom` (visual odometry)
-  - `/odom_raw` (dead reckoning backup)
-- [ ] Test odometry fusion with simulated data
-- [ ] Tune EKF parameters for smooth output
-- [ ] Create launch file (`launch/localization_launch.py`)
+- [x] Configure EKF parameters:
+  - [x] IMU sensor configuration (50 Hz input)
+  - [x] Visual odometry configuration (10-30 Hz)
+  - [x] Dead reckoning configuration (20 Hz, high covariance)
+  - [x] Process noise and measurement noise
+- [x] Set up sensor inputs:
+  - [x] `/imu/data` (orientation, angular velocity)
+  - [x] `/rtabmap/odom` (visual odometry)
+  - [x] `/odom_raw` (dead reckoning backup)
+- [x] Test odometry fusion
+- [x] Tune EKF parameters for smooth output
+- [x] Create launch file (`launch/localization_launch.py`)
+- [x] Create monitoring script (`scripts/monitoring/monitor_localization.sh`)
 
 **Tests Required**:
 ```python

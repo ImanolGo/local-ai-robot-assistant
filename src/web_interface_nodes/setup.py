@@ -1,3 +1,6 @@
+import os
+from glob import glob
+
 from setuptools import find_packages, setup
 
 package_name = "web_interface_nodes"
@@ -9,6 +12,7 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
+        (os.path.join("share", package_name, "launch"), glob("launch/*.py")),
         # Static files and templates will be added when web interface is implemented
         # ("share/" + package_name + "/static", ["web_interface_nodes/static/*"]),
         # ("share/" + package_name + "/templates", ["web_interface_nodes/templates/*"]),
@@ -22,7 +26,8 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "web_server = web_interface_nodes.web_server:main",
+            # TODO: Uncomment when web_server module is implemented
+            # "web_server = web_interface_nodes.web_server:main",
         ],
     },
 )

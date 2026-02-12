@@ -1,8 +1,8 @@
 # Implementation Status
 
-**Last Updated**: 7 Dec 2025
-**Current Phase**: Phase 5 (Audio Detection Pipeline - Self-Contained Pipeline)
-**Overall Progress**: 72%
+**Last Updated**: 12 Feb 2026
+**Current Phase**: Phase 7/8 (Cognitive Core + Behavioral Architecture)
+**Overall Progress**: 78%
 
 ## Legend
 - ✅ Complete
@@ -460,37 +460,72 @@
 
 ---
 
-## Phase 7: Cognitive Core (Ollama + Moondream) (0% Complete ⏳)
+## Phase 7: Cognitive Core (Ollama + Moondream) (75% Complete 🚧)
 
 ### 7.1 Ollama Client Node
-- ⏳ Implement `cognitive_client_node.py`
-- ⏳ Implement HTTP client for Ollama API
-- ⏳ Construct structured prompts for Moondream
+
+- ✅ Implement `cognitive_client_node.py` (Ollama HTTP bridge)
+- ✅ Implement HTTP client with persistent sessions (keep-alive)
+- ✅ Construct structured prompts for Moondream
+- ✅ Base64 image encoding for vision queries
+- ✅ Health check timer for Ollama server monitoring
+- ✅ Graceful error handling (timeout, connection failure)
+- ✅ Publish CognitiveCommand from parsed intents
+- ✅ Publish MultimodalResponse with timing metrics
+- ✅ TTS fallback for conversational (non-JSON) responses
 
 ### 7.2 Intent Parsing & Validation
-- ⏳ Implement `json_parser.py`
-- ⏳ Define Intent Message
+
+- ✅ Implement `parse_json_intent()` function
+- ✅ Handle markdown code fences from VLM output
+- ✅ Validate required intent keys (action, target, explanation)
+- ✅ Unit tests (8 test cases passing)
 
 ### 7.3 Visual Verification Logic
+
 - ⏳ Implement verification prompts
 - ⏳ Test verification accuracy with Moondream
+- ⏳ Implement retry with rotation (ensemble verification)
+
+### 7.4 Bug Fixes Applied
+
+- ✅ Fixed broken `from src.robot_interfaces.msg` import (was preventing build)
+- ✅ Fixed `async def` callback anti-pattern (ROS2 doesn't support async callbacks)
+- ✅ Replaced Gemma 3n model (would OOM on 8GB) with Ollama/Moondream HTTP client
+- ✅ Updated cognitive_launch.py to reference new node
+- ✅ Updated setup.py entry points to match actual modules
 
 ---
 
-## Phase 8: Behavioral Architecture (0% Complete ⏳)
+## Phase 8: Behavioral Architecture (40% Complete 🚧)
 
-### 8.1 BehaviorTree.CPP Setup
+### 8.1 Command Router & Cognitive Bridge (100% Complete ✅)
+
+- ✅ Implement `command_router_node.py`
+- ✅ Simple command regex matching (stop, forward, back, turn, describe, home)
+- ✅ Complex command forwarding to cognitive core via MultimodalQuery
+- ✅ Direct motor control for simple commands via /cmd_vel
+- ✅ Auto-stop safety timer for timed commands
+- ✅ Confidence threshold filtering for low-quality ASR
+- ✅ Updated behavioral_launch.py
+- ✅ Updated setup.py entry points
+- ✅ Unit tests (22 test cases passing)
+
+### 8.2 BehaviorTree.CPP Setup (Not Started)
+
 - ⏳ Install BehaviorTree.CPP library
-- ⏳ Create `behavioral_nodes` ROS2 package
-
-### 8.2 Command Router & Cognitive Bridge
-- ⏳ Implement `command_router.py`
-- ⏳ Create command mapping
-
-### 8.3 Core Behavior Tree Design
 - ⏳ Design main behavior tree structure
 - ⏳ Implement navigation behaviors
 - ⏳ Implement stuck detection & recovery
+
+### 8.3 Cross-Cutting Fixes Applied
+
+- ✅ Fixed depth estimation topic mismatch (`/camera/image_undistorted` → `/camera/undistorted`)
+- ✅ Fixed IMU quaternion formula inconsistency (uart_imu_node now matches motor controller ZYX convention)
+- ✅ Fixed hardcoded absolute engine path in object_detector.py → relative path
+- ✅ Fixed audio_pipeline_launch.py (removed 3 non-existent node references)
+- ✅ Fixed ghost entry points in 4 setup.py files (removed 8 broken references)
+- ✅ Added `tests/` to pytest.ini testpaths
 
 ---
 
@@ -546,17 +581,40 @@
 
 ## Known Issues
 
-1. **Issue #3**: Power and thermal testing pending
+1. **Moondream memory higher than budgeted**: ~3GB actual vs 1.8GB estimated. Using `num_ctx=512` helps.
+   - Status: 🚧 Monitoring
+   - Mitigation: Reduce num_ctx, or lazy-load Whisper only on wake-word
+
+2. **Whisper memory higher than budgeted**: ~718MB vs 500MB target.
+   - Status: 🚧 Monitoring
+   - Mitigation: Consider TensorRT conversion or `tiny.en` model
+
+3. **SLAM not yet implemented**: RTAB-Map integration is Phase 6, currently a stub.
    - Status: ⏳ Planned
-   - Priority: Medium
-   - Assigned: Next sprint
-   - Note: Need baseline power consumption and thermal profiles for full system operation
+   - Priority: High (needed for autonomous navigation)
+
+4. **Web interface not yet implemented**: web_interface_nodes has no server code.
+   - Status: ⏳ Planned (Phase 9)
+   - Priority: Low
+
+5. **uart_imu_node serial port conflict**: Both uart_motor_controller and uart_imu_node open `/dev/ttyTHS1`. Motor controller now handles IMU internally; standalone IMU node should not be launched simultaneously.
+   - Status: ✅ Resolved via localization_launch.py comment + documentation
 
 ---
 
 ## Recent Updates
 
-- **7 Dec 2025**: Completed Audio Playback Node Refactoring (Phase 5.2) - Streamlined architecture with integrated TTS
+- **12 Feb 2026**: **Architecture audit & critical fixes** — Resolved 8 ghost entry points, broken imports, topic mismatches
+- **12 Feb 2026**: Implemented `cognitive_client_node.py` — Ollama/Moondream HTTP bridge replacing Gemma 3n
+- **12 Feb 2026**: Implemented `command_router_node.py` — Bridges audio transcription → cognitive core → actuation
+- **12 Feb 2026**: Fixed depth estimation topic mismatch (`/camera/image_undistorted` → `/camera/undistorted`)
+- **12 Feb 2026**: Fixed IMU quaternion formula inconsistency in `uart_imu_node.py` (now matches ZYX convention)
+- **12 Feb 2026**: Fixed hardcoded absolute path in `object_detector.py` → relative path
+- **12 Feb 2026**: Updated all launch files (audio, behavioral, cognitive) to match actual implemented nodes
+- **12 Feb 2026**: Removed deprecated entry points: stt_node, tts_node, wake_word_detector_node, nanollm_interface, multimodal_llm_node, behavior_tree_executor, dialogue_manager, web_server
+- **12 Feb 2026**: Added 37 unit tests for cognitive client and command router (all passing)
+- **12 Feb 2026**: Added `tests/` to pytest.ini testpaths
+- **12 Feb 2026**: Updated STATUS.md overall progress from 72% to 78%
 - **7 Dec 2025**: Refactored `audio_playback_node.py` to integrate Piper TTS directly (no separate tts_node needed)
 - **7 Dec 2025**: Implemented event-driven notification sounds (wake_word_detected → notify_asc.wav, speech_ended → notify_desc.wav)
 - **7 Dec 2025**: Eliminated audio data transmission over ROS2 (99.9% bandwidth reduction, text messages only)

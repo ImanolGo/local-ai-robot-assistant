@@ -39,15 +39,13 @@ def generate_launch_description():
     # Include perception launch
     perception_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            [
-                PathJoinSubstitution(
-                    [
-                        FindPackageShare("perception_nodes"),
-                        "launch",
-                        "perception_launch.py",
-                    ]
-                )
-            ]
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("perception_nodes"),
+                    "launch",
+                    "perception_launch.py",
+                ]
+            )
         ),
         launch_arguments={"debug": debug}.items(),
     )
@@ -55,15 +53,13 @@ def generate_launch_description():
     # Include audio pipeline launch
     audio_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            [
-                PathJoinSubstitution(
-                    [
-                        FindPackageShare("audio_interface_nodes"),
-                        "launch",
-                        "audio_pipeline_launch.py",
-                    ]
-                )
-            ]
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("audio_interface_nodes"),
+                    "launch",
+                    "audio_pipeline_launch.py",
+                ]
+            )
         ),
         launch_arguments={"debug": debug}.items(),
     )
@@ -71,15 +67,13 @@ def generate_launch_description():
     # Include localization launch
     localization_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            [
-                PathJoinSubstitution(
-                    [
-                        FindPackageShare("localization_nodes"),
-                        "launch",
-                        "localization_launch.py",
-                    ]
-                )
-            ]
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("localization_nodes"),
+                    "launch",
+                    "localization_launch.py",
+                ]
+            )
         ),
         launch_arguments={"debug": debug}.items(),
     )
@@ -87,15 +81,13 @@ def generate_launch_description():
     # Include behavioral architecture launch
     behavioral_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            [
-                PathJoinSubstitution(
-                    [
-                        FindPackageShare("behavioral_nodes"),
-                        "launch",
-                        "behavioral_launch.py",
-                    ]
-                )
-            ]
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("behavioral_nodes"),
+                    "launch",
+                    "behavioral_launch.py",
+                ]
+            )
         ),
         launch_arguments={"debug": debug}.items(),
     )
@@ -103,15 +95,13 @@ def generate_launch_description():
     # Include cognitive core launch
     cognitive_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            [
-                PathJoinSubstitution(
-                    [
-                        FindPackageShare("cognitive_core_nodes"),
-                        "launch",
-                        "cognitive_launch.py",
-                    ]
-                )
-            ]
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("cognitive_core_nodes"),
+                    "launch",
+                    "cognitive_launch.py",
+                ]
+            )
         ),
         launch_arguments={"debug": debug}.items(),
     )
@@ -119,15 +109,13 @@ def generate_launch_description():
     # Include actuation launch
     actuation_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            [
-                PathJoinSubstitution(
-                    [
-                        FindPackageShare("actuation_nodes"),
-                        "launch",
-                        "actuation_launch.py",
-                    ]
-                )
-            ]
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("actuation_nodes"),
+                    "launch",
+                    "actuation_launch.py",
+                ]
+            )
         ),
         launch_arguments={"debug": debug}.items(),
     )
@@ -138,19 +126,31 @@ def generate_launch_description():
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
-                    [
-                        PathJoinSubstitution(
-                            [
-                                FindPackageShare("web_interface_nodes"),
-                                "launch",
-                                "web_interface_launch.py",
-                            ]
-                        )
-                    ]
+                    PathJoinSubstitution(
+                        [
+                            FindPackageShare("web_interface_nodes"),
+                            "launch",
+                            "web_interface_launch.py",
+                        ]
+                    )
                 ),
                 launch_arguments={"debug": debug}.items(),
             )
         ],
+    )
+
+    # Include SLAM launch
+    slam_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("localization_nodes"),
+                    "launch",
+                    "slam_launch.py",
+                ]
+            )
+        ),
+        launch_arguments={"debug": debug}.items(),
     )
 
     return LaunchDescription(
@@ -160,6 +160,7 @@ def generate_launch_description():
             perception_launch,
             audio_launch,
             localization_launch,
+            slam_launch,
             behavioral_launch,
             cognitive_launch,
             actuation_launch,

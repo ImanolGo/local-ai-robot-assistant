@@ -8,7 +8,7 @@ This is an autonomous AI robot assistant running on NVIDIA Jetson Orin Nano with
 - **OS**: Ubuntu 22.04 with JetPack SDK
 - **Framework**: ROS2 Humble
 - **Languages**: Python 3.10+ (primary), C++ (performance-critical)
-- **AI Models**: TensorRT-optimized (YOLO, FastDepth, Whisper, LLaMA-2)
+- **AI Models**: TensorRT-optimized (YOLO, Depth Anything V2), Moondream VLM via Ollama, faster-whisper (ASR), Piper (TTS)
 
 ## Critical Constraints
 - **Memory Budget**: Maximum 7.5GB RAM usage

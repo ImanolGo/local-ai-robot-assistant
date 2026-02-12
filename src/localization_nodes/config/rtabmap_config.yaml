@@ -1,0 +1,71 @@
+# RTAB-Map configuration for visual SLAM on Jetson Orin Nano
+
+rtabmap:
+  ros__parameters:
+    # Basic Parameters
+    subscribe_depth: true
+    subscribe_rgbd: false
+    subscribe_stereo: false
+    subscribe_scan: false
+    subscribe_scan_cloud: false
+    subscribe_odom_info: true
+
+    frame_id: base_link
+    map_frame_id: map
+    odom_frame_id: odom
+    publish_tf: true
+
+    # Synchronization
+    approx_sync: true
+    queue_size: 10
+
+    # RTAB-Map Core Parameters
+    RGBD:
+      AngularUpdate: "0.01" # Minimum angular displacement to update the map
+      LinearUpdate: "0.01" # Minimum linear displacement to update the map
+      OptimizeFromGraphEnd: "false"
+      LoopClosureReextractFeatures: "true"
+      ProximityBySpace: "true"
+      ProximityByTime: "false"
+      NeighborLinkRefining: "true"
+
+    # Memory Management
+    Mem:
+      IncrementalMemory: "true"
+      InitWMWithAllNodes: "false"
+      MaxRetrieved: "2"
+      WorkingMemorySize: "100" # Limit working memory to stay within 8GB RAM budget
+
+    # Visual Odometry (if used internally, but we use it via rtabmap_odom)
+    Vis:
+      MinInliers: "10"
+      FeatureType: "8" # 8=GFTT/ORB (Fast on Jetson)
+      MaxFeatures: "400"
+      InlierDistance: "0.1"
+
+    # Loop Closure Detection
+    Kp:
+      MaxFeatures: "400"
+      DetectorStrategy: "8" # 8=GFTT/ORB
+
+    # Grid Map (2D/3D)
+    Grid:
+      RangeMax: "5.0" # Max range of the depth sensor for mapping
+      CellSize: "0.05" # 5cm grid resolution
+      RayTracing: "true"
+      3D: "true"
+
+# Visual Odometry Node Parameters
+rtabmap_odom:
+  ros__parameters:
+    frame_id: base_link
+    odom_frame_id: odom
+    publish_tf: false # Let EKF publish the odom -> base_link TF
+    wait_for_transform: 0.1
+    approx_sync: true
+    queue_size: 10
+
+    Vis:
+      FeatureType: "8"
+      MaxFeatures: "400"
+      EstimationType: "0" # 0=3D->2D (PnP)

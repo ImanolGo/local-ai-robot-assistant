@@ -18,6 +18,9 @@ License: Apache-2.0
 """
 
 import json
+
+# ROS2 messages
+import math
 import queue
 import threading
 import time
@@ -27,12 +30,11 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import rclpy
 import serial
-
-# ROS2 messages
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Quaternion, Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import Imu
 from std_msgs.msg import Header
 
 # Custom messages and services
@@ -119,6 +121,7 @@ class UARTMotorController(Node):
         self.chassis_state_pub = self.create_publisher(ChassisState, "/chassis_state", qos_reliable)
 
         self.odom_raw_pub = self.create_publisher(Odometry, "/odom_raw", qos_sensor)
+        self.imu_pub = self.create_publisher(Imu, "/imu/data", qos_sensor)
 
         # Subscribers
         self.cmd_vel_sub = self.create_subscription(
@@ -321,6 +324,9 @@ class UARTMotorController(Node):
 
                         except Exception as e:
                             self.get_logger().debug(f"Response processing error: {e}")
+                else:
+                    # Small sleep to prevent 100% CPU usage when no data is available
+                    time.sleep(0.001)
 
                 time.sleep(0.01)  # Small delay to prevent busy waiting
 
@@ -417,6 +423,9 @@ class UARTMotorController(Node):
             # Log the problematic response for debugging
             self.get_logger().debug(f"Problematic response: {response}")
 
+        # Also publish as standard Imu message for EKF to ensure high frequency updates
+        self._publish_imu_message(response)
+
     def _update_chassis_state(self, response: Dict[str, Any]):
         """Update chassis state from Wave Rover feedback."""
         # Process chassis feedback response (T=130)
@@ -426,9 +435,104 @@ class UARTMotorController(Node):
 
     def _update_imu_data(self, response: Dict[str, Any]):
         """Update IMU data from Wave Rover feedback."""
-        # TODO: Parse actual IMU response format
-        # This depends on the actual response format from Wave Rover
-        pass
+        self._publish_imu_message(response)
+
+    def _degrees_to_radians(self, degrees: float) -> float:
+        """Convert degrees to radians."""
+        return degrees * math.pi / 180.0
+
+    def _euler_to_quaternion(self, roll: float, pitch: float, yaw: float) -> Quaternion:
+        """Convert Euler angles (in degrees) to quaternion."""
+        roll_rad = self._degrees_to_radians(roll)
+        pitch_rad = self._degrees_to_radians(pitch)
+        yaw_rad = self._degrees_to_radians(yaw)
+
+        cy = math.cos(yaw_rad * 0.5)
+        sy = math.sin(yaw_rad * 0.5)
+        cp = math.cos(pitch_rad * 0.5)
+        sp = math.sin(pitch_rad * 0.5)
+        cr = math.cos(roll_rad * 0.5)
+        sr = math.sin(roll_rad * 0.5)
+
+        q = Quaternion()
+        q.w = cr * cp * cy + sr * sp * sy
+        q.x = sr * cp * cy - cr * sp * sy
+        q.y = cr * sp * cy + sr * cp * sy
+        q.z = cr * cp * sy - sr * sp * cy
+        return q
+
+    def _publish_imu_message(self, data: Dict[str, Any]):
+        """Create and publish Imu message from UART data."""
+        try:
+            imu_msg = Imu()
+            imu_msg.header = Header()
+            imu_msg.header.stamp = self.get_clock().now().to_msg()
+            imu_msg.header.frame_id = "imu_link"
+
+            # Orientation
+            if all(k in data for k in ["r", "p", "y"]):
+                imu_msg.orientation = self._euler_to_quaternion(data["r"], data["p"], data["y"])
+                imu_msg.orientation_covariance = [
+                    0.01,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.01,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.01,
+                ]
+            else:
+                imu_msg.orientation.w = 1.0
+                imu_msg.orientation_covariance[0] = -1.0
+
+            # Angular Velocity
+            if all(k in data for k in ["gx", "gy", "gz"]):
+                imu_msg.angular_velocity.x = self._degrees_to_radians(data["gx"])
+                imu_msg.angular_velocity.y = self._degrees_to_radians(data["gy"])
+                imu_msg.angular_velocity.z = self._degrees_to_radians(data["gz"])
+                imu_msg.angular_velocity_covariance = [
+                    0.001,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.001,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.001,
+                ]
+            else:
+                imu_msg.angular_velocity_covariance[0] = -1.0
+
+            # Linear Acceleration
+            if all(k in data for k in ["ax", "ay", "az"]):
+                # Convert g to m/s^2 (G:16384 factor often used in MPU6050/9250 etc.)
+                # But Wave Rover transmits in m/s^2 or G?
+                # Wave Rover V2 usually transmits in m/s^2 already or with a factor.
+                # Assuming data is in m/s^2 based on previous node implementation.
+                imu_msg.linear_acceleration.x = float(data["ax"])
+                imu_msg.linear_acceleration.y = float(data["ay"])
+                imu_msg.linear_acceleration.z = float(data["az"])
+                imu_msg.linear_acceleration_covariance = [
+                    0.01,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.01,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.01,
+                ]
+            else:
+                imu_msg.linear_acceleration_covariance[0] = -1.0
+
+            self.imu_pub.publish(imu_msg)
+
+        except Exception as e:
+            self.get_logger().error(f"Error publishing IMU message: {e}")
 
     def _imu_timer_callback(self):
         """Request IMU data from Wave Rover."""

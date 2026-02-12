@@ -315,7 +315,7 @@ class ObjectDetectorNode(Node):
         # Declare parameters
         self.declare_parameter(
             "engine_path",
-            "/home/imanolgo/repos/local-ai-robot-assistant/models/yolo_trt/yolo11n_fp16.engine",
+            "models/yolo_trt/yolo11n_fp16.engine",
         )
         self.declare_parameter("confidence_threshold", 0.5)
         self.declare_parameter("nms_threshold", 0.4)
