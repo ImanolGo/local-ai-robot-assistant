@@ -21,7 +21,6 @@ import json
 
 # ROS2 messages
 import math
-import queue
 import threading
 import time
 from dataclasses import dataclass
@@ -94,9 +93,13 @@ class UARTMotorController(Node):
         self._state_lock = threading.Lock()
 
         # Response handling
-        self._response_queue = queue.Queue(maxsize=100)
         self._reader_thread = None
         self._stop_reader = threading.Event()
+
+        # Response health tracking
+        self._last_response_time: Optional[float] = None
+        self._response_count = 0
+        self._last_no_response_warning_time = 0.0
 
         # Initialize serial connection
         self._serial: Optional[serial.Serial] = None
@@ -345,23 +348,25 @@ class UARTMotorController(Node):
     def _process_response(self, response: Dict[str, Any]):
         """Process incoming JSON responses from Wave Rover."""
         try:
-            self._response_queue.put_nowait(response)
+            # Track response health
+            self._last_response_time = time.time()
+            self._response_count += 1
 
             # Log important responses
             if "T" in response:
                 cmd_type = response.get("T")
-                self.get_logger().info(f"Processing response type T={cmd_type}: {response}")
+                self.get_logger().debug(f"Processing response type T={cmd_type}")
                 if cmd_type == 1001:  # Continuous feedback (actual Wave Rover format)
                     self._update_continuous_feedback(response)
+                elif cmd_type == 1002:  # Full IMU response (reply to T=126)
+                    self._update_imu_data(response)
                 elif cmd_type == 130:  # Chassis feedback
                     self._update_chassis_state(response)
-                elif cmd_type == 126:  # IMU data
-                    self._update_imu_data(response)
+                elif cmd_type == 126:  # IMU request echo (no data)
+                    pass  # Wave Rover echoes T=126 then sends T=1002
             else:
                 self.get_logger().debug(f"Response without T field: {response}")
 
-        except queue.Full:
-            self.get_logger().debug("Response queue full, dropping message")
         except Exception as e:
             self.get_logger().error(f"Response processing error: {e}")
             self.get_logger().debug(f"Problematic response: {response}")
@@ -429,9 +434,13 @@ class UARTMotorController(Node):
     def _update_chassis_state(self, response: Dict[str, Any]):
         """Update chassis state from Wave Rover feedback."""
         # Process chassis feedback response (T=130)
+        # Only process if response contains actual data (r, p, y, etc.)
         if "T" in response and response["T"] == 130:
-            self.get_logger().debug(f"Chassis feedback: {response}")
-            self._update_continuous_feedback(response)  # Process same way as continuous feedback
+            if any(k in response for k in ["r", "p", "y", "v", "temp"]):
+                self.get_logger().debug(f"Chassis feedback with data: {response}")
+                self._update_continuous_feedback(response)
+            else:
+                self.get_logger().debug("Empty chassis feedback response (T=130), skipping")
 
     def _update_imu_data(self, response: Dict[str, Any]):
         """Update IMU data from Wave Rover feedback."""
@@ -508,13 +517,12 @@ class UARTMotorController(Node):
 
             # Linear Acceleration
             if all(k in data for k in ["ax", "ay", "az"]):
-                # Convert g to m/s^2 (G:16384 factor often used in MPU6050/9250 etc.)
-                # But Wave Rover transmits in m/s^2 or G?
-                # Wave Rover V2 usually transmits in m/s^2 already or with a factor.
-                # Assuming data is in m/s^2 based on previous node implementation.
-                imu_msg.linear_acceleration.x = float(data["ax"])
-                imu_msg.linear_acceleration.y = float(data["ay"])
-                imu_msg.linear_acceleration.z = float(data["az"])
+                # Wave Rover transmits acceleration in milli-g (mg).
+                # e.g. az ~973 mg ≈ 1g. Convert to m/s²: multiply by 9.80665/1000.
+                MG_TO_MS2 = 9.80665 / 1000.0
+                imu_msg.linear_acceleration.x = float(data["ax"]) * MG_TO_MS2
+                imu_msg.linear_acceleration.y = float(data["ay"]) * MG_TO_MS2
+                imu_msg.linear_acceleration.z = float(data["az"]) * MG_TO_MS2
                 imu_msg.linear_acceleration_covariance = [
                     0.01,
                     0.0,
@@ -673,21 +681,22 @@ class UARTMotorController(Node):
             self._send_motor_command(0.0, 0.0)
 
     def _status_timer_callback(self):
-        """Publish motor status and chassis state."""
-        # Create chassis state message
-        chassis_msg = ChassisState()
-        chassis_msg.header = Header()
-        chassis_msg.header.stamp = self.get_clock().now().to_msg()
-        chassis_msg.header.frame_id = "base_link"
+        """Publish motor status periodically.
+
+        Note: Chassis state is published from _update_continuous_feedback with real
+        sensor data. This timer only publishes motor_status for monitoring.
+        """
+        # Only publish motor_status (not chassis_state which has real data)
+        status_msg = ChassisState()
+        status_msg.header = Header()
+        status_msg.header.stamp = self.get_clock().now().to_msg()
+        status_msg.header.frame_id = "base_link"
 
         with self._state_lock:
-            chassis_msg.motors_enabled = self._motors_enabled and not self._emergency_stop_active
-            chassis_msg.left_motor_current = 0.0  # TODO: Parse from feedback
-            chassis_msg.right_motor_current = 0.0  # TODO: Parse from feedback
+            status_msg.motors_enabled = self._motors_enabled and not self._emergency_stop_active
+            status_msg.emergency_stop_active = self._emergency_stop_active
 
-        # Always publish chassis state for testing
-        self.chassis_state_pub.publish(chassis_msg)
-        self.motor_status_pub.publish(chassis_msg)
+        self.motor_status_pub.publish(status_msg)
 
         # Log occasionally for debugging
         if hasattr(self, "_status_counter"):
@@ -697,6 +706,31 @@ class UARTMotorController(Node):
 
         if self._status_counter % 50 == 0:  # Every 5 seconds at 10Hz
             self.get_logger().debug(f"Published chassis state #{self._status_counter}")
+
+        # Warn if no responses received from Wave Rover
+        now = time.time()
+        time_since_start = now - self._node_start_time
+        if time_since_start > 5.0:  # Only check after 5s startup grace period
+            if self._last_response_time is None:
+                # Never received any response
+                if now - self._last_no_response_warning_time > 10.0:
+                    self._last_no_response_warning_time = now
+                    self.get_logger().warn(
+                        "No responses received from Wave Rover! "
+                        "Check: Is it powered on? Is the UART cable connected? "
+                        f"(port={self.uart_config.port}, "
+                        f"uptime={time_since_start:.0f}s, "
+                        f"responses={self._response_count})"
+                    )
+            elif now - self._last_response_time > 10.0:
+                # Responses stopped arriving
+                if now - self._last_no_response_warning_time > 10.0:
+                    self._last_no_response_warning_time = now
+                    gap = now - self._last_response_time
+                    self.get_logger().warn(
+                        f"Wave Rover stopped responding {gap:.0f}s ago! "
+                        f"(total responses={self._response_count})"
+                    )
 
     def _emergency_stop_callback(
         self, request: EmergencyStop.Request, response: EmergencyStop.Response

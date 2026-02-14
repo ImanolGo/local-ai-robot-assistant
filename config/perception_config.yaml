@@ -55,6 +55,16 @@ depth_estimation:
     colormap: "plasma"
     normalize: true
 
+  # Depth calibration for SLAM
+  # Depth Anything V2 produces relative depth that is linearly scaled.
+  # Calibrate these values by measuring real distances:
+  #   1. Place robot at known distances from a wall (0.5m, 1m, 2m, 3m)
+  #   2. Record depth values at each distance
+  #   3. Fit: actual_distance = depth_value * scale + offset
+  calibration:
+    depth_scale: 1.0     # Multiply normalized depth by this factor
+    depth_offset: 0.0    # Add this offset (meters) after scaling
+
 # Point Cloud Generation
 point_cloud:
   enabled: true

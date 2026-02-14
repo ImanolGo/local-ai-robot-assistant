@@ -14,6 +14,14 @@ ekf_filter_node:
 
     # IMU input
     # Config: [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    #
+    # Wave Rover T=1001 continuous feedback only provides orientation (r, p, y).
+    # Angular velocity (gx, gy, gz) and acceleration (ax, ay, az) are only
+    # available from T=126 IMU queries which may not always respond.
+    # When a field is missing, the publisher sets covariance[0] = -1.
+    # The EKF silently drops messages where a fused field has covariance = -1.
+    # Therefore we only fuse orientation here. If T=126 data becomes reliable,
+    # re-enable vroll/vpitch/vyaw and ax/ay/az.
     imu0: /imu/data
     imu0_config:
       [
@@ -26,28 +34,44 @@ ekf_filter_node:
         false,
         false,
         false,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
       ]
     imu0_differential: false
     imu0_relative: true
     imu0_queue_size: 10
-    imu0_remove_gravitational_acceleration: true
+    imu0_remove_gravitational_acceleration: false
 
-    # Visual Odometry input (Commented out to save CPU until SLAM is verified running)
-    # odom0: /rtabmap/odom
-    # odom0_config: [true,  true,  true,
-    #               true,  true,  true,
-    #               false, false, false,
-    #               false, false, false,
-    #               false, false, false]
-    # odom0_differential: false
-    # odom0_relative: false
-    # odom0_queue_size: 10
+    # Visual Odometry input from RTAB-Map
+    # Provides position and orientation from visual SLAM.
+    # Uses high covariance since monocular depth is approximate.
+    # Requires slam_launch.py to be running (publishes /rtabmap/odom).
+    odom0: /rtabmap/odom
+    odom0_config:
+      [
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+      ]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
 
     # Process noise covariance
     process_noise_covariance:

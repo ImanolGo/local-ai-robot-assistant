@@ -50,6 +50,8 @@ class DepthEstimationNode(Node):
         self.declare_parameter("obstacle_roi_height", 0.3)  # Bottom 30% of image
         self.declare_parameter("max_depth_m", 10.0)  # Maximum depth in meters
         self.declare_parameter("frame_skip", 1)  # Process every N-th frame
+        self.declare_parameter("depth_scale", 1.0)  # Scale factor for depth calibration
+        self.declare_parameter("depth_offset", 0.0)  # Offset for depth calibration (meters)
 
         # Get parameters
         engine_path = self.get_parameter("engine_path").get_parameter_value().string_value
@@ -69,6 +71,8 @@ class DepthEstimationNode(Node):
         )
         self.max_depth = self.get_parameter("max_depth_m").get_parameter_value().double_value
         self.frame_skip = self.get_parameter("frame_skip").get_parameter_value().integer_value
+        self.depth_scale = self.get_parameter("depth_scale").get_parameter_value().double_value
+        self.depth_offset = self.get_parameter("depth_offset").get_parameter_value().double_value
 
         # Initialize depth estimation model
         try:
@@ -178,17 +182,35 @@ class DepthEstimationNode(Node):
 
     def _convert_to_metric_depth(self, relative_depth: np.ndarray) -> np.ndarray:
         """
-        Convert relative depth to approximate metric depth
+        Convert relative depth to approximate metric depth.
 
-        Note: Depth Anything V2 produces relative depth. For accurate metric depth,
-        additional calibration with known objects or stereo vision would be needed.
+        Depth Anything V2 produces relative (affine-invariant) depth.
+        We apply a linear transformation to approximate metric depth:
+
+            metric = (normalized * max_depth) * depth_scale + depth_offset
+
+        For SLAM calibration:
+          1. Place the robot at known distances (e.g. 0.5m, 1m, 2m, 3m from a wall)
+          2. Record /perception/depth values at each distance
+          3. Fit a linear model: actual_distance = depth_value * scale + offset
+          4. Set depth_scale and depth_offset parameters accordingly
+
+        Args:
+            relative_depth: Raw relative depth from Depth Anything V2
+
+        Returns:
+            Approximate metric depth map in meters
         """
-        # Simple linear scaling - this is an approximation
-        # In practice, you'd want proper calibration
+        # Normalize to [0, 1] range
         depth_normalized = (relative_depth - relative_depth.min()) / (
             relative_depth.max() - relative_depth.min() + 1e-8
         )
+        # Scale to max_depth range, then apply calibration
         metric_depth = depth_normalized * self.max_depth
+        metric_depth = metric_depth * self.depth_scale + self.depth_offset
+
+        # Clamp to valid range
+        metric_depth = np.clip(metric_depth, 0.01, self.max_depth)
 
         return metric_depth
 

@@ -61,7 +61,7 @@ import serial
 import json
 
 class WaveRoverController:
-    def __init__(self, port='/dev/ttyTHS0', baudrate=115200):
+    def __init__(self, port='/dev/ttyTHS1', baudrate=115200):
         self.serial = serial.Serial(port, baudrate, timeout=1)
 
     def send_command(self, cmd_dict):

@@ -708,25 +708,33 @@ string language               # Detected language (e.g., "en")
 ```
 
 ### 6.2 RTAB-Map SLAM Setup
-- [ ] Install `rtabmap_ros` package
-- [ ] Create `config/rtabmap_config.yaml`
-- [ ] Configure RTAB-Map parameters:
-  - [ ] RGB-D mode with monocular depth
-  - [ ] Loop closure detection settings
-  - [ ] Memory management (max nodes, optimization frequency)
-  - [ ] Odometry type (visual odometry)
-- [ ] Configure input topics:
-  - `/camera/undistorted` (RGB image)
-  - `/perception/depth` (depth map)
-  - `/camera_info` (calibration)
+- [x] Install `rtabmap_ros` package (`scripts/install_rtabmap.sh`)
+- [x] Create `config/rtabmap_config.yaml` (`src/localization_nodes/config/rtabmap_config.yaml`)
+- [x] Configure RTAB-Map parameters:
+  - [x] RGB-D mode with monocular depth (subscribe_depth=true, subscribe_rgbd=false)
+  - [x] Loop closure detection settings (Vis/MaxFeatures, GFTT/MinDistance, etc.)
+  - [x] Memory management (WorkingMemorySize=100, STM size=10)
+  - [x] Odometry type (visual odometry via rgbd_odometry node)
+- [x] Configure input topics:
+  - `/camera/undistorted` → remapped to `rgb/image`
+  - `/perception/depth` → remapped to `depth/image`
+  - `/camera/camera_info` → remapped to `rgb/camera_info`
   - `/imu/data` (IMU for gravity reference)
-- [ ] Set up SLAM output topics:
+- [x] Set up SLAM output topics:
   - `/rtabmap/odom` (visual odometry)
   - `/rtabmap/mapData` (3D map)
   - `/rtabmap/grid_map` (2D occupancy grid)
-- [ ] Test SLAM initialization
-- [ ] Test loop closure detection
-- [ ] Visualize in RViz2
+- [x] Create SLAM launch file (`src/localization_nodes/launch/slam_launch.py`)
+- [x] Add TF static transforms (base_link→camera_link, camera_link→camera_optical_frame)
+- [x] Fix QoS compatibility (BEST_EFFORT for sensor topics)
+- [x] Add depth calibration support (depth_scale/offset params, `tools/calibrate_depth.py`)
+- [x] Update EKF config to fuse visual odometry (`odom0: /rtabmap/odom`)
+- [x] Create SLAM health monitor node (`slam_node.py` → `/slam/status`)
+- [x] Create SLAM monitoring script (`scripts/monitoring/monitor_slam.sh`)
+- [x] Write and pass config validation tests (13 tests in `test_localization.py`)
+- [ ] Test SLAM initialization (requires hardware)
+- [ ] Test loop closure detection (requires hardware)
+- [ ] Visualize in RViz2 (requires hardware)
 
 ### 6.3 Semantic SLAM Integration
 - [ ] Implement semantic landmark injection
@@ -755,7 +763,7 @@ string language               # Detected language (e.g., "en")
 - [ ] Tune RTAB-Map parameters for performance
 
 ### 6.5 Localization Integration Test
-- [ ] Create `launch/slam_launch.py`
+- [x] Create `launch/slam_launch.py` (`src/localization_nodes/launch/slam_launch.py`)
 - [ ] Test complete localization pipeline:
   - Camera → Depth → RTAB-Map → Visual Odom
   - IMU → EKF Fusion

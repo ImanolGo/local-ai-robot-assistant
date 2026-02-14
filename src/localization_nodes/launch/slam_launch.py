@@ -1,3 +1,29 @@
+"""
+SLAM Launch File — RTAB-Map Visual SLAM for Jetson Orin Nano.
+
+Launches:
+  1. Static TFs: base_link → camera_link → camera_optical_frame
+  2. rgbd_odometry: Visual odometry from RGB + monocular depth
+  3. rtabmap: Full SLAM with loop closure and mapping
+
+Prerequisites:
+  - Perception pipeline running (camera_driver, undistort, depth_estimation)
+  - Actuation/IMU running (uart_motor_controller publishes /imu/data)
+  - rtabmap_ros installed (see scripts/install_rtabmap.sh)
+
+Topics consumed:
+  /camera/undistorted   — RGB image (BEST_EFFORT QoS)
+  /perception/depth     — Depth map, 32FC1 (default QoS)
+  /camera/camera_info   — Camera intrinsics (BEST_EFFORT QoS)
+  /imu/data             — IMU orientation (BEST_EFFORT QoS)
+
+Topics produced:
+  /rtabmap/odom         — Visual odometry
+  /rtabmap/mapData      — 3D map data
+  /rtabmap/grid_map     — 2D occupancy grid
+  /map                  — OccupancyGrid for navigation
+"""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -19,21 +45,80 @@ def generate_launch_description():
                 default_value=rtabmap_config,
                 description="Path to the RTAB-Map config file",
             ),
-            # RGB-D Synchronization
+            DeclareLaunchArgument(
+                "delete_db",
+                default_value="true",
+                description="Delete RTAB-Map database on startup (fresh map)",
+            ),
+            DeclareLaunchArgument(
+                "debug",
+                default_value="false",
+                description="Enable debug output",
+            ),
+            # -------------------------------------------------------
+            # Static TF: base_link → camera_link
+            # Camera is mounted on the front of the Wave Rover chassis.
+            # Adjust x/y/z to match the actual mounting position.
+            # x=forward, y=left, z=up (REP-103)
+            # -------------------------------------------------------
             Node(
-                package="rtabmap_sync",
-                executable="rgbd_sync",
-                name="rgbd_sync",
-                output="screen",
-                parameters=[{"approx_sync": True}],
-                remappings=[
-                    ("rgb/image", "/camera/undistorted"),
-                    ("depth/image", "/perception/depth"),
-                    ("rgb/camera_info", "/camera/camera_info"),
-                    ("rgbd_image", "rgbd_image"),
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="base_link_to_camera_link",
+                arguments=[
+                    "--x",
+                    "0.1",  # 10cm forward from base_link
+                    "--y",
+                    "0",
+                    "--z",
+                    "0.15",  # 15cm above base_link
+                    "--roll",
+                    "0",
+                    "--pitch",
+                    "0",
+                    "--yaw",
+                    "0",
+                    "--frame-id",
+                    "base_link",
+                    "--child-frame-id",
+                    "camera_link",
                 ],
             ),
-            # Visual Odometry
+            # -------------------------------------------------------
+            # Static TF: camera_link → camera_optical_frame
+            # Standard REP-103 rotation:
+            #   camera_link:          x=forward, y=left, z=up
+            #   camera_optical_frame: z=forward, x=right, y=down
+            # Rotation: roll=-π/2, yaw=-π/2
+            # -------------------------------------------------------
+            Node(
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="camera_link_to_optical",
+                arguments=[
+                    "--x",
+                    "0",
+                    "--y",
+                    "0",
+                    "--z",
+                    "0",
+                    "--roll",
+                    "-1.5707963",  # -π/2
+                    "--pitch",
+                    "0",
+                    "--yaw",
+                    "-1.5707963",  # -π/2
+                    "--frame-id",
+                    "camera_link",
+                    "--child-frame-id",
+                    "camera_optical_frame",
+                ],
+            ),
+            # -------------------------------------------------------
+            # Visual Odometry (rgbd_odometry)
+            # Uses direct depth subscription (no rgbd_sync needed).
+            # Publishes to /rtabmap/odom for EKF fusion.
+            # -------------------------------------------------------
             Node(
                 package="rtabmap_odom",
                 executable="rgbd_odometry",
@@ -41,11 +126,18 @@ def generate_launch_description():
                 output="screen",
                 parameters=[LaunchConfiguration("rtabmap_config")],
                 remappings=[
-                    ("rgbd_image", "rgbd_image"),
+                    ("rgb/image", "/camera/undistorted"),
+                    ("depth/image", "/perception/depth"),
+                    ("rgb/camera_info", "/camera/camera_info"),
                     ("odom", "/rtabmap/odom"),
+                    ("imu", "/imu/data"),
                 ],
             ),
-            # SLAM (Map building)
+            # -------------------------------------------------------
+            # SLAM Node (rtabmap)
+            # Builds and maintains the map, detects loop closures.
+            # Publishes map → odom TF.
+            # -------------------------------------------------------
             Node(
                 package="rtabmap_slam",
                 executable="rtabmap",
@@ -53,7 +145,9 @@ def generate_launch_description():
                 output="screen",
                 parameters=[LaunchConfiguration("rtabmap_config")],
                 remappings=[
-                    ("rgbd_image", "rgbd_image"),
+                    ("rgb/image", "/camera/undistorted"),
+                    ("depth/image", "/perception/depth"),
+                    ("rgb/camera_info", "/camera/camera_info"),
                     ("odom", "/rtabmap/odom"),
                     ("imu", "/imu/data"),
                 ],

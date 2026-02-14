@@ -1,8 +1,24 @@
 # RTAB-Map configuration for visual SLAM on Jetson Orin Nano
+#
+# Architecture:
+#   camera_driver → undistort → depth_estimation → rtabmap (depth mode)
+#   Topics:
+#     RGB:        /camera/undistorted  (sensor_msgs/Image, BEST_EFFORT)
+#     Depth:      /perception/depth    (sensor_msgs/Image, 32FC1)
+#     CameraInfo: /camera/camera_info  (sensor_msgs/CameraInfo, BEST_EFFORT)
+#     IMU:        /imu/data            (sensor_msgs/Imu, BEST_EFFORT)
+#   Frames:
+#     base_link → camera_link → camera_optical_frame
+#     base_link → imu_link
+#
+# NOTE: We use subscribe_depth (direct RGB+Depth), NOT subscribe_rgbd.
+#       This avoids the rgbd_sync node and reduces complexity.
+#       The depth comes from Depth Anything V2 (monocular, approximate metric).
+#       Set high covariances to account for depth estimation noise.
 
 rtabmap:
   ros__parameters:
-    # Basic Parameters
+    # Subscription mode: direct depth (not rgbd bundle)
     subscribe_depth: true
     subscribe_rgbd: false
     subscribe_stereo: false
@@ -10,62 +26,86 @@ rtabmap:
     subscribe_scan_cloud: false
     subscribe_odom_info: true
 
+    # Frame configuration (REP-105 compliant)
     frame_id: base_link
     map_frame_id: map
     odom_frame_id: odom
-    publish_tf: true
+    publish_tf: true         # Publishes map → odom TF
 
-    # Synchronization
+    # Synchronization — use approximate sync for different QoS sources
     approx_sync: true
+    approx_sync_max_interval: 0.1  # 100ms tolerance between RGB and depth
     queue_size: 10
+    qos: 1                   # 1 = BEST_EFFORT (match sensor publishers)
+    qos_imu: 1               # IMU also uses BEST_EFFORT
 
     # RTAB-Map Core Parameters
     RGBD:
-      AngularUpdate: "0.01" # Minimum angular displacement to update the map
-      LinearUpdate: "0.01" # Minimum linear displacement to update the map
+      AngularUpdate: "0.05"  # Radians — minimum angular change to add a node
+      LinearUpdate: "0.05"   # Meters — minimum linear change to add a node
       OptimizeFromGraphEnd: "false"
       LoopClosureReextractFeatures: "true"
       ProximityBySpace: "true"
       ProximityByTime: "false"
       NeighborLinkRefining: "true"
 
-    # Memory Management
+    # Memory Management — conservative for 8GB Jetson
     Mem:
       IncrementalMemory: "true"
       InitWMWithAllNodes: "false"
       MaxRetrieved: "2"
-      WorkingMemorySize: "100" # Limit working memory to stay within 8GB RAM budget
+      WorkingMemorySize: "100"     # Limit nodes in working memory
+      ReduceGraph: "true"          # Reduce graph complexity over time
+      STMSize: "10"                # Short-term memory size
 
-    # Visual Odometry (if used internally, but we use it via rtabmap_odom)
+    # Visual Features — ORB is fastest on Jetson GPU
     Vis:
       MinInliers: "10"
-      FeatureType: "8" # 8=GFTT/ORB (Fast on Jetson)
+      FeatureType: "8"             # 8 = GFTT/ORB
       MaxFeatures: "400"
       InlierDistance: "0.1"
 
     # Loop Closure Detection
     Kp:
       MaxFeatures: "400"
-      DetectorStrategy: "8" # 8=GFTT/ORB
+      DetectorStrategy: "8"        # 8 = GFTT/ORB
 
-    # Grid Map (2D/3D)
+    # Grid Map (2D occupancy + 3D)
     Grid:
-      RangeMax: "5.0" # Max range of the depth sensor for mapping
-      CellSize: "0.05" # 5cm grid resolution
+      RangeMax: "5.0"              # Max depth range for mapping (meters)
+      RangeMin: "0.3"              # Min depth range (filter noise)
+      CellSize: "0.05"             # 5cm grid resolution
       RayTracing: "true"
       3D: "true"
+      DepthDecimation: "4"         # Downsample depth for grid (performance)
+      MaxGroundHeight: "0.05"      # Ground plane threshold
+      MaxObstacleHeight: "1.5"     # Max obstacle height
+
+    # Monocular depth calibration
+    # Depth Anything V2 gives approximate metric depth with linear scaling.
+    # These parameters help RTAB-Map cope with noisy/approximate depth:
+    Odom:
+      Strategy: "0"                # 0 = Frame-to-Map (more robust to drift)
 
 # Visual Odometry Node Parameters
-rtabmap_odom:
+rgbd_odometry:
   ros__parameters:
     frame_id: base_link
     odom_frame_id: odom
-    publish_tf: false # Let EKF publish the odom -> base_link TF
-    wait_for_transform: 0.1
+    publish_tf: false              # Let EKF publish odom → base_link
+    wait_for_transform: 0.2
     approx_sync: true
+    approx_sync_max_interval: 0.1
     queue_size: 10
+    qos: 1                        # BEST_EFFORT to match sensor publishers
 
+    # Visual odometry parameters
     Vis:
-      FeatureType: "8"
+      FeatureType: "8"             # ORB
       MaxFeatures: "400"
-      EstimationType: "0" # 0=3D->2D (PnP)
+      EstimationType: "0"          # 0 = 3DoF motion (PnP)
+      MinInliers: "10"
+    Odom:
+      Strategy: "0"                # Frame-to-Map
+      ResetCountdown: "2"          # Reset after 2 consecutive failures
+      GuessSmoothingDelay: "0.5"   # Smooth motion model for prediction

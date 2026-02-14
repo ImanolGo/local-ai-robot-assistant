@@ -28,7 +28,7 @@ setup(
     entry_points={
         "console_scripts": [
             "uart_imu_node = localization_nodes.uart_imu_node:main",
-            "slam_node = localization_nodes.slam_node:main",
+            "slam_health_monitor = localization_nodes.slam_node:main",
         ],
     },
 )

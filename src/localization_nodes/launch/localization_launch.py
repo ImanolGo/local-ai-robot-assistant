@@ -1,3 +1,24 @@
+"""
+Localization Launch File — EKF Sensor Fusion.
+
+Launches:
+  1. ekf_node: Extended Kalman Filter fusing IMU + visual odometry
+  2. Static TF: base_link → imu_link (identity, IMU is at robot center)
+
+Sensor Inputs:
+  /imu/data        — from uart_motor_controller (actuation_nodes)
+  /rtabmap/odom    — from rgbd_odometry (slam_launch.py)
+
+Output:
+  /odometry/filtered  — Fused pose estimate (nav_msgs/Odometry)
+  TF: odom → base_link
+
+Prerequisites:
+  - actuation_nodes must be running (provides /imu/data)
+  - slam_launch.py should be running for visual odometry fusion
+    (EKF will work with IMU-only if SLAM is not yet available)
+"""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -19,6 +40,12 @@ def generate_launch_description():
                 default_value=config_file,
                 description="Path to the config file for the ekf_node",
             ),
+            DeclareLaunchArgument(
+                "debug",
+                default_value="false",
+                description="Enable debug output",
+            ),
+            # EKF node — fuses IMU orientation + visual odometry
             Node(
                 package="robot_localization",
                 executable="ekf_node",
@@ -27,6 +54,8 @@ def generate_launch_description():
                 parameters=[LaunchConfiguration("config_file")],
                 remappings=[("odometry/filtered", "odometry/filtered")],
             ),
+            # Static TF: base_link → imu_link
+            # IMU is integrated into the Wave Rover chassis (identity transform).
             Node(
                 package="tf2_ros",
                 executable="static_transform_publisher",
@@ -50,7 +79,5 @@ def generate_launch_description():
                     "imu_link",
                 ],
             ),
-            # uart_imu_node is now integrated into uart_motor_controller
-            # to resolve serial port conflicts on /dev/ttyTHS1
         ]
     )
