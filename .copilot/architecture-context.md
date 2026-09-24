@@ -5,9 +5,9 @@
 1. **Hardware Layer**: Jetson Orin Nano, Wave Rover, IMX219 camera, USB audio
 2. **Driver Layer**: UART, Camera, Audio device drivers
 3. **ROS2 Middleware**: Inter-process communication
-4. **Perception Layer**: YOLO, Depth, SLAM
-5. **Cognitive Layer**: NanoLLM for reasoning
-6. **Behavioral Layer**: Behavior Trees for decision making
+4. **Perception Layer**: YOLO, Depth (SLAM/localization descoped for the MVP)
+5. **Cognitive Layer**: Moondream VLM (Ollama default; optional in-process llama.cpp)
+6. **Behavioral Layer**: Command router + visual-verification loop
 7. **Application Layer**: Voice commands, navigation, monitoring
 
 ## Data Flow Patterns
@@ -19,7 +19,7 @@ USB Mic → Wake Word → ASR → LLM → Intent → Behavior Tree → Action
 
 ### Perception Flow
 ```
-Camera → Undistort → YOLO/Depth → SLAM → World Model → Behavior Tree
+Camera → Undistort → YOLO/Depth → World Model → Command Router / Visual Verification
 ```
 
 ### Control Flow
@@ -29,9 +29,9 @@ Behavior Tree → Twist Command → Diff Drive → UART JSON → Wave Rover
 
 ## Key Integration Points
 
-- **IMU Data**: UART ({"T":126}) → /imu/data topic → EKF fusion
+- **IMU Data**: UART ({"T":126}) → /imu/data topic (EKF fusion descoped)
 - **Motor Control**: /cmd_vel → Diff Drive Math → UART ({"T":1}) → Motors
-- **Object Detection**: Camera → YOLO → /perception/objects → SLAM semantic tags
+- **Object Detection**: Camera → YOLO → /perception/objects → World Model
 - **Voice**: Wake Word Trigger → ASR Start → Text → LLM → Response → TTS → Speaker
 
 ## Critical Constraints
@@ -65,7 +65,7 @@ Behavior Tree → Twist Command → Diff Drive → UART JSON → Wave Rover
 | Component | RAM | GPU | CPU |
 |-----------|-----|-----|-----|
 | System/ROS2 | 1.5GB | - | 10% |
-| RTAB-Map | 1.5GB | 15% | 20% |
+| Moondream (Ollama) | ~1.3GB resident | 30% | 10% |
 | YOLO + Depth | 1.0GB | 40% | 10% |
 | Whisper | 0.5GB | 20% | 5% |
 | LLM (when active) | 2.5GB | 25% | 30% |
