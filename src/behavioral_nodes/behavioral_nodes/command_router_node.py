@@ -149,8 +149,8 @@ class CommandRouterNode(Node):
     def _on_cognitive_command(self, msg: CognitiveCommand) -> None:
         """Handle parsed commands from the cognitive core.
 
-        This allows the behavior tree / cognitive core to issue motor commands
-        through the same routing infrastructure.
+        This allows the cognitive core to issue motor commands through the same
+        routing infrastructure.
 
         Args:
             msg: Cognitive command with action and target.
@@ -163,7 +163,7 @@ class CommandRouterNode(Node):
         if action == "stop":
             self._execute_simple_command("stop")
         elif action == "navigate":
-            # Navigation to a target — would integrate with Nav2 / SLAM in Phase 6+
+            # Reactive navigation to a visible target (no map/SLAM in the MVP)
             self.get_logger().info(f"Navigate to '{msg.target_object}' — forwarding to planner")
             # For now, acknowledge and move forward slowly
             self._execute_simple_command("forward")

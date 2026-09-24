@@ -4,11 +4,13 @@ Full system launch file for the Local AI Robot Assistant.
 This launch file starts all subsystems:
 - Perception nodes (camera, object detection, depth estimation)
 - Audio interface nodes (wake word, ASR, TTS)
-- Localization nodes (IMU, SLAM)
-- Behavioral architecture
+- Behavioral architecture (command router + visual verification)
 - Cognitive core
-- Actuation nodes (motor control)
+- Actuation nodes (motor control, IMU feedback)
 - Web interface (optional)
+
+Note: SLAM/localization is out of scope for the MVP (see docs/architecture.md
+v4.0). IMU data is published by the motor controller via /imu/data.
 """
 
 from launch_ros.substitutions import FindPackageShare
@@ -58,20 +60,6 @@ def generate_launch_description():
                     FindPackageShare("audio_interface_nodes"),
                     "launch",
                     "audio_pipeline_launch.py",
-                ]
-            )
-        ),
-        launch_arguments={"debug": debug}.items(),
-    )
-
-    # Include localization launch
-    localization_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution(
-                [
-                    FindPackageShare("localization_nodes"),
-                    "launch",
-                    "localization_launch.py",
                 ]
             )
         ),
@@ -139,28 +127,12 @@ def generate_launch_description():
         ],
     )
 
-    # Include SLAM launch
-    slam_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution(
-                [
-                    FindPackageShare("localization_nodes"),
-                    "launch",
-                    "slam_launch.py",
-                ]
-            )
-        ),
-        launch_arguments={"debug": debug}.items(),
-    )
-
     return LaunchDescription(
         [
             web_interface_arg,
             debug_arg,
             perception_launch,
             audio_launch,
-            localization_launch,
-            slam_launch,
             behavioral_launch,
             cognitive_launch,
             actuation_launch,

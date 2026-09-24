@@ -179,7 +179,7 @@ The implementation is designed to support future enhancements:
 ### Integration Points
 - Ready for object detection pipeline integration
 - Depth estimation pipeline compatibility
-- SLAM system integration points
+- Reactive navigation integration points
 
 ## Compliance with Project Requirements
 

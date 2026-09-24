@@ -1,5 +1,5 @@
 # UART Configuration for Wave Rover Communication
-# Used by actuation_nodes and localization_nodes
+# Used by actuation_nodes (motor controller, which handles IMU internally)
 
 uart_config:
   # Serial port configuration
@@ -29,7 +29,7 @@ uart_config:
       ros_control: 13            # {"T":13, "X":linear, "Z":angular} (UGV01 only)
       continuous_feedback: 131   # {"T":131, "cmd":1} - Enable feedback
 
-  # IMU node settings
+  # IMU settings (IMU queries/publishing handled by the motor controller)
   imu_node:
     query_rate: 20.0             # Hz - Rate for IMU queries
     query_command: 126           # {"T":126} - IMU data request
@@ -82,11 +82,6 @@ services:
 nodes:
   motor_controller:
     node_name: "uart_motor_controller"
-    namespace: ""
-    use_sim_time: false
-
-  imu_node:
-    node_name: "uart_imu_node"
     namespace: ""
     use_sim_time: false
 

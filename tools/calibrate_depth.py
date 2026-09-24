@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Depth Calibration Tool for SLAM.
+Depth Calibration Tool.
 
 Helps calibrate the monocular depth estimation (Depth Anything V2) against
-real-world distances. This is critical for RTAB-Map SLAM accuracy.
+real-world distances. This is critical for accurate depth-based navigation.
 
 Usage:
     1. Place the robot at a known distance from a flat wall

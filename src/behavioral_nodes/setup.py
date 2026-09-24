@@ -18,8 +18,7 @@ setup(
     zip_safe=True,
     maintainer="Local AI Robot Team",
     maintainer_email="developer@local-ai-robot.com",
-    description="Behavioral architecture nodes using BehaviorTree.CPP for decision making and task\
-          coordination",
+    description="Behavioral architecture nodes: command router and visual verification loop",
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={

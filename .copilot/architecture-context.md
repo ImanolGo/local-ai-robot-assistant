@@ -14,7 +14,7 @@
 
 ### Voice Command Flow
 ```
-USB Mic → Wake Word → ASR → LLM → Intent → Behavior Tree → Action
+USB Mic → Wake Word → ASR → LLM → Intent → Command Router → Action
 ```
 
 ### Perception Flow
@@ -24,12 +24,12 @@ Camera → Undistort → YOLO/Depth → World Model → Command Router / Visual 
 
 ### Control Flow
 ```
-Behavior Tree → Twist Command → Diff Drive → UART JSON → Wave Rover
+Command Router → Twist Command → Diff Drive → UART JSON → Wave Rover
 ```
 
 ## Key Integration Points
 
-- **IMU Data**: UART ({"T":126}) → /imu/data topic (EKF fusion descoped)
+- **IMU Data**: UART ({"T":126}) → /imu/data topic (published by the motor controller; EKF removed)
 - **Motor Control**: /cmd_vel → Diff Drive Math → UART ({"T":1}) → Motors
 - **Object Detection**: Camera → YOLO → /perception/objects → World Model
 - **Voice**: Wake Word Trigger → ASR Start → Text → LLM → Response → TTS → Speaker
@@ -38,22 +38,15 @@ Behavior Tree → Twist Command → Diff Drive → UART JSON → Wave Rover
 
 - Maximum 8GB RAM (7.5GB usable after OS)
 - Single GPU (share between YOLO, Depth, Whisper, LLM)
-- No wheel encoders (rely on visual odometry)
+- No wheel encoders (reactive target approach; no odometry/map fusion)
 - Fisheye camera (must undistort before processing)
 - UART latency ~10-50ms
 - Audio latency budget <2 seconds end-to-end
 
 ## State Management
 
-- **Blackboard**: Centralized state for behavior trees
-  - Robot pose (x, y, θ)
-  - Semantic map (objects with 3D coordinates)
-  - Current mission
-  - Audio state (listening/processing/speaking)
-
 - **World Model**: Text representation for LLM
   ```
-  Robot at (1.2, 0.5, 0°)
   Visible objects:
   - red_ball at (2.0, 1.0, 0.0)
   - blue_cup at (1.5, -0.5, 0.5)

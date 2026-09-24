@@ -142,7 +142,7 @@ def print_memory_strategy():
     """Print memory management strategy"""
     print("MEMORY MANAGEMENT STRATEGY (8GB Total):")
     print("-" * 80)
-    print("• Perception Mode (default):    ~4.5 GB (SLAM + YOLO + Depth)")
+    print("• Perception Mode (default):    ~4.5 GB (YOLO + Depth)")
     print("• Reasoning Mode (complex):     ~5.5 GB (+ LLM, unload vision)")
     print("• Emergency Mode (critical):    ~2.0 GB (motors + wake word only)")
     print()

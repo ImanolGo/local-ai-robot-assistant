@@ -353,7 +353,7 @@ class ModelManager:
 ```
 
 #### Model Switching Strategy
-1. **Perception Mode** (default): SLAM + YOLO + Depth active
+1. **Perception Mode** (default): YOLO + Depth active
 2. **Reasoning Mode**: Load LLM, optionally unload vision models
 3. **Emergency Mode**: Keep only essential models
 

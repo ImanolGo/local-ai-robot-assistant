@@ -38,20 +38,6 @@ local-ai-robot-assistant/
 │   │   ├── setup.py
 │   │   └── README.md
 │   │
-│   ├── localization_nodes/          # DESCOPED (still referenced by full_system_launch.py; not in MVP)
-│   │   ├── localization_nodes/
-│   │   │   ├── __init__.py
-│   │   │   ├── uart_imu_node.py
-│   │   │   └── slam_node.py
-│   │   ├── launch/
-│   │   │   └── localization_launch.py
-│   │   ├── test/
-│   │   │   ├── test_uart_imu.py
-│   │   │   └── test_slam.py
-│   │   ├── package.xml
-│   │   ├── setup.py
-│   │   └── README.md
-│   │
 │   ├── audio_interface_nodes/
 │   │   ├── audio_interface_nodes/
 │   │   │   ├── __init__.py
@@ -95,31 +81,14 @@ local-ai-robot-assistant/
 │   │   ├── setup.py
 │   │   └── README.md
 │   │
-│   ├── behavioral_nodes/
+│   ├── behavioral_nodes/              # command router + visual verification (no BehaviorTree)
 │   │   ├── behavioral_nodes/
 │   │   │   ├── __init__.py
-│   │   │   ├── behavior_tree_executor.py
 │   │   │   ├── command_router_node.py
-│   │   │   ├── navigate_with_tracking_node.py
-│   │   │   ├── goal_verification_node.py
-│   │   │   ├── dialogue_manager.py
-│   │   │   ├── stuck_recovery_node.py
-│   │   │   └── action_nodes/
-│   │   │       ├── navigation_actions.py
-│   │   │       ├── speech_actions.py
-│   │   │       ├── perception_actions.py
-│   │   │       └── multimodal_actions.py
-│   │   ├── behavior_trees/
-│   │   │   ├── main_tree.xml
-│   │   │   ├── navigation_tree.xml
-│   │   │   ├── dialogue_tree.xml
-│   │   │   └── multimodal_tree.xml
+│   │   │   └── visual_verification_node.py
+│   │   ├── launch/
+│   │   │   └── behavioral_launch.py
 │   │   ├── test/
-│   │   │   ├── test_behavior_nodes.py
-│   │   │   ├── test_behavior_tree.py
-│   │   │   ├── test_command_router.py
-│   │   │   ├── test_goal_verification.py
-│   │   │   └── test_multimodal_actions.py
 │   │   ├── package.xml
 │   │   ├── setup.py
 │   │   └── README.md
@@ -197,7 +166,6 @@ local-ai-robot-assistant/
 ├── config/
 │   ├── camera_calibration.yaml
 │   ├── camera_config.yaml
-│   ├── localization_config.yaml
 │   ├── audio_config.yaml
 │   ├── uart_config.yaml
 │   ├── perception_config.yaml

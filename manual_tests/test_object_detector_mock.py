@@ -111,7 +111,7 @@ def main():
     print("To test the object detector:")
     print("\n1. In another terminal, run:")
     print("   cd ~/repos/local-ai-robot-assistant")
-    print("   source src/install/setup.bash")
+    print("   source install/setup.bash")
     print("   ros2 run perception_nodes object_detector --ros-args \\")
     print("       -p engine_path:=/path/to/yolo11n_fp16.engine")
     print("\n2. Watch detection output in this terminal")

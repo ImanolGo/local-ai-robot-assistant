@@ -128,7 +128,7 @@
 ### 2.1 ROS2 Workspace Setup (100% Complete ✅)
 
 - ✅ Create ROS2 workspace structure (src/ directory with all packages)
-- ✅ Create package directories (8 packages: actuation_nodes, audio_interface_nodes, behavioral_nodes, cognitive_core_nodes, localization_nodes, perception_nodes, robot_interfaces, web_interface_nodes)
+- ✅ Create package directories (7 packages: actuation_nodes, audio_interface_nodes, behavioral_nodes, cognitive_core_nodes, perception_nodes, robot_interfaces, web_interface_nodes)
 - ✅ Set up package.xml files (all packages have proper package.xml with dependencies)
 - ✅ Set up setup.py files (Python packages configured with entry points)
 - ✅ Create custom message definitions (7 messages and 3 services in robot_interfaces)
@@ -444,15 +444,15 @@
 
 ## Phase 6: SLAM & Localization — DESCOPED (out of MVP scope)
 
-**Status**: ❌ Descoped (24 Sep 2026). SLAM / localization is **out of scope for
-the MVP**. The robot uses a reactive "go to visible object" behavior built on
-Tier 1 YOLO + depth plus the visual-verification loop — no map, no RTAB-Map
-dependency. The `src/localization_nodes/` package (EKF + RTAB-Map) is left in
-place; `launch/full_system_launch.py` still includes its launch files, but it is
-**not part of the supported MVP** and is slated for removal in a follow-up
-cleanup (code removal was intentionally out of scope for this docs pass). Revisit only
-if persistent multi-room memory becomes a real requirement. See
-`docs/architecture.md` v4.0 scope note.
+**Status**: ❌ Descoped and **removed** (24 Sep 2026). SLAM / localization is
+**out of scope for the MVP**. The robot uses a reactive "go to visible object"
+behavior built on Tier 1 YOLO + depth plus the visual-verification loop — no
+map, no RTAB-Map dependency. The `src/localization_nodes/` package (EKF +
+RTAB-Map + standalone IMU node) and its SLAM scripts have been **deleted**;
+`launch/full_system_launch.py` no longer includes any localization/SLAM launch
+files. IMU data continues to be published by the motor controller
+(`actuation_nodes`) on `/imu/data`. Revisit only if persistent multi-room memory
+becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 
 ---
 
@@ -513,6 +513,9 @@ if persistent multi-room memory becomes a real requirement. See
 - ❌ Install BehaviorTree.CPP library — not needed
 - ✅ Keep `command_router_node.py` (regex + cognitive forward) instead
 - ✅ Add `visual_verification_node.py` (stop → verify → rotate/retry)
+- ✅ Removed BT leftovers: `action_nodes/` placeholder, `behaviortree_cpp_v3` /
+  `py-trees` deps, and the stale `behavior_tree_executor` / `dialogue_manager`
+  build entry points (24 Sep 2026)
 - ⏳ Introduce a real BT only when a second genuinely multi-step behavior needs it
 
 ### 8.3 Cross-Cutting Fixes Applied
@@ -587,7 +590,7 @@ if persistent multi-room memory becomes a real requirement. See
    - Status: 🚧 Monitoring
    - Mitigation: Consider TensorRT conversion or `tiny.en` model
 
-3. **SLAM not implemented**: RTAB-Map/EKF is **descoped** (Phase 6 removed from the MVP on 24 Sep 2026). The reactive "go to visible object" path (YOLO + depth + visual verification) does not require a map.
+3. **SLAM not implemented**: RTAB-Map/EKF is **descoped and removed** (Phase 6 removed from the MVP on 24 Sep 2026). The reactive "go to visible object" path (YOLO + depth + visual verification) does not require a map, and `src/localization_nodes/` has been deleted.
    - Status: ❌ Descoped
    - Priority: Low (revisit only if persistent multi-room memory becomes a requirement)
 
@@ -595,13 +598,14 @@ if persistent multi-room memory becomes a real requirement. See
    - Status: 🚧 Partial (Phase 9.1) — minimal FastAPI `/health` + `/status` server added and verified; full dashboard/WebSocket pending
    - Priority: Low
 
-5. **uart_imu_node serial port conflict**: Both uart_motor_controller and uart_imu_node open `/dev/ttyTHS1`. Motor controller now handles IMU internally; standalone IMU node should not be launched simultaneously.
-   - Status: ✅ Resolved via localization_launch.py comment + documentation
+5. **uart_imu_node serial port conflict**: Resolved by removal. The standalone `uart_imu_node` (in the deleted `localization_nodes` package) no longer exists; `uart_motor_controller` is the single owner of `/dev/ttyTHS1` and publishes `/imu/data` from continuous feedback / periodic T=126 queries.
+   - Status: ✅ Resolved (standalone node removed, 24 Sep 2026)
 
 ---
 
 ## Recent Updates
 
+- **24 Sep 2026**: **Deferred cleanup done** — deleted the descoped `src/localization_nodes/` package (EKF/RTAB-Map/standalone IMU) and its SLAM scripts, dropped the localization/SLAM includes from `full_system_launch.py`, and removed BehaviorTree leftovers (`action_nodes/`, `behaviortree_cpp_v3`/`py-trees` deps, stale `behavior_tree_executor`/`dialogue_manager` entry points). IMU remains on `/imu/data` via the motor controller. Test suite unchanged: **68 passed, 2 failed** (pre-existing `test_wake_word.py`).
 - **24 Sep 2026**: **Phase 5 items 3 & 4 complete** — implemented the visual verification loop (`visual_verification_node.py`: stop → snapshot → verify → rotate/retry) with unit + ROS2 integration tests, and a minimal FastAPI health/status server (`web_server.py`, `/health` + `/status`) verified live. Full integration soak (item 5) deferred.
 - **24 Sep 2026**: **Phase 1 complete** — set `MAXN_SUPER` + `jetson_clocks`. Measured gains: YOLO 41.9→**98.2 FPS**, Depth 28.1→**55.1 FPS**, Moondream 30.4→**49.0 tok/s**, max tj 53.5 °C. Recorded in `docs/model_performance.md`.
 - **24 Sep 2026**: **Phase 2 (llama.cpp) implemented behind flag — not promoted.** Built `llama-cpp-python 0.3.35` with CUDA. Added `LlamaCppBridge` (mirrors the real `OllamaBridge.generate()` interface), `cognitive_backend:=ollama|llamacpp` launch flag (default `ollama`), GBNF/JSON structured output, and cross-backend tests. Gate: RSS 2856 MB ≤ 2966 MB and all layers on CUDA0, but vision e2e latency regressed (3.79 s vs 2.16 s) due to slower clip encoding, so the default stays `ollama` and the old path is not removed. See `docs/model_performance.md`.

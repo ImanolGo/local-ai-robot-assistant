@@ -125,13 +125,12 @@ cd src
 colcon list
 ```
 
-Expected output (8 packages):
+Expected output (7 packages):
 ```
 actuation_nodes         actuation_nodes         (ros.ament_python)
 audio_interface_nodes   audio_interface_nodes   (ros.ament_python)
 behavioral_nodes        behavioral_nodes        (ros.ament_python)
 cognitive_core_nodes    cognitive_core_nodes    (ros.ament_python)
-localization_nodes      localization_nodes      (ros.ament_python)
 perception_nodes        perception_nodes        (ros.ament_python)
 robot_interfaces        robot_interfaces        (ros.ament_cmake)
 web_interface_nodes     web_interface_nodes     (ros.ament_python)
@@ -150,7 +149,6 @@ actuation_nodes/
 audio_interface_nodes/
 behavioral_nodes/
 cognitive_core_nodes/
-localization_nodes/
 perception_nodes/
 robot_interfaces/
 web_interface_nodes/

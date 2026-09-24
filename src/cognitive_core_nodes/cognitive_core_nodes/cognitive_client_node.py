@@ -5,7 +5,7 @@ Cognitive Client Node — Ollama/Moondream Bridge for Local AI Robot Assistant.
 This node bridges ROS2 with the local Ollama server running Moondream (1.6B VLM).
 It receives transcription results and optionally camera snapshots, constructs prompts,
 sends HTTP requests to the Ollama API, parses structured JSON intents, and publishes
-CognitiveCommand messages to the behavior tree.
+CognitiveCommand messages to the command router.
 
 Architecture Reference: docs/architecture.md §2.5 (Tier 2 — Strategic Cognitive Core)
 
@@ -415,7 +415,7 @@ class CognitiveClientNode(Node):
         )
 
     def _on_multimodal_query(self, msg: MultimodalQuery) -> None:
-        """Handle a direct multimodal query (e.g. from behavior tree verification).
+        """Handle a direct multimodal query (e.g. from visual verification).
 
         Args:
             msg: Multimodal query with text, optional image flag, and processing prefs.
