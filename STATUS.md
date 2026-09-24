@@ -1,8 +1,8 @@
 # Implementation Status
 
-**Last Updated**: 12 Feb 2026
-**Current Phase**: Phase 7/8 (Cognitive Core + Behavioral Architecture)
-**Overall Progress**: 78%
+**Last Updated**: 24 Sep 2026
+**Current Phase**: Phase 7/8 (Cognitive Core + Behavioral Architecture) · migration plan v4 Phases 0–2, 5 items 3–4
+**Overall Progress**: 82%
 
 ## Legend
 - ✅ Complete
@@ -483,9 +483,10 @@
 
 ### 7.3 Visual Verification Logic
 
-- ⏳ Implement verification prompts
-- ⏳ Test verification accuracy with Moondream
-- ⏳ Implement retry with rotation (ensemble verification)
+- ✅ Implement verification prompts (`build_verification_prompt`, yes/no)
+- ✅ Test verification accuracy (unit tests for answer parsing + ROS2 integration test)
+- ✅ Implement retry with rotation (alternating ±45°, bounded `max_attempts`)
+- ✅ New node: `behavioral_nodes/visual_verification_node.py` (backend-agnostic)
 
 ### 7.4 Bug Fixes Applied
 
@@ -532,8 +533,8 @@
 ## Phase 9: Web Interface & Monitoring (0% Complete ⏳)
 
 ### 9.1 Web Server Backend
-- ⏳ Implement `web_server.py` (FastAPI + WebSocket)
-- ⏳ Create API endpoints
+- 🚧 Implement `web_server.py` (FastAPI) — minimal `/health` + `/status` done; WebSocket + full API pending
+- ✅ Health/status endpoints verified live (`curl` → 200 JSON)
 
 ### 9.2 System Monitoring Node
 - ⏳ Implement `system_monitor.py`
@@ -595,7 +596,7 @@
    - Priority: High (needed for autonomous navigation)
 
 4. **Web interface not yet implemented**: web_interface_nodes has no server code.
-   - Status: ⏳ Planned (Phase 9)
+   - Status: 🚧 Partial (Phase 9.1) — minimal FastAPI `/health` + `/status` server added and verified; full dashboard/WebSocket pending
    - Priority: Low
 
 5. **uart_imu_node serial port conflict**: Both uart_motor_controller and uart_imu_node open `/dev/ttyTHS1`. Motor controller now handles IMU internally; standalone IMU node should not be launched simultaneously.
@@ -605,6 +606,7 @@
 
 ## Recent Updates
 
+- **24 Sep 2026**: **Phase 5 items 3 & 4 complete** — implemented the visual verification loop (`visual_verification_node.py`: stop → snapshot → verify → rotate/retry) with unit + ROS2 integration tests, and a minimal FastAPI health/status server (`web_server.py`, `/health` + `/status`) verified live. Full integration soak (item 5) deferred.
 - **24 Sep 2026**: **Phase 1 complete** — set `MAXN_SUPER` + `jetson_clocks`. Measured gains: YOLO 41.9→**98.2 FPS**, Depth 28.1→**55.1 FPS**, Moondream 30.4→**49.0 tok/s**, max tj 53.5 °C. Recorded in `docs/model_performance.md`.
 - **24 Sep 2026**: **Phase 2 (llama.cpp) implemented behind flag — not promoted.** Built `llama-cpp-python 0.3.35` with CUDA. Added `LlamaCppBridge` (mirrors the real `OllamaBridge.generate()` interface), `cognitive_backend:=ollama|llamacpp` launch flag (default `ollama`), GBNF/JSON structured output, and cross-backend tests. Gate: RSS 2856 MB ≤ 2966 MB and all layers on CUDA0, but vision e2e latency regressed (3.79 s vs 2.16 s) due to slower clip encoding, so the default stays `ollama` and the old path is not removed. See `docs/model_performance.md`.
 - **24 Sep 2026**: **Phase 0 diagnosis complete** — Moondream is confirmed 100% GPU-resident under Ollama (`size_vram == size` = 1.33 GB; `GR3D_FREQ` peaks 99%). The ~3 GB is `ollama` process RSS overhead, not a broken offload. Recorded in `docs/phase0_baseline.md`. Implication: Phase 2 (llama.cpp swap) is lower priority per `Plan.md`.

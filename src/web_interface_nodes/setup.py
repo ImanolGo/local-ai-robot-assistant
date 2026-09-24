@@ -26,8 +26,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            # TODO: Uncomment when web_server module is implemented
-            # "web_server = web_interface_nodes.web_server:main",
+            "web_server = web_interface_nodes.web_server:main",
         ],
     },
 )

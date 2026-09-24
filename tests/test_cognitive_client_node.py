@@ -17,22 +17,6 @@ from unittest.mock import MagicMock, patch
 from cognitive_core_nodes.cognitive_client_node import OllamaBridge, parse_json_intent
 from cognitive_core_nodes.llama_cpp_bridge import LlamaCppBridge, resolve_ollama_moondream_blobs
 
-# Mock ROS2 and robot_interfaces imports before importing the module under test.
-# This is necessary because robot_interfaces.msg requires a colcon-built workspace.
-_mock_modules = {
-    "rclpy": MagicMock(),
-    "rclpy.node": MagicMock(),
-    "cv_bridge": MagicMock(),
-    "sensor_msgs.msg": MagicMock(),
-    "std_msgs.msg": MagicMock(),
-    "geometry_msgs.msg": MagicMock(),
-    "robot_interfaces": MagicMock(),
-    "robot_interfaces.msg": MagicMock(),
-}
-for mod_name, mock in _mock_modules.items():
-    if mod_name not in sys.modules:
-        sys.modules[mod_name] = mock
-
 
 class TestParseJsonIntent(unittest.TestCase):
     """Tests for the JSON intent parser."""

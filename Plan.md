@@ -168,13 +168,13 @@ If you do take this fork, sequence it as its own branch off the *current* JetPac
 
 This continues the scope-cutting from the earlier review, unaffected by the backend swap:
 
-1. **Skip full SLAM (Phase 6 in STATUS.md) for the MVP.** Implement a reactive "go to visible object" behavior using existing Tier 1 YOLO + depth output instead — no map, no RTAB-Map dependency. Only revisit RTAB-Map if/when persistent multi-room memory becomes an actual requirement.
-2. **Keep the existing `command_router_node.py` regex+cognitive-forward pattern** instead of standing up BehaviorTree.CPP (Phase 8.2). Introduce a real BT only when a second genuinely multi-step behavior (search → navigate → verify → retry) needs it.
-3. **Implement Phase 7.3 (visual verification loop)**: this was already scoped in architecture.md §12 Phase 5 Task 3 — stop, snapshot, ask "is goal X achieved," retry with rotation if unsure. This is real, needed work, independent of the backend chosen in Phase 2.
-4. **Web interface (Phase 9)**: minimal FastAPI health/status endpoint only. Do not build the full dashboard until everything else is stable.
-5. **Integration testing (Phase 10)**: once Phases 2 (and optionally 3/4) are merged and their individual gates passed, run the full-system 60-minute soak test described in the research doc's Phase 4 (SLAM/nav skipped per item 1 above, so: object detection + depth + audio + cognitive core + visual verification, concurrently, for 60 minutes, logging `tegrastats` RSS and thermals). This is the real end-to-end validation — everything before this point was per-subsystem.
+1. ✅ **Skip full SLAM (Phase 6 in STATUS.md) for the MVP.** The reactive "go to visible object" path via Tier 1 YOLO + depth is the MVP scope. Note: a prior commit (`7eaadf5`) already landed RTAB-Map, but it is not a dependency of the MVP flows and is not exercised by this plan's validation.
+2. ✅ **Keep the existing `command_router_node.py` regex+cognitive-forward pattern** — no BehaviorTree.CPP introduced. Confirmed unchanged.
+3. ✅ **Implement Phase 7.3 (visual verification loop)**: added `behavioral_nodes/visual_verification_node.py` — stop, snapshot, ask "is goal X achieved", parse yes/no, retry with alternating ±45° rotation up to `max_attempts`. Backend-agnostic (talks `MultimodalQuery`/`MultimodalResponse`). Pure-logic unit tests + an in-process ROS2 integration test (trigger → query → positive answer → verified; negative answer → rotation → retry).
+4. ✅ **Web interface (Phase 9)**: minimal FastAPI server `web_interface_nodes/web_server.py` exposing `GET /health` and `GET /status` (uptime, CPU/RAM, cached cognitive/verification status). Verified live (`curl` returned 200 + JSON). Full dashboard deferred.
+5. ⏭️ **Integration testing (Phase 10)**: not run in this session. The full-system 60-minute soak needs the physical perception/audio/actuation stack active and is the final step; it is only meaningful once a cognitive backend is promoted (Phase 2 not promoted) and after hardware re-validation. Left as the closing task.
 
-**Gate**: total RAM stays under budget with no swap thrashing, no thermal throttling, all subsystems stable for the full hour.
+**Gate**: 🟡 partially assessed — the per-subsystem and simulated-loop tests pass; the full-hour concurrent RAM/thermal soak is deferred (see item 5).
 
 ---
 
