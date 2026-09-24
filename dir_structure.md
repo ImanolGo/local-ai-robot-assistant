@@ -38,7 +38,7 @@ local-ai-robot-assistant/
 │   │   ├── setup.py
 │   │   └── README.md
 │   │
-│   ├── localization_nodes/          # DESCOPED (SLAM/localization not launched in MVP)
+│   ├── localization_nodes/          # DESCOPED (still referenced by full_system_launch.py; not in MVP)
 │   │   ├── localization_nodes/
 │   │   │   ├── __init__.py
 │   │   │   ├── uart_imu_node.py

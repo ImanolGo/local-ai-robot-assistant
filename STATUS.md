@@ -442,13 +442,15 @@
 
 ---
 
-## Phase 6: SLAM & Localization — DESCOPED (removed from MVP)
+## Phase 6: SLAM & Localization — DESCOPED (out of MVP scope)
 
 **Status**: ❌ Descoped (24 Sep 2026). SLAM / localization is **out of scope for
 the MVP**. The robot uses a reactive "go to visible object" behavior built on
 Tier 1 YOLO + depth plus the visual-verification loop — no map, no RTAB-Map
 dependency. The `src/localization_nodes/` package (EKF + RTAB-Map) is left in
-place but is **not launched** and not part of the supported system. Revisit only
+place; `launch/full_system_launch.py` still includes its launch files, but it is
+**not part of the supported MVP** and is slated for removal in a follow-up
+cleanup (code removal was intentionally out of scope for this docs pass). Revisit only
 if persistent multi-room memory becomes a real requirement. See
 `docs/architecture.md` v4.0 scope note.
 
