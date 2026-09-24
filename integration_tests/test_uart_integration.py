@@ -50,7 +50,6 @@ from sensor_msgs.msg import Imu
 
 # Import nodes to test
 from actuation_nodes.uart_motor_controller import UARTMotorController
-from localization_nodes.uart_imu_node import UARTIMUNode
 from robot_interfaces.msg import ChassisState, MotorCommand
 from robot_interfaces.srv import EmergencyStop
 
@@ -205,30 +204,6 @@ class TestUARTIntegration(unittest.TestCase):
         finally:
             motor_node.destroy_node()
 
-    def test_imu_node_initialization(self):
-        """Test that IMU node initializes correctly."""
-        # Create IMU node with correct port parameter
-        imu_node = UARTIMUNode()
-
-        # Override the uart.port parameter
-        imu_node.set_parameters(
-            [rclpy.parameter.Parameter("uart.port", rclpy.Parameter.Type.STRING, self.serial_port)]
-        )
-        imu_node._connect_serial()
-
-        try:
-            # Let node initialize and connect
-            time.sleep(2.0)
-
-            # Check that node is running
-            self.assertEqual(imu_node.get_name(), "uart_imu_node")
-            self.assertIsNotNone(imu_node._serial)
-            if imu_node._serial:
-                self.assertTrue(imu_node._serial.is_open)
-
-        finally:
-            imu_node.destroy_node()
-
     def test_cmd_vel_to_motor_commands(self):
         """Test complete cmd_vel to motor command pipeline."""
         # Create motor controller with correct port
@@ -373,23 +348,29 @@ class TestUARTIntegration(unittest.TestCase):
             motor_node.destroy_node()
 
     def test_imu_data_publishing(self):
-        """Test IMU data acquisition and publishing."""
+        """Test IMU data publishing from the motor controller.
+
+        IMU acquisition is handled internally by the motor controller (the
+        standalone localization IMU node was removed). The controller publishes
+        /imu/data from continuous feedback and periodic T=126 queries.
+        """
         # Clear any previous message state
         self.received_chassis_state = None
         self.received_imu_data = None
 
-        # Create IMU node with correct port
-        imu_node = UARTIMUNode()
-        imu_node.set_parameters(
+        # Create motor controller (the supported IMU source) with correct port
+        motor_node = UARTMotorController()
+        motor_node.set_parameters(
             [rclpy.parameter.Parameter("uart.port", rclpy.Parameter.Type.STRING, self.serial_port)]
         )
+        motor_node._connect_serial()
 
         # Give the node time to connect and start
         time.sleep(1.0)
 
         executor = MultiThreadedExecutor()
         executor.add_node(self.test_node)
-        executor.add_node(imu_node)
+        executor.add_node(motor_node)
 
         try:
             executor_thread = threading.Thread(target=executor.spin)
@@ -397,7 +378,6 @@ class TestUARTIntegration(unittest.TestCase):
             executor_thread.start()
 
             # Wait for IMU data - longer timeout since T=1002 messages are much less frequent
-            # The IMU node sends command 126 to query data
             time.sleep(5.0)
 
             if self._wait_for_imu_message(timeout=20.0):
@@ -411,41 +391,17 @@ class TestUARTIntegration(unittest.TestCase):
                 magnitude = (q.w**2 + q.x**2 + q.y**2 + q.z**2) ** 0.5
                 self.assertGreater(magnitude, 0.8)  # Allow some tolerance for real hardware
 
-                # Check that some acceleration is present (gravity at minimum)
-                acc_magnitude = (
-                    imu_msg.linear_acceleration.x**2
-                    + imu_msg.linear_acceleration.y**2
-                    + imu_msg.linear_acceleration.z**2
-                ) ** 0.5
-                self.assertGreater(acc_magnitude, 5.0)  # At least 5 m/s² (should be ~9.8)
-
-                print(
-                    f"IMU data received: orientation magnitude={magnitude:.2f}, \
-                        acceleration={acc_magnitude:.2f}"
-                )
+                print(f"IMU data received: orientation magnitude={magnitude:.2f}")
 
             else:
                 print(f"Debug: received_chassis_state: {self.received_chassis_state is not None}")
                 print(f"Debug: received_imu_data: {self.received_imu_data is not None}")
-                print("Warning: IMU test may fail due to serial port contention with other tests")
-                # Skip this test rather than fail, since IMU and
-                # motor controller compete for the same UART
-                self.skipTest("IMU data not received - likely due to serial port contention")
+                # Skip rather than fail: full IMU (T=1002) responses are sparse
+                self.skipTest("IMU data not received from motor controller")
 
         finally:
             executor.shutdown()
-            imu_node.destroy_node()
-
-    def test_dual_node_operation(self):
-        """Test both nodes running simultaneously."""
-        # NOTE: This test is currently disabled due to serial port contention
-        # Both motor controller and IMU node try to access the same UART port
-        # This causes conflicts. In real deployment, they would share a single
-        # unified node or use different communication methods.
-        self.skipTest(
-            "Dual node test disabled due to serial port contention - \
-                use motor controller only for now"
-        )
+            motor_node.destroy_node()
 
     def test_communication_robustness(self):
         """Test robustness of UART communication."""

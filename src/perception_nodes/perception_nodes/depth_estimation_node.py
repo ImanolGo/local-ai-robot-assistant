@@ -189,7 +189,7 @@ class DepthEstimationNode(Node):
 
             metric = (normalized * max_depth) * depth_scale + depth_offset
 
-        For SLAM calibration:
+        For depth calibration:
           1. Place the robot at known distances (e.g. 0.5m, 1m, 2m, 3m from a wall)
           2. Record /perception/depth values at each distance
           3. Fit a linear model: actual_distance = depth_value * scale + offset
