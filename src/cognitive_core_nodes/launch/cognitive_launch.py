@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-Launch file for Cognitive Client Node (Ollama/Moondream Bridge).
+Launch file for Cognitive Client Node (in-process llama.cpp / Ollama bridge).
 
-This launch file starts the cognitive client node that connects to the local
-Ollama server running Moondream for visual reasoning and command understanding.
+This launch file starts the cognitive client node that runs Moondream for
+visual reasoning and command understanding. The promoted default is the
+in-process ``llamacpp`` backend (GPU vision via mtmd + flash attention); the
+Ollama HTTP daemon remains available via ``cognitive_backend:=ollama``.
 
 Usage:
     ros2 launch cognitive_core_nodes cognitive_launch.py
-    ros2 launch cognitive_core_nodes cognitive_launch.py model_name:=moondream
+    ros2 launch cognitive_core_nodes cognitive_launch.py cognitive_backend:=ollama
 """
 
 from launch_ros.actions import Node
@@ -25,8 +27,8 @@ def generate_launch_description():
             # Launch arguments
             DeclareLaunchArgument(
                 "cognitive_backend",
-                default_value="ollama",
-                description="Backend: 'ollama' (HTTP) or 'llamacpp' (in-process GGUF)",
+                default_value="llamacpp",
+                description="Backend: 'llamacpp' (in-process GGUF, default) or 'ollama' (HTTP)",
             ),
             DeclareLaunchArgument(
                 "model_name",
@@ -52,6 +54,11 @@ def generate_launch_description():
                 "llm_n_ctx",
                 default_value="2048",
                 description="Context size for the llamacpp backend (must fit image tokens)",
+            ),
+            DeclareLaunchArgument(
+                "llm_flash_attn",
+                default_value="true",
+                description="Enable flash attention for the llamacpp backend",
             ),
             DeclareLaunchArgument(
                 "request_timeout",
@@ -89,6 +96,7 @@ def generate_launch_description():
                         "llm_model_path": LaunchConfiguration("llm_model_path"),
                         "llm_mmproj_path": LaunchConfiguration("llm_mmproj_path"),
                         "llm_n_ctx": LaunchConfiguration("llm_n_ctx"),
+                        "llm_flash_attn": LaunchConfiguration("llm_flash_attn"),
                         "request_timeout": LaunchConfiguration("request_timeout"),
                         "num_ctx": 512,
                         "num_predict": LaunchConfiguration("num_predict"),

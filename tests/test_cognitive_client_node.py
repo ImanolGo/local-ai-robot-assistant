@@ -14,7 +14,11 @@ import types
 import unittest
 from unittest.mock import MagicMock, patch
 
-from cognitive_core_nodes.cognitive_client_node import OllamaBridge, parse_json_intent
+from cognitive_core_nodes.cognitive_client_node import (
+    OllamaBridge,
+    maybe_fallback_to_ollama,
+    parse_json_intent,
+)
 from cognitive_core_nodes.llama_cpp_bridge import LlamaCppBridge, resolve_ollama_moondream_blobs
 
 
@@ -212,6 +216,28 @@ class TestLlamaCppBridge(unittest.TestCase):
         mock_cls.assert_called_once()
         self.assertTrue(bridge.is_available())
 
+    def test_flash_attn_enabled_by_default(self):
+        """flash attention is on by default (major vision e2e win on Orin)."""
+        _, mock_cls = self._make_bridge(MagicMock())
+        _, kwargs = mock_cls.call_args
+        self.assertTrue(kwargs.get("flash_attn"))
+
+    def test_flash_attn_can_be_disabled(self):
+        """flash attention can be turned off for A/B comparison."""
+        mock_llm_cls = MagicMock(return_value=MagicMock())
+        fake_module = types.ModuleType("llama_cpp")
+        fake_module.Llama = mock_llm_cls
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".gguf", delete=False)
+        tmp.write(b"fake")
+        tmp.close()
+
+        with patch.dict(sys.modules, {"llama_cpp": fake_module}):
+            LlamaCppBridge(model_path=tmp.name, flash_attn=False, logger=MagicMock())
+
+        _, kwargs = mock_llm_cls.call_args
+        self.assertFalse(kwargs.get("flash_attn"))
+
     def test_generate_text_normalizes_response(self):
         """Text generation is normalized to the Ollama-compatible dict shape."""
         mock_llm = MagicMock()
@@ -274,6 +300,61 @@ class TestLlamaCppBridge(unittest.TestCase):
         """A missing manifest yields None paths rather than raising."""
         result = resolve_ollama_moondream_blobs("/nonexistent/manifest")
         self.assertIsNone(result["model_path"])
+
+
+class TestBackendFallback(unittest.TestCase):
+    """Tests for the llamacpp → Ollama fallback helper."""
+
+    def _logger(self):
+        return MagicMock()
+
+    def test_no_fallback_when_llamacpp_available(self):
+        """An available llamacpp bridge is returned untouched."""
+        bridge = MagicMock()
+        bridge.is_available.return_value = True
+        result, backend = maybe_fallback_to_ollama(
+            bridge, "llamacpp", "http://localhost:11434", "moondream", 5.0, self._logger()
+        )
+        self.assertIs(result, bridge)
+        self.assertEqual(backend, "llamacpp")
+
+    def test_ollama_backend_is_never_replaced(self):
+        """The helper is a no-op for the explicitly-requested Ollama backend."""
+        bridge = MagicMock()
+        bridge.is_available.return_value = False
+        result, backend = maybe_fallback_to_ollama(
+            bridge, "ollama", "http://localhost:11434", "moondream", 5.0, self._logger()
+        )
+        self.assertIs(result, bridge)
+        self.assertEqual(backend, "ollama")
+
+    @patch("cognitive_core_nodes.cognitive_client_node.OllamaBridge")
+    def test_falls_back_to_ollama_when_llamacpp_unavailable(self, mock_ollama_cls):
+        """An unavailable llamacpp bridge is replaced by a reachable Ollama bridge."""
+        primary = MagicMock()
+        primary.is_available.return_value = False
+        fallback = MagicMock()
+        fallback.is_available.return_value = True
+        mock_ollama_cls.return_value = fallback
+
+        result, backend = maybe_fallback_to_ollama(
+            primary, "llamacpp", "http://localhost:11434", "moondream", 5.0, self._logger()
+        )
+        self.assertIs(result, fallback)
+        self.assertEqual(backend, "ollama")
+
+    @patch("cognitive_core_nodes.cognitive_client_node.OllamaBridge")
+    def test_keeps_llamacpp_when_both_unavailable(self, mock_ollama_cls):
+        """If Ollama is also down, the original bridge is retained."""
+        primary = MagicMock()
+        primary.is_available.return_value = False
+        mock_ollama_cls.return_value.is_available.return_value = False
+
+        result, backend = maybe_fallback_to_ollama(
+            primary, "llamacpp", "http://localhost:11434", "moondream", 5.0, self._logger()
+        )
+        self.assertIs(result, primary)
+        self.assertEqual(backend, "llamacpp")
 
 
 class TestIntentParsingAcrossBackends(unittest.TestCase):

@@ -8,6 +8,12 @@ directly inside the ROS2 process using ``llama-cpp-python`` with the CUDA
 backend, eliminating the HTTP/JSON/base64 round trip and Ollama daemon
 overhead.
 
+Vision runs through llama.cpp's ``mtmd`` path (the ``MoondreamChatHandler``
+subclasses ``Llava15ChatHandler``, which initializes the multimodal context
+with ``use_gpu=True``), so the clip encoder is GPU-offloaded. Flash attention
+is enabled on the LLM context by default, which is the decisive vision
+end-to-end optimization on Orin (image prefill dominates the call).
+
 The public surface deliberately mirrors ``OllamaBridge`` so the cognitive
 client node only needs to swap which bridge it instantiates:
 
@@ -109,6 +115,9 @@ class LlamaCppBridge:
         n_ctx: Context window size (deterministic KV-cache sizing).
         n_gpu_layers: Layers to offload to GPU; -1 = all.
         n_threads: CPU threads for the non-offloaded work.
+        flash_attn: Enable flash attention for the LLM context. This is a
+            significant vision end-to-end win on Orin (~18%: 2.35s → 1.92s for
+            a Moondream image query) because the image prefill dominates.
         chat_format: Optional explicit chat format (e.g. "moondream").
         verbose: Pass-through to llama.cpp logging.
         logger: ROS2 logger instance.
@@ -121,6 +130,7 @@ class LlamaCppBridge:
         n_ctx: int = 512,
         n_gpu_layers: int = -1,
         n_threads: Optional[int] = None,
+        flash_attn: bool = True,
         chat_format: Optional[str] = None,
         verbose: bool = False,
         logger=None,
@@ -130,6 +140,7 @@ class LlamaCppBridge:
         self.n_ctx = n_ctx
         self.n_gpu_layers = n_gpu_layers
         self.n_threads = n_threads
+        self.flash_attn = flash_attn
         self.chat_format = chat_format
         self.verbose = verbose
         self.logger = logger
@@ -177,6 +188,7 @@ class LlamaCppBridge:
             "model_path": self.model_path,
             "n_ctx": self.n_ctx,
             "n_gpu_layers": self.n_gpu_layers,
+            "flash_attn": self.flash_attn,
             "verbose": self.verbose,
         }
         if self.n_threads:
@@ -196,7 +208,8 @@ class LlamaCppBridge:
             self._log(
                 "info",
                 f"llama.cpp loaded '{os.path.basename(self.model_path)}' "
-                f"(n_ctx={self.n_ctx}, n_gpu_layers={self.n_gpu_layers})",
+                f"(n_ctx={self.n_ctx}, n_gpu_layers={self.n_gpu_layers}, "
+                f"flash_attn={self.flash_attn})",
             )
         except Exception as exc:  # pragma: no cover - exercised on-device
             self._last_error = f"Failed to load GGUF model: {exc}"
