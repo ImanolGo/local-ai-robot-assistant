@@ -33,17 +33,25 @@ if str(src_path) not in sys.path:
 try:
     import robot_interfaces as _robot_interfaces
 
-    _installed_pkg = (
+    _ri_install = workspace_root / "install" / "robot_interfaces"
+    _installed_pkg_candidates = [
+        # Standard ament_cmake layout
+        _ri_install / "lib" / "python3.10" / "site-packages" / "robot_interfaces",
+        # Alternate layout seen on some JetPack/venv builds
+        _ri_install / "local" / "lib" / "python3.10" / "dist-packages" / "robot_interfaces",
+        # Merge-install layout
+        workspace_root / "install" / "lib" / "python3.10" / "site-packages" / "robot_interfaces",
         workspace_root
         / "install"
-        / "robot_interfaces"
         / "local"
         / "lib"
         / "python3.10"
         / "dist-packages"
-        / "robot_interfaces"
-    )
-    if _installed_pkg.is_dir() and str(_installed_pkg) not in _robot_interfaces.__path__:
-        _robot_interfaces.__path__.append(str(_installed_pkg))
+        / "robot_interfaces",
+    ]
+    for _installed_pkg in _installed_pkg_candidates:
+        if _installed_pkg.is_dir() and str(_installed_pkg) not in _robot_interfaces.__path__:
+            _robot_interfaces.__path__.append(str(_installed_pkg))
+            break
 except ImportError:
     pass
