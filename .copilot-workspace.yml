@@ -18,8 +18,7 @@ key_concepts:
   - UART JSON protocol for Wave Rover
   - Fisheye camera undistortion
   - Voice activity detection
-  - Behavior tree architecture
-  - SLAM with RTAB-Map
+  - Command router + visual verification loop
 
 common_patterns:
   node_structure: "ROS2 nodes with parameters, error handling, and graceful shutdown"

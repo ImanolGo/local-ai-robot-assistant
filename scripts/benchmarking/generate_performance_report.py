@@ -461,7 +461,7 @@ Based on benchmark results:
 
 ## Next Steps
 
-- [ ] Profile combined YOLO + Depth + SLAM operation
+- [ ] Profile combined YOLO + Depth operation
 - [ ] Test memory pressure with all models loaded
 - [ ] Optimize Whisper memory footprint
 - [ ] Benchmark end-to-end latency (wake word → action)

@@ -199,14 +199,15 @@ motor:
   max_angular_velocity: 1.0   # rad/s
 ```
 
-### IMU Node
+### IMU
 
-**Package**: `localization_nodes`
-**Node**: `uart_imu_node`
+IMU data is acquired and published by the motor controller itself (the
+standalone `uart_imu_node` was removed with the descoped localization package).
+
+**Node**: `uart_motor_controller`
 
 #### Published Topics
 - `/imu/data` (sensor_msgs/Imu) - Processed IMU data with covariances
-- `/imu/raw` (custom) - Raw IMU data from Wave Rover
 
 #### Parameters
 ```yaml
@@ -322,11 +323,8 @@ imu_sub = node.create_subscription(Imu, '/imu/data', imu_callback, 10)
 
 ### Unit Tests
 ```bash
-# Run motor controller tests
+# Run motor controller tests (includes IMU publishing)
 python3 -m pytest src/actuation_nodes/test/test_uart_motor_controller.py -v
-
-# Run IMU node tests
-python3 -m pytest src/localization_nodes/test/test_uart_imu_node.py -v
 ```
 
 ### Integration Tests
@@ -436,12 +434,6 @@ def generate_launch_description():
             package='actuation_nodes',
             executable='uart_motor_controller',
             name='uart_motor_controller',
-            parameters=['/path/to/uart_config.yaml']
-        ),
-        Node(
-            package='localization_nodes',
-            executable='uart_imu_node',
-            name='uart_imu_node',
             parameters=['/path/to/uart_config.yaml']
         )
     ])

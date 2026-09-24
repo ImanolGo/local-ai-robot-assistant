@@ -17,7 +17,7 @@
 **Examples**:
 ```bash
 # Run all unit tests
-colcon test --packages-select perception_nodes actuation_nodes localization_nodes
+colcon test --packages-select perception_nodes actuation_nodes behavioral_nodes
 
 # Run specific package unit tests
 colcon test --packages-select perception_nodes
@@ -104,7 +104,7 @@ pytest integration_tests/ -m "not hardware" -v
 source /opt/ros/humble/setup.bash
 colcon build
 source install/setup.bash
-colcon test --packages-select perception_nodes actuation_nodes localization_nodes
+colcon test --packages-select perception_nodes actuation_nodes behavioral_nodes
 pytest integration_tests/ -m "not hardware" --junitxml=results.xml
 
 # Hardware Integration (nightly/weekly)

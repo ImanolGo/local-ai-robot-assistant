@@ -163,7 +163,7 @@ class CommandRouterNode(Node):
         if action == "stop":
             self._execute_simple_command("stop")
         elif action == "navigate":
-            # Navigation to a target — would integrate with Nav2 / SLAM in Phase 6+
+            # Reactive navigation to a visible target (no map/SLAM in the MVP)
             self.get_logger().info(f"Navigate to '{msg.target_object}' — forwarding to planner")
             # For now, acknowledge and move forward slowly
             self._execute_simple_command("forward")
