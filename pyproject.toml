@@ -93,3 +93,15 @@ jetson = [
     # - pycuda (installed via apt/manual compilation)
     "cupy-cuda12x",  # Can be installed normally,
 ]
+web = [
+    # Minimal FastAPI health/status server (Plan.md Phase 5 item 4)
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "httpx>=0.27",  # required by fastapi.testclient
+]
+llamacpp = [
+    # In-process cognitive backend (Plan.md Phase 2). Build from source with:
+    #   CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=87" FORCE_CMAKE=1 \
+    #     pip install llama-cpp-python
+    "llama-cpp-python>=0.3.0",
+]

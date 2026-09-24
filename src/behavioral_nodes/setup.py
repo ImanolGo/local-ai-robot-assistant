@@ -25,6 +25,7 @@ setup(
     entry_points={
         "console_scripts": [
             "command_router_node = behavioral_nodes.command_router_node:main",
+            "visual_verification_node = behavioral_nodes.visual_verification_node:main",
         ],
     },
 )

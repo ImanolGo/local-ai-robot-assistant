@@ -1,8 +1,8 @@
 # Implementation Status
 
-**Last Updated**: 12 Feb 2026
-**Current Phase**: Phase 7/8 (Cognitive Core + Behavioral Architecture)
-**Overall Progress**: 78%
+**Last Updated**: 24 Sep 2026
+**Current Phase**: Phase 7/8 (Cognitive Core + Behavioral Architecture) · migration plan v4 Phases 0–2, 5 items 3–4
+**Overall Progress**: 82%
 
 ## Legend
 - ✅ Complete
@@ -483,9 +483,10 @@
 
 ### 7.3 Visual Verification Logic
 
-- ⏳ Implement verification prompts
-- ⏳ Test verification accuracy with Moondream
-- ⏳ Implement retry with rotation (ensemble verification)
+- ✅ Implement verification prompts (`build_verification_prompt`, yes/no)
+- ✅ Test verification accuracy (unit tests for answer parsing + ROS2 integration test)
+- ✅ Implement retry with rotation (alternating ±45°, bounded `max_attempts`)
+- ✅ New node: `behavioral_nodes/visual_verification_node.py` (backend-agnostic)
 
 ### 7.4 Bug Fixes Applied
 
@@ -532,8 +533,8 @@
 ## Phase 9: Web Interface & Monitoring (0% Complete ⏳)
 
 ### 9.1 Web Server Backend
-- ⏳ Implement `web_server.py` (FastAPI + WebSocket)
-- ⏳ Create API endpoints
+- 🚧 Implement `web_server.py` (FastAPI) — minimal `/health` + `/status` done; WebSocket + full API pending
+- ✅ Health/status endpoints verified live (`curl` → 200 JSON)
 
 ### 9.2 System Monitoring Node
 - ⏳ Implement `system_monitor.py`
@@ -582,7 +583,8 @@
 ## Known Issues
 
 1. **Moondream memory higher than budgeted**: ~3GB actual vs 1.8GB estimated. Using `num_ctx=512` helps.
-   - Status: 🚧 Monitoring
+   - Status: 🔍 Diagnosed (Phase 0, 24 Sep 2026) — not an offload bug
+   - Finding: `/api/ps` reports `size_vram == size` (1.33 GB, 100% GPU); `GR3D_FREQ` peaks at 99%. The ~3 GB is the `ollama` process RSS (weights + KV-cache + runtime overhead), not CPU spill. See `docs/phase0_baseline.md`.
    - Mitigation: Reduce num_ctx, or lazy-load Whisper only on wake-word
 
 2. **Whisper memory higher than budgeted**: ~718MB vs 500MB target.
@@ -594,7 +596,7 @@
    - Priority: High (needed for autonomous navigation)
 
 4. **Web interface not yet implemented**: web_interface_nodes has no server code.
-   - Status: ⏳ Planned (Phase 9)
+   - Status: 🚧 Partial (Phase 9.1) — minimal FastAPI `/health` + `/status` server added and verified; full dashboard/WebSocket pending
    - Priority: Low
 
 5. **uart_imu_node serial port conflict**: Both uart_motor_controller and uart_imu_node open `/dev/ttyTHS1`. Motor controller now handles IMU internally; standalone IMU node should not be launched simultaneously.
@@ -604,6 +606,11 @@
 
 ## Recent Updates
 
+- **24 Sep 2026**: **Phase 5 items 3 & 4 complete** — implemented the visual verification loop (`visual_verification_node.py`: stop → snapshot → verify → rotate/retry) with unit + ROS2 integration tests, and a minimal FastAPI health/status server (`web_server.py`, `/health` + `/status`) verified live. Full integration soak (item 5) deferred.
+- **24 Sep 2026**: **Phase 1 complete** — set `MAXN_SUPER` + `jetson_clocks`. Measured gains: YOLO 41.9→**98.2 FPS**, Depth 28.1→**55.1 FPS**, Moondream 30.4→**49.0 tok/s**, max tj 53.5 °C. Recorded in `docs/model_performance.md`.
+- **24 Sep 2026**: **Phase 2 (llama.cpp) implemented behind flag — not promoted.** Built `llama-cpp-python 0.3.35` with CUDA. Added `LlamaCppBridge` (mirrors the real `OllamaBridge.generate()` interface), `cognitive_backend:=ollama|llamacpp` launch flag (default `ollama`), GBNF/JSON structured output, and cross-backend tests. Gate: RSS 2856 MB ≤ 2966 MB and all layers on CUDA0, but vision e2e latency regressed (3.79 s vs 2.16 s) due to slower clip encoding, so the default stays `ollama` and the old path is not removed. See `docs/model_performance.md`.
+- **24 Sep 2026**: **Phase 0 diagnosis complete** — Moondream is confirmed 100% GPU-resident under Ollama (`size_vram == size` = 1.33 GB; `GR3D_FREQ` peaks 99%). The ~3 GB is `ollama` process RSS overhead, not a broken offload. Recorded in `docs/phase0_baseline.md`. Implication: Phase 2 (llama.cpp swap) is lower priority per `Plan.md`.
+- **24 Sep 2026**: Fixed `conftest.py` test-harness shadowing bug — source `robot_interfaces` package no longer hides the ROS2-generated `robot_interfaces.msg`/`srv`. Test suite now collects: **53 passed, 2 failed** (pre-existing `test_wake_word.py` failures).
 - **12 Feb 2026**: **Architecture audit & critical fixes** — Resolved 8 ghost entry points, broken imports, topic mismatches
 - **12 Feb 2026**: Implemented `cognitive_client_node.py` — Ollama/Moondream HTTP bridge replacing Gemma 3n
 - **12 Feb 2026**: Implemented `command_router_node.py` — Bridges audio transcription → cognitive core → actuation
@@ -708,11 +715,11 @@
 | Audio noise floor | < -60dB | -73.5dB | ✅ |
 | Audio sample rates | 16kHz, 44.1kHz | 16/22/44.1/48kHz | ✅ |
 | Full duplex audio | Required | Supported | ✅ |
-| Object detection FPS | ≥ 20 | 20.6 (FP16) / 17.8 (FP32) | ✅ |
-| Depth estimation FPS | ≥ 30 | Ready to benchmark | ✅ |
-| VLM vision latency | < 600ms | 37ms (Moondream) | ✅ |
-| VLM generation speed | 10-15 tok/s | 30.7 tok/s (Moondream) | ✅ |
-| VLM total response | < 2.5s | 2.11s (Moondream) | ✅ |
+| Object detection FPS | ≥ 20 | 98.2 (FP16, MAXN SUPER) | ✅ |
+| Depth estimation FPS | ≥ 30 | 55.1 (MAXN SUPER) | ✅ |
+| VLM vision latency | < 600ms | 24ms (Moondream, MAXN SUPER) | ✅ |
+| VLM generation speed | 10-15 tok/s | 49.0 tok/s (Moondream, MAXN SUPER) | ✅ |
+| VLM total response | < 2.5s | 1.32s (Moondream, MAXN SUPER) | ✅ |
 | VLM memory usage | < 2GB | ~3GB (num_ctx=512) | 🚧 |
 | Navigation accuracy | < 10cm | TBD | ⏳ |
 | Camera capture FPS | ≥ 30 | 5500-16500 (DeepStream) | ✅ |
