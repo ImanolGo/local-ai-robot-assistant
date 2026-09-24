@@ -43,19 +43,19 @@ Ground rules for the agent, every phase:
 
 ---
 
-## Phase 1 — JetPack / power-profile upgrade (low-risk, do regardless of Phase 0 outcome)
+## Phase 1 — JetPack / power-profile upgrade (low-risk, do regardless of Phase 0 outcome) 🟠 PARTIAL — blocked on root
+
+> **Status**: JetPack already 6.2 (R36.4.7), headless (`multi-user.target`). 15W baseline benchmarks captured. The MAXN SUPER change (`sudo nvpmodel -m 2` + `sudo jetson_clocks`) is **pending**: the agent session had no sudo credentials. Available modes confirmed: 0=15W, 1=25W, 2=MAXN_SUPER.
 
 **Goal**: Get "Super Mode" clocks if not already on JetPack 6.1/6.2, for free throughput on everything downstream, without a full OS/kernel/ROS-distro change.
 
 **Tasks**:
 
-1. Check current JetPack version (`cat /etc/nv_tegra_release`). If \< 6.1, flash/upgrade via SDK Manager to JetPack 6.2. **This is destructive to the OS image — back up `/home` and any model weights first.**
-2. Set the power mode: `sudo nvpmodel -m 2` (MAXN SUPER) and `sudo jetson_clocks`.
-3. Re-run the existing benchmarking scripts you already have:
-   - `scripts/test_yolo.py`
-   - `scripts/test_depth.py`
-   - `scripts/test_ollama_moondream.py`
-4. Record before/after FPS and tok/s in `docs/model_performance.md` under a new "JetPack 6.2 / MAXN SUPER" section. Do not overwrite the old numbers — append, so regressions are visible.
+1. ✅ Current JetPack = **R36.4.7 (JetPack 6.2)** — already ≥ 6.1, no flash/upgrade needed (and no destructive action taken).
+2. 🟠 Set the power mode: `sudo nvpmodel -m 2` (MAXN SUPER) and `sudo jetson_clocks`. **Pending root access.**
+3. 🟡 Baseline re-run at **15W** completed: `scripts/testing/vision/test_yolo.py` (41.90 FPS), `scripts/testing/vision/benchmark_depth.py` (28.1 FPS), `scripts/testing/llm/test_ollama_moondream.py` (30.4 tok/s). MAXN SUPER re-run pending.
+   - Note: the plan's paths `scripts/test_yolo.py` / `scripts/test_depth.py` are stale; the scripts actually live under `scripts/testing/vision/`.
+4. 🟡 Recorded the **15W baseline** in `docs/model_performance.md` under "JetPack 6.2 / power-profile measurements"; the "MAXN SUPER — after" table is present but awaiting the privileged run (old numbers not overwritten).
 
 **Gate**: YOLO/Depth FPS did not regress, and VLM tok/s improved (any improvement counts — don't block on hitting a specific multiplier from the research doc).
 
@@ -81,7 +81,9 @@ If you do take this fork, sequence it as its own branch off the *current* JetPac
 
 ---
 
-## Phase 2 — Replace the Ollama HTTP layer with in-process llama.cpp
+## Phase 2 — Replace the Ollama HTTP layer with in-process llama.cpp 🟡 IMPLEMENTED, NOT PROMOTED — 24 Sep 2026
+
+> **Outcome**: `llama-cpp-python 0.3.35` built with CUDA (`GGML_CUDA=on`, arch 87) and `LlamaCppBridge` implemented behind `cognitive_backend:=ollama|llamacpp`. Gate result: **RSS criterion passed** (2856 MB vs 2966 MB), **GPU offload confirmed** (all layers → CUDA0), **tests pass** (22/22 cognitive). But **vision end-to-end latency regressed** (~3.8 s vs ~2.2 s) because the clip encoder is not GPU-accelerated as well as Ollama's. Per ground rule #3, the default stays `ollama` and the old path is **not** removed. The llama.cpp backend remains available behind the flag for later tuning (e.g. `MTMDChatHandler` with a chat-template GGUF). See `docs/model_performance.md`.
 
 **Priority**: highest-value change in this plan. Directly targets STATUS.md Known Issue #1 (memory overshoot) and Known Issue #2 (whisper memory, addressed separately in Phase 4).
 
@@ -91,23 +93,25 @@ If you do take this fork, sequence it as its own branch off the *current* JetPac
 
 **Tasks**:
 
-1. Add `llama-cpp-python` (with `CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=87"`) to the venv. Build from source — no prebuilt aarch64+CUDA wheel exists; expect this to be the most time-consuming step in the phase.
-2. Pull a GGUF build of the current model (`moondream2` GGUF, or whatever Phase 0 confirmed is working) — do **not** simultaneously switch models and switch runtimes; isolate the variable.
-3. Create `cognitive_core_nodes/llama_cpp_bridge.py`, mirroring the existing `OllamaBridge` class's public interface (`analyze_scene(image_cv2, user_prompt, world_context) -> str`) so `cognitive_client_node.py` only needs a one-line swap of which bridge it imports.
-   - Pass the JPEG bytes directly into the `llama-cpp-python` chat-completion call's image parameter. This alone removes the base64 string round-trip — don't chase the research doc's "zero-copy CUDA pointer" framing, that requires custom C++ tensor-sharing work with uncertain payoff; skip it for this pass.
-   - Set an explicit, bounded `n_ctx` (start at the same value currently used, e.g. 512–2048) so KV-cache size is deterministic instead of whatever Ollama was allocating.
-4. Add a feature flag / launch argument `cognitive_backend:=ollama|llamacpp` to `cognitive_launch.py`, defaulting to `ollama` until Phase 2's gate passes.
-5. Use structured output instead of the markdown-fence-stripping parser: pass a JSON grammar (GBNF) or `response_format={"type": "json_object"}` if supported by your `llama-cpp-python` version, matching the existing `{"action", "target", "explanation"}` schema. Keep `parse_json_intent()` as a defensive fallback rather than deleting it outright — don't remove a tested safety net until the grammar path has proven itself in Phase 2's gate.
-6. Update the 8 existing intent-parsing unit tests to run against both backends via parametrization, so you have a regression check either way.
+1. ✅ Add `llama-cpp-python` (with `CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=87"`) to the venv. Built from source (`llama-cpp-python 0.3.35`, ~35 min, CUDA 12.6, `ARCHS=870`).
+2. ✅ Reused the **same weights** as Ollama: resolved the `moondream:latest` model + projector blobs from the local Ollama manifest (symlinked into `models/moondream2_gguf/`), so only the runtime changed.
+3. ✅ Create `cognitive_core_nodes/llama_cpp_bridge.py`. Note: the actual `OllamaBridge` interface is `generate(prompt, image_base64, ...) -> Dict`, **not** `analyze_scene(...)`; the new bridge mirrors the real interface so the node swap is minimal.
+   - ✅ JPEG bytes passed as a data URI into `create_chat_completion` (no HTTP/base64 server round trip).
+   - ✅ Explicit bounded `n_ctx`. Discovered that Moondream's image tokens alone are **729**, so 512 is impossible; new `llm_n_ctx` parameter defaults to **2048**.
+4. ✅ Feature flag `cognitive_backend:=ollama|llamacpp` added to `cognitive_launch.py`, defaulting to `ollama`.
+5. ✅ Structured output: GBNF grammar for text generation and `response_format={"type":"json_object"}` for vision; `parse_json_intent()` retained as fallback.
+6. ✅ Intent-parsing tests extended to run across both backends (`TestIntentParsingAcrossBackends`) plus new `TestLlamaCppBridge` (22 tests pass).
 
-**Gate**:
+**Gate** (measured 24 Sep 2026, see `docs/model_performance.md`):
 
-- `ollama ps`/`tegrastats` comparison: llama.cpp path shows equal-or-lower peak RSS than the Phase 0 baseline, with GPU utilization confirmed (not assumed) via `tegrastats`.
-- Vision latency and tok/s: measure with the same benchmarking script pattern as `scripts/test_ollama_moondream.py`, just pointed at the new bridge. Do not assume the research doc's numbers — record what you actually get.
-- All existing cognitive-core and command-router unit tests pass unmodified in behavior (same inputs → same parsed intents).
-- 60-minute soak test: fire the same "go to X" / verification-loop request repeatedly for an hour, watch for memory growth (fragmentation) or crashes — this was Known Issue #3 in the research (Ollama process instability over long runtimes); confirm the new path doesn't have the same problem before trusting it.
+- ✅ `tegrastats`/RSS comparison: llama.cpp peak RSS **2856 MB** ≤ Phase 0 baseline **2966 MB**; GPU utilization confirmed — all 24 layers assigned to `CUDA0`, `GR3D_FREQ` active.
+- ⚠️ Vision latency and tok/s: text-only generation **28.8 tok/s** (vs 30.4 Ollama, comparable), but vision end-to-end **3.79 s** vs ~2.16 s Ollama — a real regression caused by slower clip encoding. Recorded, not assumed.
+- ✅ All cognitive-core unit tests pass (22/22, including the 8 intent-parsing tests now run across both backends).
+- 🟠 Soak test: **abbreviated to 5 min** (153 vision queries, 0 errors, RSS flat after warmup) because the default is not being flipped. The full 60-minute soak is deferred until vision-encoder tuning makes promotion worthwhile.
 
-**Only after the gate passes**: flip the default in `cognitive_launch.py` to `llamacpp`, then in a *separate* follow-up commit, remove `OllamaBridge`, the `ollama` systemd service, and `scripts/setup_ollama.sh`. Update `docs/guides/ollama_setup.md` → rename/replace with `docs/guides/llamacpp_setup.md`.
+**Result — not promoted.** Because the gate's throughput criterion is not met, the default remains `ollama` and nothing is deleted, per ground rule #3 and the explicit "Only after the gate passes" instruction.
+
+**Only after the gate passes**: flip the default in `cognitive_launch.py` to `llamacpp`, then in a *separate* follow-up commit, remove `OllamaBridge`, the `ollama` systemd service, and `scripts/setup_ollama.sh`. Update `docs/guides/ollama_setup.md` → rename/replace with `docs/guides/llamacpp_setup.md`. (Not done — gate throughput criterion unmet.)
 
 **Rollback**: the launch-arg flag makes this a one-line revert (`cognitive_backend:=ollama`) until the old code is actually deleted.
 

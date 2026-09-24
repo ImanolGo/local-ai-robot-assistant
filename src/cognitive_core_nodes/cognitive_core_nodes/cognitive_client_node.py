@@ -37,6 +37,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
+from cognitive_core_nodes.llama_cpp_bridge import LlamaCppBridge, find_local_gguf
 from robot_interfaces.msg import (
     CognitiveCommand,
     MultimodalQuery,
@@ -216,6 +217,7 @@ class CognitiveClientNode(Node):
         super().__init__("cognitive_client_node")
 
         # --- Parameters ---
+        self.declare_parameter("cognitive_backend", "ollama")
         self.declare_parameter("ollama_url", "http://localhost:11434")
         self.declare_parameter("model_name", "moondream")
         self.declare_parameter("request_timeout", 10.0)
@@ -225,10 +227,17 @@ class CognitiveClientNode(Node):
         self.declare_parameter("system_prompt", SYSTEM_PROMPT)
         self.declare_parameter("enable_vision", True)
         self.declare_parameter("health_check_interval", 30.0)
+        self.declare_parameter("llm_model_path", "")
+        self.declare_parameter("llm_mmproj_path", "")
+        self.declare_parameter("llm_n_gpu_layers", -1)
+        self.declare_parameter("llm_n_ctx", 2048)
+        self.declare_parameter("structured_output", True)
 
         # Read parameters
+        backend = self.get_parameter("cognitive_backend").value
         ollama_url = self.get_parameter("ollama_url").value
         model_name = self.get_parameter("model_name").value
+        self.model_name = model_name
         timeout = self.get_parameter("request_timeout").value
         self.num_ctx = self.get_parameter("num_ctx").value
         self.num_predict = self.get_parameter("num_predict").value
@@ -236,13 +245,23 @@ class CognitiveClientNode(Node):
         self.system_prompt = self.get_parameter("system_prompt").value
         self.enable_vision = self.get_parameter("enable_vision").value
         health_interval = self.get_parameter("health_check_interval").value
+        llm_model_path = self.get_parameter("llm_model_path").value
+        llm_mmproj_path = self.get_parameter("llm_mmproj_path").value
+        llm_n_gpu_layers = self.get_parameter("llm_n_gpu_layers").value
+        llm_n_ctx = self.get_parameter("llm_n_ctx").value
+        self.structured_output = self.get_parameter("structured_output").value
 
-        # --- Ollama bridge ---
-        self.ollama = OllamaBridge(
-            base_url=ollama_url,
-            model=model_name,
+        # --- Cognitive backend bridge (Ollama HTTP vs in-process llama.cpp) ---
+        self.backend = backend
+        self.bridge = self._create_bridge(
+            backend=backend,
+            ollama_url=ollama_url,
+            model_name=model_name,
             timeout=timeout,
-            logger=self.get_logger(),
+            llm_model_path=llm_model_path,
+            llm_mmproj_path=llm_mmproj_path,
+            llm_n_gpu_layers=llm_n_gpu_layers,
+            llm_n_ctx=llm_n_ctx,
         )
 
         # --- CV bridge for image conversion ---
@@ -286,15 +305,69 @@ class CognitiveClientNode(Node):
         self.create_timer(health_interval, self._health_check)
 
         # --- Startup check ---
-        if self.ollama.is_available():
+        if self.bridge.is_available():
             self.get_logger().info(
-                f"✅ Cognitive client initialized — Ollama '{model_name}' at {ollama_url}"
+                f"✅ Cognitive client initialized — backend='{self.backend}' "
+                f"(model='{model_name}')"
             )
         else:
             self.get_logger().warn(
-                f"⚠️  Ollama server not reachable at {ollama_url}. "
+                f"⚠️  Cognitive backend '{self.backend}' not ready. "
                 "Node will retry on incoming queries."
             )
+
+    def _create_bridge(
+        self,
+        backend: str,
+        ollama_url: str,
+        model_name: str,
+        timeout: float,
+        llm_model_path: str,
+        llm_mmproj_path: str,
+        llm_n_gpu_layers: int,
+        llm_n_ctx: int,
+    ):
+        """Instantiate the selected cognitive backend bridge.
+
+        Args:
+            backend: Either ``"ollama"`` (HTTP daemon) or ``"llamacpp"``
+                (in-process llama.cpp).
+            ollama_url: Ollama base URL (used for the ``ollama`` backend).
+            model_name: Model identifier (Ollama model name).
+            timeout: Request timeout for the Ollama backend.
+            llm_model_path: GGUF path for the llama.cpp backend. Empty string
+                triggers auto-discovery from local files then Ollama blobs.
+            llm_mmproj_path: Multimodal projector GGUF path for vision.
+            llm_n_gpu_layers: Layers to offload for the llama.cpp backend.
+            llm_n_ctx: Context size for the llama.cpp backend (must fit the
+                Moondream image tokens, ~729, plus prompt/output).
+
+        Returns:
+            An object exposing ``is_available()`` and ``generate()``.
+        """
+        if backend != "llamacpp":
+            return OllamaBridge(
+                base_url=ollama_url,
+                model=model_name,
+                timeout=timeout,
+                logger=self.get_logger(),
+            )
+
+        # Resolve GGUF paths: explicit params > local models dir > Ollama blobs.
+        model_path = llm_model_path
+        mmproj_path = llm_mmproj_path
+        if not model_path:
+            local = find_local_gguf()
+            model_path = local.get("model_path", "")
+            mmproj_path = mmproj_path or local.get("mmproj_path", "")
+
+        return LlamaCppBridge(
+            model_path=model_path,
+            mmproj_path=mmproj_path,
+            n_ctx=llm_n_ctx,
+            n_gpu_layers=llm_n_gpu_layers,
+            logger=self.get_logger(),
+        )
 
     # ------------------------------------------------------------------
     # Callbacks
@@ -333,8 +406,8 @@ class CognitiveClientNode(Node):
             image_b64 = self._encode_image(self.latest_image)
             prompt += "An image of the robot's current view is attached."
 
-        # Query Ollama
-        self._query_ollama(
+        # Query the selected cognitive backend
+        self._query_bridge(
             prompt=prompt,
             image_base64=image_b64,
             query_id=str(uuid.uuid4()),
@@ -356,7 +429,7 @@ class CognitiveClientNode(Node):
         temperature = msg.temperature if msg.temperature > 0 else self.temperature
         max_tokens = msg.max_tokens if msg.max_tokens > 0 else self.num_predict
 
-        self._query_ollama(
+        self._query_bridge(
             prompt=prompt,
             image_base64=image_b64,
             query_id=msg.query_id or str(uuid.uuid4()),
@@ -368,7 +441,7 @@ class CognitiveClientNode(Node):
     # Core logic
     # ------------------------------------------------------------------
 
-    def _query_ollama(
+    def _query_bridge(
         self,
         prompt: str,
         image_base64: Optional[str] = None,
@@ -377,7 +450,7 @@ class CognitiveClientNode(Node):
         temperature: Optional[float] = None,
         num_predict: Optional[int] = None,
     ) -> None:
-        """Send a query to Ollama and publish results.
+        """Send a query to the active cognitive backend and publish results.
 
         Args:
             prompt: Full prompt including system prompt.
@@ -389,12 +462,16 @@ class CognitiveClientNode(Node):
         """
         start = time.time()
 
-        result = self.ollama.generate(
+        # Constrain to the intent JSON schema when the backend supports it.
+        force_json = bool(self.structured_output and self.backend == "llamacpp")
+
+        result = self.bridge.generate(
             prompt=prompt,
             image_base64=image_base64,
             num_ctx=self.num_ctx,
             num_predict=num_predict or self.num_predict,
             temperature=temperature or self.temperature,
+            force_json=force_json,
         )
 
         elapsed = time.time() - start
@@ -403,7 +480,7 @@ class CognitiveClientNode(Node):
 
         # Check for errors
         if "error" in result:
-            self.get_logger().error(f"Ollama error: {result['error']}")
+            self.get_logger().error(f"Cognitive backend error: {result['error']}")
             self._publish_error_response(query_id, result["error"])
             # Speak error to user
             tts_msg = String()
@@ -413,10 +490,11 @@ class CognitiveClientNode(Node):
 
         response_text = result.get("response", "")
         total_duration_ns = result.get("total_duration", 0)
-        model_used = result.get("model", self.ollama.model)
+        model_used = result.get("model", self.model_name)
+        optimization = "llamacpp-gguf" if self.backend == "llamacpp" else "ollama-gguf-q4"
 
         self.get_logger().info(
-            f"Ollama response in {elapsed:.2f}s "
+            f"Cognitive response in {elapsed:.2f}s "
             f"(server: {total_duration_ns / 1e9:.2f}s): {response_text[:100]}..."
         )
 
@@ -428,7 +506,7 @@ class CognitiveClientNode(Node):
         resp_msg.confidence = 0.8  # Moondream doesn't provide confidence
         resp_msg.processing_time = elapsed
         resp_msg.model_used = model_used
-        resp_msg.optimization_used = "ollama-gguf-q4"
+        resp_msg.optimization_used = optimization
         resp_msg.has_error = False
         self.response_pub.publish(resp_msg)
 
@@ -507,25 +585,34 @@ class CognitiveClientNode(Node):
         return base64.b64encode(buffer).decode("utf-8")
 
     def _health_check(self) -> None:
-        """Periodic health check for the Ollama server."""
+        """Periodic health check for the active cognitive backend."""
         status = String()
-        if self.ollama.is_available():
+        if self.bridge.is_available():
             avg_time = (
                 f"{sum(self.inference_times[-10:]) / min(len(self.inference_times), 10):.2f}s"
                 if self.inference_times
                 else "N/A"
             )
-            status.data = f"OK | queries={self.query_count} | avg_latency={avg_time}"
+            status.data = (
+                f"OK | backend={self.backend} | queries={self.query_count} | "
+                f"avg_latency={avg_time}"
+            )
         else:
-            status.data = "ERROR | Ollama server unreachable"
-            self.get_logger().warn("Ollama server health check failed!")
+            status.data = f"ERROR | cognitive backend '{self.backend}' unavailable"
+            self.get_logger().warn("Cognitive backend health check failed!")
 
         self.status_pub.publish(status)
 
     def destroy_node(self) -> None:
         """Cleanup on shutdown."""
         self.get_logger().info(f"Shutting down cognitive client. Total queries: {self.query_count}")
-        self.ollama.session.close()
+        # OllamaBridge exposes a requests.Session; LlamaCppBridge exposes close().
+        session = getattr(self.bridge, "session", None)
+        if session is not None:
+            session.close()
+        close = getattr(self.bridge, "close", None)
+        if callable(close):
+            close()
         super().destroy_node()
 
 

@@ -605,8 +605,10 @@
 
 ## Recent Updates
 
+- **24 Sep 2026**: **Phase 2 (llama.cpp) implemented behind flag — not promoted.** Built `llama-cpp-python 0.3.35` with CUDA. Added `LlamaCppBridge` (mirrors the real `OllamaBridge.generate()` interface), `cognitive_backend:=ollama|llamacpp` launch flag (default `ollama`), GBNF/JSON structured output, and cross-backend tests. Gate: RSS 2856 MB ≤ 2966 MB and all layers on CUDA0, but vision e2e latency regressed (3.79 s vs 2.16 s) due to slower clip encoding, so the default stays `ollama` and the old path is not removed. See `docs/model_performance.md`.
+- **24 Sep 2026**: Captured Phase 1 15W baseline: YOLO 41.90 FPS, Depth 28.1 FPS, Moondream 30.4 tok/s. MAXN SUPER change pending root access.
 - **24 Sep 2026**: **Phase 0 diagnosis complete** — Moondream is confirmed 100% GPU-resident under Ollama (`size_vram == size` = 1.33 GB; `GR3D_FREQ` peaks 99%). The ~3 GB is `ollama` process RSS overhead, not a broken offload. Recorded in `docs/phase0_baseline.md`. Implication: Phase 2 (llama.cpp swap) is lower priority per `Plan.md`.
-- **24 Sep 2026**: Fixed `conftest.py` test-harness shadowing bug — source `robot_interfaces` package no longer hides the ROS2-generated `robot_interfaces.msg`/`srv`. Test suite now collects: **45 passed, 3 failed** (pre-existing `test_wake_word.py` failures).
+- **24 Sep 2026**: Fixed `conftest.py` test-harness shadowing bug — source `robot_interfaces` package no longer hides the ROS2-generated `robot_interfaces.msg`/`srv`. Test suite now collects: **53 passed, 2 failed** (pre-existing `test_wake_word.py` failures).
 - **12 Feb 2026**: **Architecture audit & critical fixes** — Resolved 8 ghost entry points, broken imports, topic mismatches
 - **12 Feb 2026**: Implemented `cognitive_client_node.py` — Ollama/Moondream HTTP bridge replacing Gemma 3n
 - **12 Feb 2026**: Implemented `command_router_node.py` — Bridges audio transcription → cognitive core → actuation

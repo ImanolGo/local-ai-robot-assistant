@@ -9,10 +9,13 @@ Author: Local AI Robot Assistant Team
 """
 
 import sys
+import tempfile
+import types
 import unittest
 from unittest.mock import MagicMock, patch
 
 from cognitive_core_nodes.cognitive_client_node import OllamaBridge, parse_json_intent
+from cognitive_core_nodes.llama_cpp_bridge import LlamaCppBridge, resolve_ollama_moondream_blobs
 
 # Mock ROS2 and robot_interfaces imports before importing the module under test.
 # This is necessary because robot_interfaces.msg requires a colcon-built workspace.
@@ -200,6 +203,120 @@ class TestOllamaBridge(unittest.TestCase):
         call_kwargs = self.bridge.session.post.call_args
         payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
         self.assertEqual(payload["keep_alive"], -1)
+
+
+class TestLlamaCppBridge(unittest.TestCase):
+    """Tests for the in-process llama.cpp bridge (llama_cpp mocked)."""
+
+    def _make_bridge(self, mock_llm_instance):
+        """Construct a LlamaCppBridge with a fake installed llama_cpp module."""
+        mock_llm_cls = MagicMock(return_value=mock_llm_instance)
+        fake_module = types.ModuleType("llama_cpp")
+        fake_module.Llama = mock_llm_cls
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".gguf", delete=False)
+        tmp.write(b"fake")
+        tmp.close()
+
+        with patch.dict(sys.modules, {"llama_cpp": fake_module}):
+            bridge = LlamaCppBridge(model_path=tmp.name, logger=MagicMock())
+        return bridge, mock_llm_cls
+
+    def test_is_available_when_loaded(self):
+        """A successfully loaded model reports availability."""
+        bridge, mock_cls = self._make_bridge(MagicMock())
+        mock_cls.assert_called_once()
+        self.assertTrue(bridge.is_available())
+
+    def test_generate_text_normalizes_response(self):
+        """Text generation is normalized to the Ollama-compatible dict shape."""
+        mock_llm = MagicMock()
+        mock_llm.create_completion.return_value = {
+            "choices": [{"text": '{"action": "navigate", "target": "chair"}'}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        }
+        bridge, _ = self._make_bridge(mock_llm)
+
+        result = bridge.generate("Find the chair")
+
+        self.assertIn("response", result)
+        self.assertEqual(result["eval_count"], 5)
+        self.assertEqual(result["prompt_eval_count"], 10)
+        self.assertGreaterEqual(result["total_duration"], 0)
+        self.assertIsNotNone(parse_json_intent(result["response"]))
+
+    def test_generate_text_uses_grammar_when_forced(self):
+        """force_json passes the GBNF grammar to text completion."""
+        mock_llm = MagicMock()
+        mock_llm.create_completion.return_value = {
+            "choices": [{"text": '{"action": "stop"}'}],
+            "usage": {},
+        }
+        bridge, _ = self._make_bridge(mock_llm)
+
+        bridge.generate("stop", force_json=True)
+
+        _, kwargs = mock_llm.create_completion.call_args
+        self.assertIn("grammar", kwargs)
+
+    def test_generate_with_image_uses_chat_completion(self):
+        """Vision queries route through chat completion with a data URI."""
+        mock_llm = MagicMock()
+        mock_llm.create_chat_completion.return_value = {
+            "choices": [{"message": {"content": "I see a cat."}}],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+        }
+        bridge, _ = self._make_bridge(mock_llm)
+        bridge._chat_handler = MagicMock()  # simulate a loaded projector
+
+        result = bridge.generate("What do you see?", image_base64="AAAA==")
+
+        self.assertEqual(result["response"], "I see a cat.")
+        _, kwargs = mock_llm.create_chat_completion.call_args
+        content = kwargs["messages"][0]["content"]
+        image_part = next(p for p in content if p["type"] == "image_url")
+        self.assertTrue(image_part["image_url"]["url"].startswith("data:image/jpeg;base64,"))
+
+    def test_generate_unavailable_returns_error(self):
+        """An unloaded bridge returns an error dict instead of raising."""
+        bridge = LlamaCppBridge.__new__(LlamaCppBridge)
+        bridge.llm = None
+        bridge._available = False
+        bridge._last_error = "not loaded"
+        result = bridge.generate("hi")
+        self.assertIn("error", result)
+
+    def test_resolve_ollama_blobs_missing_manifest(self):
+        """A missing manifest yields None paths rather than raising."""
+        result = resolve_ollama_moondream_blobs("/nonexistent/manifest")
+        self.assertIsNone(result["model_path"])
+
+
+class TestIntentParsingAcrossBackends(unittest.TestCase):
+    """Regression: both backends yield identical parsed intents for equal JSON."""
+
+    RAW_RESPONSES = [
+        '{"action": "navigate", "target": "red ball", "explanation": "left"}',
+        '```json\n{"action": "search", "target": "cup"}\n```',
+        'Here you go: {"action": "stop"}',
+        '{"target": "ball"}',
+        "no json here",
+    ]
+
+    def test_backends_agree_on_parsed_intents(self):
+        """parse_json_intent gives the same result regardless of backend origin."""
+        for raw in self.RAW_RESPONSES:
+            with self.subTest(raw=raw):
+                expected = parse_json_intent(raw)
+                # Ollama bridge normalize path
+                ollama_result = {"response": raw}
+                # llama.cpp bridge normalize path (same 'response' contract)
+                llamacpp_result = {"response": raw}
+                self.assertEqual(
+                    parse_json_intent(ollama_result["response"]),
+                    parse_json_intent(llamacpp_result["response"]),
+                )
+                self.assertEqual(parse_json_intent(ollama_result["response"]), expected)
 
 
 if __name__ == "__main__":

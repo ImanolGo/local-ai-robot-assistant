@@ -24,6 +24,11 @@ def generate_launch_description():
         [
             # Launch arguments
             DeclareLaunchArgument(
+                "cognitive_backend",
+                default_value="ollama",
+                description="Backend: 'ollama' (HTTP) or 'llamacpp' (in-process GGUF)",
+            ),
+            DeclareLaunchArgument(
                 "model_name",
                 default_value="moondream",
                 description="Ollama model name to use for reasoning",
@@ -32,6 +37,21 @@ def generate_launch_description():
                 "ollama_url",
                 default_value="http://localhost:11434",
                 description="Ollama API endpoint URL",
+            ),
+            DeclareLaunchArgument(
+                "llm_model_path",
+                default_value="",
+                description="GGUF model path for the llamacpp backend (empty = auto-discover)",
+            ),
+            DeclareLaunchArgument(
+                "llm_mmproj_path",
+                default_value="",
+                description="Multimodal projector GGUF path for the llamacpp backend",
+            ),
+            DeclareLaunchArgument(
+                "llm_n_ctx",
+                default_value="2048",
+                description="Context size for the llamacpp backend (must fit image tokens)",
             ),
             DeclareLaunchArgument(
                 "request_timeout",
@@ -55,7 +75,7 @@ def generate_launch_description():
             ),
             # Environment variables for CUDA optimization
             SetEnvironmentVariable("CUDA_VISIBLE_DEVICES", "0"),
-            # Cognitive Client Node (Ollama Bridge)
+            # Cognitive Client Node (Ollama or llama.cpp bridge)
             Node(
                 package="cognitive_core_nodes",
                 executable="cognitive_client_node",
@@ -63,8 +83,12 @@ def generate_launch_description():
                 output="screen",
                 parameters=[
                     {
+                        "cognitive_backend": LaunchConfiguration("cognitive_backend"),
                         "ollama_url": LaunchConfiguration("ollama_url"),
                         "model_name": LaunchConfiguration("model_name"),
+                        "llm_model_path": LaunchConfiguration("llm_model_path"),
+                        "llm_mmproj_path": LaunchConfiguration("llm_mmproj_path"),
+                        "llm_n_ctx": LaunchConfiguration("llm_n_ctx"),
                         "request_timeout": LaunchConfiguration("request_timeout"),
                         "num_ctx": 512,
                         "num_predict": LaunchConfiguration("num_predict"),
