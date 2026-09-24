@@ -118,12 +118,28 @@ Based on benchmark results:
 | Moondream (Ollama, HTTP) | Vision encode / generation / total | 38 ms / 30.4 tok/s / 2.16 s |
 | Moondream (Ollama, HTTP) | Peak `ollama` RSS | 2965.8 MB |
 
-> MAXN SUPER (`nvpmodel -m 2` + `jetson_clocks`) numbers are **pending**: the
-> power-mode change requires root, which was not available to the agent session.
-> Do not delete this table — append the MAXN SUPER results below it.
+> MAXN SUPER (`nvpmodel -m 2` + `jetson_clocks`) results are recorded below —
+> old numbers are retained for regression visibility, not overwritten.
 
-## MAXN SUPER (`nvpmodel -m 2`) — after
-_Pending privileged power-mode change._
+## MAXN SUPER (`nvpmodel -m 2` + `jetson_clocks`) — after
+
+**Date**: 2026-09-24 · CPU locked 1.728 GHz, GPU 1.02 GHz, EMC 3.199 GHz
+
+| Model | Metric | 15W | MAXN SUPER | Δ |
+|-------|--------|-----|------------|---|
+| YOLOv11n (TensorRT FP16) | Average / median FPS | 41.90 / 41.11 | **98.21 / 98.53** | 2.34× |
+| Depth Anything V2 Small (TensorRT) | FPS / latency | 28.1 / 35.63 ms | **55.1 / 18.15 ms** | 1.96× |
+| Moondream (Ollama) | Vision encode | 38 ms | **24 ms** | 1.58× |
+| Moondream (Ollama) | Generation | 30.4 tok/s | **49.0 tok/s** | 1.61× |
+| Moondream (Ollama) | Total response | 2.16 s | **1.32 s** | 1.64× |
+| Moondream (Ollama) | Peak RSS | 2965.8 MB | 2966.2 MB | — |
+| Thermal (105 s sustained YOLO) | max tj | — | **53.5 °C** | (< 80 °C target) |
+
+**Gate**: ✅ YOLO/Depth FPS did not regress (both improved), VLM tok/s improved (30.4 → 49.0). Rollback not needed — thermals well within budget.
+
+## MAXN SUPER — Phase 2 llama.cpp re-check
+
+_Pending: the `llamacpp` backend is not promoted, so no MAXN SUPER re-benchmark was run. If it is promoted later, re-run `scripts/testing/llm/test_llamacpp_moondream.py`._
 
 ---
 

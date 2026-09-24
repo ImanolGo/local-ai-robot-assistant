@@ -43,27 +43,29 @@ Ground rules for the agent, every phase:
 
 ---
 
-## Phase 1 — JetPack / power-profile upgrade (low-risk, do regardless of Phase 0 outcome) 🟠 PARTIAL — blocked on root
+## Phase 1 — JetPack / power-profile upgrade (low-risk, do regardless of Phase 0 outcome) ✅ DONE — 24 Sep 2026
 
-> **Status**: JetPack already 6.2 (R36.4.7), headless (`multi-user.target`). 15W baseline benchmarks captured. The MAXN SUPER change (`sudo nvpmodel -m 2` + `sudo jetson_clocks`) is **pending**: the agent session had no sudo credentials. Available modes confirmed: 0=15W, 1=25W, 2=MAXN_SUPER.
+> **Result**: JetPack already 6.2 (R36.4.7). Set `MAXN_SUPER` + `jetson_clocks` (CPU 1.728 GHz, GPU 1.02 GHz, EMC 3.199 GHz). Gate passed — YOLO 41.9→98.2 FPS, Depth 28.1→55.1 FPS, Moondream 30.4→49.0 tok/s, max tj 53.5 °C. See `docs/model_performance.md`.
 
 **Goal**: Get "Super Mode" clocks if not already on JetPack 6.1/6.2, for free throughput on everything downstream, without a full OS/kernel/ROS-distro change.
 
 **Tasks**:
 
 1. ✅ Current JetPack = **R36.4.7 (JetPack 6.2)** — already ≥ 6.1, no flash/upgrade needed (and no destructive action taken).
-2. 🟠 Set the power mode: `sudo nvpmodel -m 2` (MAXN SUPER) and `sudo jetson_clocks`. **Pending root access.**
-3. 🟡 Baseline re-run at **15W** completed: `scripts/testing/vision/test_yolo.py` (41.90 FPS), `scripts/testing/vision/benchmark_depth.py` (28.1 FPS), `scripts/testing/llm/test_ollama_moondream.py` (30.4 tok/s). MAXN SUPER re-run pending.
+2. ✅ Set the power mode: `sudo nvpmodel -m 2` (MAXN SUPER) and `sudo jetson_clocks`.
+3. ✅ Re-ran benchmarks at MAXN SUPER: YOLO **98.21 FPS**, Depth **55.1 FPS**, Moondream **49.0 tok/s**.
    - Note: the plan's paths `scripts/test_yolo.py` / `scripts/test_depth.py` are stale; the scripts actually live under `scripts/testing/vision/`.
-4. 🟡 Recorded the **15W baseline** in `docs/model_performance.md` under "JetPack 6.2 / power-profile measurements"; the "MAXN SUPER — after" table is present but awaiting the privileged run (old numbers not overwritten).
+4. ✅ Recorded in `docs/model_performance.md` under "MAXN SUPER … — after" (15W baseline retained above it). Thermal check: max tj 53.5 °C under 105 s sustained load.
 
-**Gate**: YOLO/Depth FPS did not regress, and VLM tok/s improved (any improvement counts — don't block on hitting a specific multiplier from the research doc).
+**Gate**: ✅ YOLO/Depth FPS did not regress (both improved ~2×), VLM tok/s improved (30.4 → 49.0).
 
 **Rollback**: `sudo nvpmodel -m 1` reverts to the 15W profile if thermals or stability regress under sustained load (re-check Phase "Thermal Stability" target from architecture.md §13).
 
 ---
 
-## Fork in the road — JetPack 7.2.1, decide explicitly, don't default into it
+## Fork in the road — JetPack 7.2.1, decide explicitly, don't default into it ❌ NOT TAKEN — 24 Sep 2026
+
+> **Decision**: Do **not** re-flash to JetPack 7.2.1. Decision-gate condition #1 is false: Phase 0 proved the Ollama GPU-offload is *working* (`size_vram == size`, GR3D 99 %), so there is no JetPack-6-level driver problem for Phase 2 to fail to fix. Conditions #2/#3 (re-earning the full hardware-validation suite, and confirming CTranslate2 wheels on Python 3.12 + CUDA 13.2) would add real regression risk at ~78 % completion for no demonstrated need on this 8 GB Orin Nano. The `PyNvVideoCodec`/zero-copy pitch also targets a path this plan already bypasses. Revisit only if a future Phase shows genuine JetPack-6 driver limits.
 
 JetPack 7.2.1 is real for the Orin Nano (Ubuntu 24.04, CUDA 13.2, TensorRT 10.16, ROS2 Jazzy, ISO-only flash, ships Super Mode by default) and it brings two genuinely useful, verified pieces: `PyNvVideoCodec 2.2` (DLPack/CUDA-buffer zero-copy video frames — a real, confirmed alternative to the base64/HTTP path this plan already removes in Phase 2 for VLM frames), and the `jetson-device-skills` tooling used in Phase 0 above.
 
@@ -117,7 +119,9 @@ If you do take this fork, sequence it as its own branch off the *current* JetPac
 
 ---
 
-## Phase 3 — (Optional, decide via a measurement) Model upgrade to Qwen2.5-VL-3B or Moondream2
+## Phase 3 — (Optional, decide via a measurement) Model upgrade to Qwen2.5-VL-3B or Moondream2 ⏭️ NOT RUN — optional, no need identified — 24 Sep 2026
+
+> **Decision**: Not run. Current Moondream meets all performance targets (49 tok/s, 1.32 s total, 24 ms vision under MAXN SUPER). A 3B VLM at 4-bit would add ~2.5–3 GB on top of the ~3 GB cognitive footprint, eroding the 8 GB budget for no demonstrated requirement. This is the plan's explicitly-allowed "no change" outcome; revisit only if task-success measurements show Moondream is insufficient.
 
 **Goal**: Evaluate whether a newer small VLM gives materially better spatial reasoning / instruction-following without breaking the RAM budget, now that Phase 2 has given you a cleaner memory baseline to measure against.
 
@@ -133,7 +137,9 @@ If you do take this fork, sequence it as its own branch off the *current* JetPac
 
 ---
 
-## Phase 4 — (Optional, gated on actual RAM pressure) Audio stack consolidation
+## Phase 4 — (Optional, gated on actual RAM pressure) Audio stack consolidation ⏭️ NOT TRIGGERED — 24 Sep 2026
+
+> **Decision**: Not triggered. Condition is "only if Phase 2 (and optionally 3) leave you RAM-constrained". Phase 0/1 show ~4 GB free at the ~3 GB Ollama peak, and Phase 2 was not promoted. The audio pipeline is Phase 5 = 100 % complete, tested, and already consolidated once. Per the phase's own instruction ("only pull this trigger if the numbers say so"), do not replace it.
 
 **Do not start this phase unless Phase 2 (and optionally Phase 3) leave you RAM-constrained.** Your audio pipeline (`audio_capture_node.py`) is Phase 5 in STATUS.md: **100% complete, tested, already refactored once for this exact kind of simplification** (removed raw audio streaming, event-driven notifications, single self-contained node). Replacing a working, tested subsystem for RAM you may not need is the wrong trade — only pull this trigger if the numbers say so.
 
