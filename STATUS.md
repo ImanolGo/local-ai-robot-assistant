@@ -582,7 +582,8 @@
 ## Known Issues
 
 1. **Moondream memory higher than budgeted**: ~3GB actual vs 1.8GB estimated. Using `num_ctx=512` helps.
-   - Status: 🚧 Monitoring
+   - Status: 🔍 Diagnosed (Phase 0, 24 Sep 2026) — not an offload bug
+   - Finding: `/api/ps` reports `size_vram == size` (1.33 GB, 100% GPU); `GR3D_FREQ` peaks at 99%. The ~3 GB is the `ollama` process RSS (weights + KV-cache + runtime overhead), not CPU spill. See `docs/phase0_baseline.md`.
    - Mitigation: Reduce num_ctx, or lazy-load Whisper only on wake-word
 
 2. **Whisper memory higher than budgeted**: ~718MB vs 500MB target.
@@ -604,6 +605,8 @@
 
 ## Recent Updates
 
+- **24 Sep 2026**: **Phase 0 diagnosis complete** — Moondream is confirmed 100% GPU-resident under Ollama (`size_vram == size` = 1.33 GB; `GR3D_FREQ` peaks 99%). The ~3 GB is `ollama` process RSS overhead, not a broken offload. Recorded in `docs/phase0_baseline.md`. Implication: Phase 2 (llama.cpp swap) is lower priority per `Plan.md`.
+- **24 Sep 2026**: Fixed `conftest.py` test-harness shadowing bug — source `robot_interfaces` package no longer hides the ROS2-generated `robot_interfaces.msg`/`srv`. Test suite now collects: **45 passed, 3 failed** (pre-existing `test_wake_word.py` failures).
 - **12 Feb 2026**: **Architecture audit & critical fixes** — Resolved 8 ghost entry points, broken imports, topic mismatches
 - **12 Feb 2026**: Implemented `cognitive_client_node.py` — Ollama/Moondream HTTP bridge replacing Gemma 3n
 - **12 Feb 2026**: Implemented `command_router_node.py` — Bridges audio transcription → cognitive core → actuation
