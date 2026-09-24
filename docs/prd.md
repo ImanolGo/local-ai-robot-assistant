@@ -136,10 +136,9 @@ Developers, researchers, and makers interested in edge AI robotics, autonomous s
 - **Wake Word**: openWakeWord or Porcupine (< 50MB)
 - **ASR**: Whisper Tiny/Base (< 500MB quantized)
 - **TTS**: Piper (< 100MB per voice)
-- **Object Detection**: YOLOv11n or YOLOv11s (< 20MB TensorRT)
-- **Depth Estimation**: FastDepth (< 30MB TensorRT)
-- **LLM**: LLaMA-2 7B or Gemma 2-7B (< 4GB INT4 quantized)
-- **SLAM**: RTAB-Map
+- **Object Detection**: YOLOv11n (< 20MB TensorRT)
+- **Depth Estimation**: Depth Anything V2 Small (< 30MB TensorRT)
+- **VLM (cognitive core)**: Moondream 1.6B (Ollama GGUF, ~1.3GB resident)
 
 ---
 
@@ -186,30 +185,28 @@ Developers, researchers, and makers interested in edge AI robotics, autonomous s
 │  - Wake Word     │  - Camera Driver  │  - UART   │
 │  - ASR (Whisper) │  - Undistortion   │  - Motors │
 │  - TTS (Piper)   │  - YOLO Detection │  - IMU    │
-│  - Playback      │  - Depth Est.     │  - Odom   │
+│  - Playback      │  - Depth Est.     │  - Safety │
 ├─────────────────────────────────────────────────┤
-│         Perception & Localization Layer          │
-│         - RTAB-Map SLAM                          │
-│         - robot_localization (EKF)               │
+│            Reactive Perception Layer             │
+│         - YOLO + Depth (no SLAM for MVP)         │
 ├─────────────────────────────────────────────────┤
-│            Cognitive Core (NanoLLM)              │
+│            Cognitive Core (Moondream)            │
 │         - Language Understanding                 │
 │         - Intent Extraction                      │
 ├─────────────────────────────────────────────────┤
 │        Behavioral Architecture Layer             │
-│         - Behavior Trees                         │
-│         - Mission Planning                       │
-│         - Dialogue Management                    │
+│         - Command Router                         │
+│         - Visual Verification Loop               │
 └─────────────────────────────────────────────────┘
 ```
 
 ### 5.2 Data Flow
 1. **Voice Command** → Wake Word → ASR → Transcribed Text
-2. **Transcribed Text** → LLM → Structured Intent
-3. **Structured Intent** → Behavior Tree → Action Commands
+2. **Transcribed Text** → Command Router (regex) or Cognitive Core (VLM) → Structured Intent
+3. **Structured Intent** → Command Router / Visual Verification → Action Commands
 4. **Action Commands** → UART Controller → Robot Movement
-5. **Camera Feed** → Undistortion → YOLO + Depth → SLAM
-6. **SLAM Output** → World Model → Behavior Tree Context
+5. **Camera Feed** → Undistortion → YOLO + Depth → Reactive target selection
+6. **Target Output** → World Model → Command Router Context
 
 ---
 
@@ -233,8 +230,7 @@ Developers, researchers, and makers interested in edge AI robotics, autonomous s
 - Wake word detection trained on limited vocabulary
 - ASR optimized for single speaker, English language
 - Object detection limited to COCO dataset classes
-- LLM has January 2025 knowledge cutoff
-- SLAM assumes static environment (minimal dynamic objects)
+- LLM has a limited knowledge cutoff
 
 ---
 
@@ -243,7 +239,6 @@ Developers, researchers, and makers interested in edge AI robotics, autonomous s
 | Risk | Impact | Probability | Mitigation |
 |------|--------|-------------|------------|
 | RAM exhaustion | High | Medium | Implement lazy loading, model swapping, large swap file |
-| SLAM drift | High | Medium | Integrate IMU fusion, implement loop closure detection |
 | UART communication failure | High | Low | Retry logic, watchdog timers, fallback to safe stop |
 | Wake word false positives | Medium | Medium | Adjust detection threshold, implement confirmation |
 | TensorRT optimization failure | Medium | Low | Fallback to ONNX runtime, use proven model architectures |
@@ -295,8 +290,7 @@ Developers, researchers, and makers interested in edge AI robotics, autonomous s
 
 - **ASR**: Automatic Speech Recognition
 - **TTS**: Text-to-Speech
-- **SLAM**: Simultaneous Localization and Mapping
-- **EKF**: Extended Kalman Filter
+- **VLM**: Vision-Language Model (Moondream here)
 - **IMU**: Inertial Measurement Unit
 - **UART**: Universal Asynchronous Receiver-Transmitter
 - **TensorRT**: NVIDIA's inference optimization library

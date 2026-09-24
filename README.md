@@ -8,10 +8,10 @@ A fully autonomous, privacy-preserving AI robot assistant running entirely on NV
 
 - 🎤 **Voice Interaction**: Wake word detection, speech-to-text, and natural language understanding
 - 👁️ **Computer Vision**: Real-time object detection and depth estimation
-- 🗺️ **SLAM**: 3D mapping and autonomous navigation
-- 🧠 **On-Device AI**: 7B parameter LLM running locally
+- 🧭 **Reactive Navigation**: Visual target approach with a verification loop (no map/SLAM for the MVP)
+- 🧠 **On-Device AI**: Moondream VLM served locally (Ollama by default; optional in-process llama.cpp)
 - 🔒 **Privacy-First**: Zero cloud dependencies, all processing on-device
-- 🌐 **Web Monitoring**: Real-time visualization and control interface
+- 🌐 **Web Monitoring**: Minimal FastAPI `/health` + `/status` endpoint
 
 ## 📋 Hardware Requirements
 
@@ -96,8 +96,9 @@ python3 integration_tests/test_full_system.py
 
 See [STATUS.md](STATUS.md) for detailed implementation progress.
 
-**Current Phase**: Phase 2 - Core Infrastructure
-**Completion**: 25%
+**Current Phase**: Phase 7/8 - Cognitive Core + Behavioral Architecture
+**Completion**: ~82% (see [STATUS.md](STATUS.md))
+**Scope note**: SLAM/localization is out of scope for the MVP — see [docs/architecture.md](docs/architecture.md) v4.0.
 
 ## 🤝 Contributing
 
@@ -113,7 +114,8 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 - ROS2 community
 - OpenAI for Whisper
 - Ultralytics for YOLO
-- RTAB-Map team
+- Vikhyat Korrapati / Moondream team
+- NVIDIA-AI-IOT for `jetson-device-skills`
 
 ## 📞 Support
 

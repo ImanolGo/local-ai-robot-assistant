@@ -193,7 +193,7 @@ async def process_audio_stream():
 - Log all motor commands for debugging
 
 ### When working in `behavioral_nodes/`:
-- Use BehaviorTree.CPP patterns
+- Use the command-router + visual-verification pattern (no BehaviorTree.CPP in the MVP)
 - Keep actions atomic and testable
 - Update Blackboard consistently
 - Handle action failures with fallbacks
@@ -319,7 +319,7 @@ def test_node_integration():
 ✅ Do write tests
 ✅ Do profile before optimizing
 ✅ Do handle hardware disconnections
-✅ Do use visual odometry from SLAM
+✅ Do use reactive YOLO + depth target selection (SLAM is descoped for the MVP)
 
 ## Reference Documentation
 
@@ -335,16 +335,16 @@ def test_node_integration():
 - **IMU**: Inertial Measurement Unit (9-axis, accessed via UART)
 - **Fisheye distortion**: 160° FOV camera requires calibration and undistortion
 - **TensorRT**: NVIDIA's inference optimization framework
-- **NanoLLM**: NVIDIA's framework for running LLMs on Jetson
-- **RTAB-Map**: Visual SLAM system we use for mapping
-- **Blackboard**: Shared state in behavior trees
-- **EKF**: Extended Kalman Filter for sensor fusion
+- **Moondream**: Small vision-language model used as the cognitive core (served via Ollama, or optional in-process llama.cpp)
+- **Command Router**: Regex + cognitive-forward behavior layer (no BehaviorTree.CPP in the MVP)
+- **Visual Verification Loop**: Stop → snapshot → ask "is goal X achieved?" → retry with rotation
+- **SLAM**: Out of scope for the MVP (no RTAB-Map / EKF dependency)
 
 ## When to Ask for Human Review
 
 Please request human review when:
 - Modifying hardware communication protocols
-- Changing core behavior tree logic
+- Changing command-routing / verification-loop logic
 - Implementing safety-critical features (e.g., emergency stop)
 - Making significant architectural changes
 - Unsure about hardware constraints

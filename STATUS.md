@@ -442,21 +442,17 @@
 
 ---
 
-## Phase 6: SLAM & Localization (0% Complete ⏳)
+## Phase 6: SLAM & Localization — DESCOPED (out of MVP scope)
 
-### 6.1 Robot Localization Setup (EKF Fusion)
-- ⏳ Install `robot_localization` package
-- ⏳ Configure EKF sensor fusion (IMU + Visual Odom)
-- ⏳ Test odometry fusion with simulated data
-
-### 6.2 RTAB-Map SLAM Setup
-- ⏳ Install `rtabmap_ros` package
-- ⏳ Configure RTAB-Map for RGB-D SLAM
-- ⏳ Test SLAM initialization and loop closure
-
-### 6.3 Semantic SLAM Integration
-- ⏳ Implement semantic landmark injection
-- ⏳ Test object-based loop closure
+**Status**: ❌ Descoped (24 Sep 2026). SLAM / localization is **out of scope for
+the MVP**. The robot uses a reactive "go to visible object" behavior built on
+Tier 1 YOLO + depth plus the visual-verification loop — no map, no RTAB-Map
+dependency. The `src/localization_nodes/` package (EKF + RTAB-Map) is left in
+place; `launch/full_system_launch.py` still includes its launch files, but it is
+**not part of the supported MVP** and is slated for removal in a follow-up
+cleanup (code removal was intentionally out of scope for this docs pass). Revisit only
+if persistent multi-room memory becomes a real requirement. See
+`docs/architecture.md` v4.0 scope note.
 
 ---
 
@@ -512,12 +508,12 @@
 - ✅ Updated setup.py entry points
 - ✅ Unit tests (22 test cases passing)
 
-### 8.2 BehaviorTree.CPP Setup (Not Started)
+### 8.2 BehaviorTree.CPP Setup — NOT ADOPTED for the MVP
 
-- ⏳ Install BehaviorTree.CPP library
-- ⏳ Design main behavior tree structure
-- ⏳ Implement navigation behaviors
-- ⏳ Implement stuck detection & recovery
+- ❌ Install BehaviorTree.CPP library — not needed
+- ✅ Keep `command_router_node.py` (regex + cognitive forward) instead
+- ✅ Add `visual_verification_node.py` (stop → verify → rotate/retry)
+- ⏳ Introduce a real BT only when a second genuinely multi-step behavior needs it
 
 ### 8.3 Cross-Cutting Fixes Applied
 
@@ -591,9 +587,9 @@
    - Status: 🚧 Monitoring
    - Mitigation: Consider TensorRT conversion or `tiny.en` model
 
-3. **SLAM not yet implemented**: RTAB-Map integration is Phase 6, currently a stub.
-   - Status: ⏳ Planned
-   - Priority: High (needed for autonomous navigation)
+3. **SLAM not implemented**: RTAB-Map/EKF is **descoped** (Phase 6 removed from the MVP on 24 Sep 2026). The reactive "go to visible object" path (YOLO + depth + visual verification) does not require a map.
+   - Status: ❌ Descoped
+   - Priority: Low (revisit only if persistent multi-room memory becomes a requirement)
 
 4. **Web interface not yet implemented**: web_interface_nodes has no server code.
    - Status: 🚧 Partial (Phase 9.1) — minimal FastAPI `/health` + `/status` server added and verified; full dashboard/WebSocket pending
@@ -698,12 +694,13 @@
 
 ## Next Milestones
 
-- **Week 2**: Complete Phase 2 (Core Infrastructure) - finalize camera pipeline implementation
-- **Week 3**: Complete Phase 3 (Perception Models) - deploy and test converted TensorRT models
-- **Week 4**: Start Phase 4 (Perception Models Integration) - depth estimation and point cloud
-- **Week 5**: Start Phase 5 (Audio Detection Pipeline) - wake word and VAD
-- **Week 6**: Start Phase 6 (SLAM & Localization) - visual odometry and mapping
-- **Week 7**: Start Phase 7 (Cognitive Core) - Ollama + Moondream integration
+The v3.1 → v4.0 migration is complete. Remaining / upcoming work:
+
+- **Full-system integration soak** (Phase 5 item 5): object detection + depth + audio + cognitive core + visual verification concurrently for 60 minutes, logging `tegrastats` RSS and thermals.
+- **Cognitive backend**: optionally promote `llamacpp` after GPU-accelerating the clip encoder (currently slower vision end-to-end than Ollama).
+- **Audio real-time validation** (Phase 5.4): end-to-end wake-word → transcription latency and resource usage on hardware.
+- **Web interface**: expand beyond `/health` + `/status` only once the rest is stable.
+- **SLAM**: out of scope for the MVP; add only if persistent multi-room memory becomes a requirement.
 
 ---
 

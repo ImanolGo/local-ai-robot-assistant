@@ -1,6 +1,12 @@
 # Implementation Plan & Development Checklist
 ## Local AI Robot Assistant Project - Complete Edition
 
+> **⚠️ SUPERSEDED (24 Sep 2026).** This is a historical planning checklist and is
+> **no longer maintained**. See `STATUS.md` for the current source of truth and
+> `docs/architecture.md` (v4.0) for the current design. In particular, **SLAM /
+> localization is descoped for the MVP** — all SLAM/EKF/RTAB-Map items below are
+> historical and not in scope. A new plan will replace this document.
+
 **Project Timeline**: 16-18 weeks
 **Team Size**: 1-3 developers
 **Methodology**: Agile/Iterative with hardware-in-the-loop testing

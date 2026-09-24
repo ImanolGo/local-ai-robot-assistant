@@ -38,7 +38,7 @@ local-ai-robot-assistant/
 │   │   ├── setup.py
 │   │   └── README.md
 │   │
-│   ├── localization_nodes/
+│   ├── localization_nodes/          # DESCOPED (still referenced by full_system_launch.py; not in MVP)
 │   │   ├── localization_nodes/
 │   │   │   ├── __init__.py
 │   │   │   ├── uart_imu_node.py
@@ -263,8 +263,6 @@ local-ai-robot-assistant/
 │   ├── test_wake_word_accuracy.py
 │   ├── test_stt_accuracy.py             # KEPT for fallback testing
 │   ├── test_tts_naturalness.py
-│   ├── test_slam_accuracy.py
-│   ├── test_localization_accuracy.py
 │   ├── test_gemma3n_multimodal.py       #  replaces test_llm_reasoning.py
 │   ├── test_audio_encoding.py           #  6.25 tokens/sec validation
 │   ├── test_vision_processing.py        #  256 tokens/image validation
