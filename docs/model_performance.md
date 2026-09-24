@@ -137,18 +137,51 @@ Based on benchmark results:
 
 **Gate**: ✅ YOLO/Depth FPS did not regress (both improved), VLM tok/s improved (30.4 → 49.0). Rollback not needed — thermals well within budget.
 
-## MAXN SUPER — Phase 2 llama.cpp re-check
+## MAXN SUPER — Phase 2 llama.cpp re-check (PROMOTED)
 
-_Pending: the `llamacpp` backend is not promoted, so no MAXN SUPER re-benchmark was run. If it is promoted later, re-run `scripts/testing/llm/test_llamacpp_moondream.py`._
+**Date**: 2026-09-25 · `llama-cpp-python 0.3.35`, CUDA 12.6, `GGML_CUDA=on`,
+`CMAKE_CUDA_ARCHITECTURES=87`, `n_gpu_layers=-1` (all 24 layers on CUDA0),
+`n_ctx=2048`, `flash_attn=true`. Same weights as Ollama (`moondream:latest`
+Q4_0 blob), so only the runtime differs.
+
+### Methodology correction (important)
+
+The original Phase 2 comparison (below) reused a **single image** for every run.
+Ollama caches the KV prefix for an identical image, so its reported
+`prompt_eval_duration` collapsed to **~24 ms** and its total to **1.32 s** — an
+artifact. Real robot queries always carry a new camera frame. The benchmark
+scripts now perturb the frame per run (`test_ollama_moondream.py` does this by
+default; `--cached` reproduces the old behaviour). With unique frames, Ollama's
+honest vision+prefill cost is **~834 ms**.
+
+### Results (unique frame per run)
+
+| Metric | Ollama (HTTP) | llama.cpp (in-process) |
+|--------|---------------|------------------------|
+| Vision encode + prefill | ~834 ms | ~809 ms (clip 415 ms + prefill 394 ms) |
+| Text-only generation | 48.7 tok/s | **55.0 tok/s** |
+| Vision end-to-end | ~2.61 s | **1.92 s** |
+| Peak RSS (daemon vs node) | 3022 MB | **2666 MB** |
+| GPU offload | `size_vram == size` (100%) | all layers + clip on CUDA0 |
+
+The decisive optimization was enabling **flash attention** on the LLM context
+(2.34 s → 1.92 s; RSS 2844 → 2666 MB). The clip encoder was already
+GPU-offloaded: `MoondreamChatHandler` subclasses `Llava15ChatHandler`, which
+initializes the multimodal context with `use_gpu=True` in llama-cpp-python
+0.3.35.
+
+**Decision**: `llamacpp` is promoted to the **default** backend
+(`cognitive_backend:=llamacpp`). It is faster on honest vision e2e, uses less
+RAM, and drops the HTTP/daemon hop. `cognitive_backend:=ollama` remains
+supported, and the node automatically falls back to Ollama if the in-process
+model cannot load.
 
 ---
 
-# Cognitive Core — Phase 2: in-process llama.cpp (flag-gated)
+# Cognitive Core — Phase 2: in-process llama.cpp (historical, pre-promotion)
 
-**Date**: 2026-09-24 · `llama-cpp-python 0.3.35`, CUDA 12.6, `GGML_CUDA=on`,
-`CMAKE_CUDA_ARCHITECTURES=87`, `n_gpu_layers=-1` (all 24 layers on CUDA0),
-`n_ctx=2048`. Same weights as Ollama (`moondream:latest` Q4_0 blob), so only the
-runtime differs.
+**Date**: 2026-09-24 · same build as above, but **without flash attention** and
+with the cache-affected Ollama comparison.
 
 | Metric | Ollama (HTTP) | llama.cpp (in-process) |
 |--------|---------------|------------------------|
@@ -161,12 +194,10 @@ runtime differs.
 
 *Ollama reports `eval_duration` separately from vision encode; its 30.4 tok/s is
 generation-only. The llama.cpp "vision tok/s" here divides tokens by the **whole**
-call (including clip image encoding, ~1.5 s), which is why it looks lower.
+call (including clip image encoding), which is why it looks lower.
 
-**Conclusion**: the in-process path matches Ollama on pure generation speed,
-sheds ~110 MB of peak RSS, and is stable over a 5-minute soak. However, its
-vision encoder is not GPU-accelerated as effectively as Ollama's and roughly
-doubles vision end-to-end latency. Per Plan.md ground rule #3 (flag-and-prove),
-the default remains `ollama`; the `llamacpp` backend stays available behind
-`cognitive_backend:=llamacpp` pending vision-encoder tuning (e.g. a GGUF with
-`tokenizer.chat_template` for `MTMDChatHandler` GPU vision).
+*Historical conclusion (superseded)*: the in-process path matched Ollama on pure
+generation speed but appeared to roughly double vision e2e latency, so the
+default stayed `ollama`. The apparent gap was an artifact of image-prefix caching
+on the Ollama side plus the missing flash-attention optimization; see the
+corrected section above.
