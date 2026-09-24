@@ -476,6 +476,7 @@ class CognitiveClientNode(Node):
             image_base64=image_b64,
             query_id=str(uuid.uuid4()),
             original_text=text,
+            force_json=self._structured_output_enabled(),
         )
 
     def _on_multimodal_query(self, msg: MultimodalQuery) -> None:
@@ -499,11 +500,18 @@ class CognitiveClientNode(Node):
             query_id=msg.query_id or str(uuid.uuid4()),
             temperature=temperature,
             num_predict=max_tokens,
+            # `use_optimizations` requests a structured intent (e.g. command
+            # router). Verification queries leave it False to get free text.
+            force_json=self._structured_output_enabled() and bool(msg.use_optimizations),
         )
 
     # ------------------------------------------------------------------
     # Core logic
     # ------------------------------------------------------------------
+
+    def _structured_output_enabled(self) -> bool:
+        """Whether the active backend can constrain output to the intent schema."""
+        return bool(self.structured_output and self.backend == "llamacpp")
 
     def _query_bridge(
         self,
@@ -513,6 +521,7 @@ class CognitiveClientNode(Node):
         original_text: str = "",
         temperature: Optional[float] = None,
         num_predict: Optional[int] = None,
+        force_json: bool = False,
     ) -> None:
         """Send a query to the active cognitive backend and publish results.
 
@@ -523,11 +532,11 @@ class CognitiveClientNode(Node):
             original_text: The user's original spoken text.
             temperature: Override sampling temperature.
             num_predict: Override max tokens.
+            force_json: Constrain the output to the intent JSON schema when the
+                active backend supports it. Only set this for command-intent
+                queries — verification prompts expect free text (Yes/No).
         """
         start = time.time()
-
-        # Constrain to the intent JSON schema when the backend supports it.
-        force_json = bool(self.structured_output and self.backend == "llamacpp")
 
         result = self.bridge.generate(
             prompt=prompt,

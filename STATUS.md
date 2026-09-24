@@ -500,8 +500,10 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 - ✅ Flash attention on the LLM context (`llm_flash_attn`, default true): 2.34 s → 1.92 s
 - ✅ `cognitive_backend` default flipped to `llamacpp` in the node and launch file
 - ✅ Automatic fallback to the Ollama HTTP backend if the in-process model fails to load
+- ✅ Fixed the GBNF intent grammar (each rule on one line — this llama.cpp build rejects multi-line continuations) and pass a `LlamaGrammar` object instead of a raw string; text and vision intent queries now emit schema-valid JSON
+- ✅ Scoped structured output to intent queries (`MultimodalQuery.use_optimizations`, set by the command router); verification queries stay free-text Yes/No
 - ✅ Benchmark scripts now use a unique frame per run (defeats Ollama's KV-prefix cache)
-- ✅ Unit tests for flash-attn plumbing and the fallback helper
+- ✅ Unit tests for flash-attn plumbing, the fallback helper, and grammar/structured-output paths
 
 ---
 

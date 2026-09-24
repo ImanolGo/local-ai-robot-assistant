@@ -19,7 +19,11 @@ from cognitive_core_nodes.cognitive_client_node import (
     maybe_fallback_to_ollama,
     parse_json_intent,
 )
-from cognitive_core_nodes.llama_cpp_bridge import LlamaCppBridge, resolve_ollama_moondream_blobs
+from cognitive_core_nodes.llama_cpp_bridge import (
+    INTENT_GBNF,
+    LlamaCppBridge,
+    resolve_ollama_moondream_blobs,
+)
 
 
 class TestParseJsonIntent(unittest.TestCase):
@@ -201,6 +205,9 @@ class TestLlamaCppBridge(unittest.TestCase):
         mock_llm_cls = MagicMock(return_value=mock_llm_instance)
         fake_module = types.ModuleType("llama_cpp")
         fake_module.Llama = mock_llm_cls
+        fake_grammar_cls = MagicMock()
+        fake_grammar_cls.from_string.return_value = MagicMock(name="intent_grammar")
+        fake_module.LlamaGrammar = fake_grammar_cls
 
         tmp = tempfile.NamedTemporaryFile(suffix=".gguf", delete=False)
         tmp.write(b"fake")
@@ -256,7 +263,7 @@ class TestLlamaCppBridge(unittest.TestCase):
         self.assertIsNotNone(parse_json_intent(result["response"]))
 
     def test_generate_text_uses_grammar_when_forced(self):
-        """force_json passes the GBNF grammar to text completion."""
+        """force_json passes a LlamaGrammar object (not a raw string)."""
         mock_llm = MagicMock()
         mock_llm.create_completion.return_value = {
             "choices": [{"text": '{"action": "stop"}'}],
@@ -268,6 +275,33 @@ class TestLlamaCppBridge(unittest.TestCase):
 
         _, kwargs = mock_llm.create_completion.call_args
         self.assertIn("grammar", kwargs)
+        self.assertNotIsInstance(kwargs["grammar"], str)
+
+    def test_generate_with_image_uses_grammar_when_forced(self):
+        """Vision force_json constrains the chat completion with the grammar."""
+        mock_llm = MagicMock()
+        mock_llm.create_chat_completion.return_value = {
+            "choices": [{"message": {"content": '{"action": "navigate"}'}}],
+            "usage": {},
+        }
+        bridge, _ = self._make_bridge(mock_llm)
+        bridge._chat_handler = MagicMock()
+
+        bridge.generate("go", image_base64="AAAA==", force_json=True)
+
+        _, kwargs = mock_llm.create_chat_completion.call_args
+        self.assertIn("grammar", kwargs)
+        self.assertNotIn("response_format", kwargs)
+
+    def test_intent_grammar_rules_are_single_line(self):
+        """Every GBNF rule must be on one line.
+
+        This llama.cpp build rejects multi-line rule continuations, which made
+        the old grammar fail only at sampling time (not at ``from_string``).
+        """
+        for line in INTENT_GBNF.splitlines():
+            if line.strip():
+                self.assertIn("::=", line, msg=f"continuation line detected: {line!r}")
 
     def test_generate_with_image_uses_chat_completion(self):
         """Vision queries route through chat completion with a data URI."""

@@ -38,14 +38,19 @@ import time
 from typing import Any, Dict, Optional
 
 # GBNF grammar mirroring the {"action","target","explanation"} intent schema.
-INTENT_GBNF = r"""
-root   ::= "{" ws "\"action\"" ws ":" ws string ws "," ws
-               "\"target\"" ws ":" ws string ws "," ws
-               "\"explanation\"" ws ":" ws string ws "}"
-string ::= "\"" ( [^"\\\x7F\x00-\x1F] | "\\" ( ["\\/bfnrt] | "u" hex hex hex hex ) )* "\""
-hex    ::= [0-9a-fA-F]
-ws     ::= [ \t\n]*
-"""
+#
+# NOTE: every rule must stay on a single line. This llama.cpp GBNF parser
+# rejects multi-line rule continuations (the previous multi-line `root` rule
+# failed at sampling time with "expecting name").
+INTENT_GBNF = (
+    'root ::= "{" ws "\\"action\\"" ws ":" ws string ws "," ws '
+    '"\\"target\\"" ws ":" ws string ws "," ws '
+    '"\\"explanation\\"" ws ":" ws string ws "}"\n'
+    'string ::= "\\"" ( [^"\\\\\\x7F\\x00-\\x1F] | "\\\\" '
+    '( ["\\\\/bfnrt] | "u" hex hex hex hex ) )* "\\""\n'
+    "hex ::= [0-9a-fA-F]\n"
+    "ws ::= [ \\t\\n]*\n"
+)
 
 # Default Ollama registry manifest location for moondream:latest.
 _OLLAMA_MANIFESTS = [
@@ -146,6 +151,7 @@ class LlamaCppBridge:
         self.logger = logger
         self.llm = None
         self._chat_handler = None
+        self._grammar = None
         self._available = False
         self._last_error: Optional[str] = None
 
@@ -230,6 +236,23 @@ class LlamaCppBridge:
         except Exception as exc:  # pragma: no cover - exercised on-device
             self._log("warn", f"No multimodal chat handler available for vision: {exc}")
             return None
+
+    def _get_intent_grammar(self):
+        """Build and cache the intent-schema GBNF grammar.
+
+        Returns:
+            A ``LlamaGrammar`` instance, or ``None`` if llama-cpp-python is not
+            importable. ``from_string`` does not parse eagerly in this version,
+            so the grammar is built once per bridge and reused.
+        """
+        if self._grammar is not None:
+            return self._grammar
+        try:
+            from llama_cpp import LlamaGrammar
+        except ImportError:
+            return None
+        self._grammar = LlamaGrammar.from_string(INTENT_GBNF)
+        return self._grammar
 
     @classmethod
     def from_ollama(
@@ -317,7 +340,9 @@ class LlamaCppBridge:
             "temperature": temperature,
         }
         if force_json:
-            params["grammar"] = INTENT_GBNF
+            grammar = self._get_intent_grammar()
+            if grammar is not None:
+                params["grammar"] = grammar
 
         result = self.llm.create_completion(prompt, **params)
         text = result["choices"][0]["text"]
@@ -355,7 +380,9 @@ class LlamaCppBridge:
             "temperature": temperature,
         }
         if force_json:
-            params["response_format"] = {"type": "json_object"}
+            grammar = self._get_intent_grammar()
+            if grammar is not None:
+                params["grammar"] = grammar
 
         result = self.llm.create_chat_completion(**params)
         text = result["choices"][0]["message"]["content"]
