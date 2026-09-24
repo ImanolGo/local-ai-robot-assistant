@@ -6,10 +6,10 @@
 > "go to visible object"** behavior built on the existing Tier 1 YOLO + depth
 > output (and the visual-verification loop), with **no map and no RTAB-Map
 > dependency**. Revisit SLAM only if persistent multi-room memory becomes a real
-> requirement. Other v4.0 changes vs 3.1: `MAXN_SUPER` power profile, an optional
-> in-process `llama.cpp` cognitive backend behind a launch flag (Ollama remains
-> the default), a visual-verification loop node, and a minimal FastAPI
-> health/status server.
+> requirement. Other v4.0 changes vs 3.1: `MAXN_SUPER` power profile, an
+> in-process `llama.cpp` cognitive backend now promoted to the default (Ollama
+> remains available as a fallback), a visual-verification loop node, and a
+> minimal FastAPI health/status server.
 
 ## 1. Project Goal
 
@@ -42,7 +42,7 @@ The system consists of six primary layers:
    - **Speech-to-Text (ASR)**: Uses `faster-whisper` to convert audio to text.
    - Text-to-Speech for robot responses.
 
-4. **Tier 2 - Strategic Cognitive Core (Ollama Client)**: On-demand reasoning (1-3 second latency).
+4. **Tier 2 - Strategic Cognitive Core (llama.cpp default / Ollama client)**: On-demand reasoning (1-3 second latency).
    - **VLM Server**: Local Ollama instance hosting Moondream (1.6B).
    - **Reasoning Node**: Python client constructing prompts with base64 images and transcribed text.
    - Outputs structured intents and visual verification results.
@@ -67,10 +67,10 @@ graph TD
     K --> J
     E --> J
 
-    J -- HTTP JSON (default) --> O[Ollama Server: Moondream]
-    J -. in-process (flag) .-> O2[llama.cpp GGUF: Moondream]
-    O -- JSON Response --> J
-    O2 -. JSON Response .-> J
+    J -- in-process (default) --> O2[llama.cpp GGUF: Moondream]
+    J -. HTTP JSON (fallback) .-> O[Ollama Server: Moondream]
+    O2 -- JSON Response --> J
+    O -. JSON Response .-> J
 
     J --> L[Command Router / Verification Loop]
     F --> L
@@ -188,25 +188,29 @@ This layer uses a **self-contained audio processing pipeline** that handles all 
    - Uses **Piper** (ONNX).
    - Subscribes to `/audio/tts_request`.
 
-### 2.5. Tier 2: Cognitive Core (Ollama default; optional in-process llama.cpp)
+### 2.5. Tier 2: Cognitive Core (in-process llama.cpp default; Ollama optional)
 
 The strategic reasoning layer is reached through a single bridge abstraction
 (`is_available()` / `generate(prompt, image_base64, ...) -> dict`), so the rest
 of the system is agnostic to which runtime is used.
 
-#### Backend A — Ollama (default)
+#### Backend A — in-process llama.cpp (default)
+- **Library**: `llama-cpp-python` built with CUDA (`GGML_CUDA=on`, `CMAKE_CUDA_ARCHITECTURES=87`).
+- **Weights**: the same `moondream:latest` GGUF blobs Ollama uses.
+- **Vision**: `mtmd` clip encoder GPU-offloaded (`use_gpu=True`); the LLM context
+  uses flash attention (`llm_flash_attn:=true`).
+- **Flag**: `cognitive_backend:=llamacpp` (default).
+- **Status**: promoted (24 Sep 2026) — faster honest vision end-to-end
+  (1.92 s vs 2.61 s) and lower RSS than Ollama. See `docs/model_performance.md`.
+
+#### Backend B — Ollama HTTP (optional)
 - **Software**: **Ollama** (Linux ARM64 version).
 - **Service**: Runs as a background service (`systemd`).
 - **Model**: `moondream` (~1.6B parameters, 4-bit GGUF).
 - **Endpoint**: `http://localhost:11434/api/generate`.
-
-#### Backend B — in-process llama.cpp (optional, flag-gated)
-- **Library**: `llama-cpp-python` built with CUDA (`GGML_CUDA=on`, `CMAKE_CUDA_ARCHITECTURES=87`).
-- **Weights**: the same `moondream:latest` GGUF blobs Ollama uses.
-- **Flag**: `cognitive_backend:=llamacpp`; default is `ollama`.
-- **Status**: implemented, GPU-offloaded and tested, but **not the default** —
-  its vision end-to-end latency is currently higher than Ollama's. See
-  `docs/model_performance.md`.
+- **Flag**: `cognitive_backend:=ollama`.
+- **Fallback**: if the in-process model cannot load (missing blobs /
+  `llama-cpp-python`), the node automatically falls back to this backend.
 
 #### Client Node (`cognitive_client_node.py`)
 
@@ -438,8 +442,8 @@ robot_assistant_project/
 ### 11.2. Faster-Whisper Integration
 **Rationale**: By splitting ASR from the VLM, we gain modularity. Whisper is the industry standard for robust offline ASR. The "Faster" implementation (CTranslate2) is highly optimized for resource-constrained devices.
 
-### 11.3. Client-Server Model (Ollama), with an optional in-process backend
-**Rationale**: Decoupling the model execution (Ollama) from the application logic (ROS2 node) prevents Python GIL issues and allows the model server to manage GPU memory more effectively. It also allows easier model swapping (e.g., trying `llava-phi3` or `tiny-llava`) without changing code. v4.0 adds an optional in-process `llama-cpp` backend behind `cognitive_backend:=llamacpp`; it is not the default because its vision path is currently slower than Ollama's.
+### 11.3. In-process llama.cpp (default), with Ollama as the optional fallback
+**Rationale**: Running Moondream in-process removes the HTTP/JSON/base64 round trip and the separate daemon, and with flash attention plus GPU `mtmd` vision it is the fastest honest vision path on the Orin (1.92 s vs 2.61 s) with lower RSS. The Ollama HTTP path is retained as an automatic fallback and for easier model swapping (e.g., trying `llava-phi3` or `tiny-llava`) without changing code; `cognitive_backend:=ollama` selects it.
 
 ## 12. Implementation Roadmap (Adjusted)
 

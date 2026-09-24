@@ -9,9 +9,9 @@ A fully local, real-time, multimodal AI robot assistant running on an NVIDIA
 Jetson Orin Nano (8 GB). ROS2 Humble middleware; Python 3.10 primary. No cloud
 APIs — all inference is on-device.
 
-- **Cognitive core**: Moondream 1.6B VLM served by a local Ollama server
-  (default). An optional in-process `llama.cpp` backend exists behind a launch
-  flag but is **not** the default.
+- **Cognitive core**: Moondream 1.6B VLM run **in-process via `llama.cpp`**
+  (default; GPU `mtmd` vision + flash attention). The Ollama HTTP server remains
+  available as `cognitive_backend:=ollama` and as an automatic fallback.
 - **Perception**: YOLOv11n + Depth Anything V2 Small, TensorRT FP16.
 - **Audio**: openWakeWord → Silero VAD → faster-whisper (`tiny.en`), Piper TTS.
 - **Behavior**: reactive — `command_router_node` (regex + cognitive forward) plus
@@ -107,14 +107,16 @@ Packages live in `src/` (7 total: `actuation_nodes`, `audio_interface_nodes`,
 | `actuation_nodes` | `uart_motor_controller` | sub `/cmd_vel`, `/motor_command`; pub `/motor_status`, `/chassis_state`, `/odom_raw`, `/imu/data`; srv `/emergency_stop` |
 | `perception_nodes` | `camera_driver`, `image_undistort_node`, `object_detector`, `depth_estimator`/`depth_estimation_node`, `pointcloud_generator` | `/camera/raw`, `/camera/undistorted`, `/perception/objects`, `/perception/depth`, `/perception/obstacles`, `/perception/pointcloud` |
 | `audio_interface_nodes` | `audio_capture_node` (self-contained wake→VAD→Whisper), `audio_playback_node` (Piper TTS + notifications) | `/audio/events`, `/audio/transcription`, `/audio/tts_request` |
-| `cognitive_core_nodes` | `cognitive_client_node` (Ollama HTTP bridge; optional llama.cpp) | sub `/cognitive/multimodal_query`; pub `/cognitive/command`, `/cognitive/status` |
+| `cognitive_core_nodes` | `cognitive_client_node` (in-process llama.cpp default; Ollama fallback) | sub `/cognitive/multimodal_query`; pub `/cognitive/command`, `/cognitive/status` |
 | `behavioral_nodes` | `command_router_node`, `visual_verification_node` | `/cognitive/command`, `/cmd_vel`, `/verification/status` |
 | `web_interface_nodes` | `web_server` (minimal FastAPI `/health`, `/status`) | HTTP |
 | `robot_interfaces` | (messages/services only) | `msg/`, `srv/` |
 
-Backend selection: `cognitive_backend:=ollama|llamacpp` (default `ollama`). Ollama
-is promoted; llama.cpp is implemented/tested but slower on vision e2e — leave the
-default as `ollama` unless explicitly asked.
+Backend selection: `cognitive_backend:=llamacpp|ollama` (default `llamacpp`).
+`llamacpp` is promoted (flash attention + GPU `mtmd` clip; faster honest vision
+e2e and lower RSS). `ollama` is the fallback; the node auto-switches if the
+in-process model cannot load. When benchmarking, use a unique frame per run —
+Ollama caches the image KV prefix and reports a misleadingly low prompt-eval.
 
 ## 6. Coding Conventions
 

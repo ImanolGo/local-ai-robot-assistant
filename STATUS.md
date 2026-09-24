@@ -456,9 +456,9 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 
 ---
 
-## Phase 7: Cognitive Core (Ollama + Moondream) (75% Complete 🚧)
+## Phase 7: Cognitive Core (Moondream: llama.cpp default, Ollama fallback) (85% Complete 🚧)
 
-### 7.1 Ollama Client Node
+### 7.1 Cognitive Client Node (in-process llama.cpp default; Ollama fallback)
 
 - ✅ Implement `cognitive_client_node.py` (Ollama HTTP bridge)
 - ✅ Implement HTTP client with persistent sessions (keep-alive)
@@ -491,6 +491,19 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 - ✅ Replaced Gemma 3n model (would OOM on 8GB) with Ollama/Moondream HTTP client
 - ✅ Updated cognitive_launch.py to reference new node
 - ✅ Updated setup.py entry points to match actual modules
+
+### 7.5 In-process llama.cpp Backend — PROMOTED (100% Complete ✅)
+
+- ✅ `LlamaCppBridge` mirrors `OllamaBridge` (`is_available()` / `generate()`)
+- ✅ Reuses the same `moondream:latest` GGUF blobs as Ollama (no second download)
+- ✅ GPU vision via `mtmd` (`MoondreamChatHandler` → `Llava15ChatHandler`, `use_gpu=True`)
+- ✅ Flash attention on the LLM context (`llm_flash_attn`, default true): 2.34 s → 1.92 s
+- ✅ `cognitive_backend` default flipped to `llamacpp` in the node and launch file
+- ✅ Automatic fallback to the Ollama HTTP backend if the in-process model fails to load
+- ✅ Fixed the GBNF intent grammar (each rule on one line — this llama.cpp build rejects multi-line continuations) and pass a `LlamaGrammar` object instead of a raw string; text and vision intent queries now emit schema-valid JSON
+- ✅ Scoped structured output to intent queries (`MultimodalQuery.use_optimizations`, set by the command router); verification queries stay free-text Yes/No
+- ✅ Benchmark scripts now use a unique frame per run (defeats Ollama's KV-prefix cache)
+- ✅ Unit tests for flash-attn plumbing, the fallback helper, and grammar/structured-output paths
 
 ---
 
@@ -605,6 +618,7 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 
 ## Recent Updates
 
+- **24 Sep 2026**: **llama.cpp promoted to the default cognitive backend.** Enabled flash attention on the in-process LLM context (2.34 s → **1.92 s** vision e2e) and corrected the benchmark methodology: the old comparison reused one frame, so Ollama's KV-prefix cache made its prompt-eval look like 24 ms. With a unique frame per run, Ollama is **~2.61 s** vs llama.cpp **1.92 s**, and llama.cpp uses less RAM (2666 MB vs 3022 MB). The node now defaults to `cognitive_backend:=llamacpp` (with `llm_flash_attn:=true`) and **falls back to Ollama automatically** if the in-process model cannot load. The clip encoder was already GPU-offloaded via `mtmd use_gpu=True`; flash attention was the real win. See `docs/model_performance.md`.
 - **24 Sep 2026**: **Deferred cleanup done** — deleted the descoped `src/localization_nodes/` package (EKF/RTAB-Map/standalone IMU) and its SLAM scripts, dropped the localization/SLAM includes from `full_system_launch.py`, and removed BehaviorTree leftovers (`action_nodes/`, `behaviortree_cpp_v3`/`py-trees` deps, stale `behavior_tree_executor`/`dialogue_manager` entry points). IMU remains on `/imu/data` via the motor controller. Test suite unchanged: **68 passed, 2 failed** (pre-existing `test_wake_word.py`).
 - **24 Sep 2026**: **Phase 5 items 3 & 4 complete** — implemented the visual verification loop (`visual_verification_node.py`: stop → snapshot → verify → rotate/retry) with unit + ROS2 integration tests, and a minimal FastAPI health/status server (`web_server.py`, `/health` + `/status`) verified live. Full integration soak (item 5) deferred.
 - **24 Sep 2026**: **Phase 1 complete** — set `MAXN_SUPER` + `jetson_clocks`. Measured gains: YOLO 41.9→**98.2 FPS**, Depth 28.1→**55.1 FPS**, Moondream 30.4→**49.0 tok/s**, max tj 53.5 °C. Recorded in `docs/model_performance.md`.
@@ -701,7 +715,7 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 The v3.1 → v4.0 migration is complete. Remaining / upcoming work:
 
 - **Full-system integration soak** (Phase 5 item 5): object detection + depth + audio + cognitive core + visual verification concurrently for 60 minutes, logging `tegrastats` RSS and thermals.
-- **Cognitive backend**: optionally promote `llamacpp` after GPU-accelerating the clip encoder (currently slower vision end-to-end than Ollama).
+- **Cognitive backend**: ✅ `llamacpp` promoted to default (flash attention + GPU `mtmd` clip; 1.92 s vs Ollama 2.61 s honest vision e2e). Ollama remains available via `cognitive_backend:=ollama` and as an automatic fallback.
 - **Audio real-time validation** (Phase 5.4): end-to-end wake-word → transcription latency and resource usage on hardware.
 - **Web interface**: expand beyond `/health` + `/status` only once the rest is stable.
 - **SLAM**: out of scope for the MVP; add only if persistent multi-room memory becomes a requirement.
@@ -718,10 +732,10 @@ The v3.1 → v4.0 migration is complete. Remaining / upcoming work:
 | Full duplex audio | Required | Supported | ✅ |
 | Object detection FPS | ≥ 20 | 98.2 (FP16, MAXN SUPER) | ✅ |
 | Depth estimation FPS | ≥ 30 | 55.1 (MAXN SUPER) | ✅ |
-| VLM vision latency | < 600ms | 24ms (Moondream, MAXN SUPER) | ✅ |
-| VLM generation speed | 10-15 tok/s | 49.0 tok/s (Moondream, MAXN SUPER) | ✅ |
-| VLM total response | < 2.5s | 1.32s (Moondream, MAXN SUPER) | ✅ |
-| VLM memory usage | < 2GB | ~3GB (num_ctx=512) | 🚧 |
+| VLM vision encode (clip) | < 600ms | 415ms (llama.cpp mtmd, MAXN SUPER) | ✅ |
+| VLM generation speed | 10-15 tok/s | 55.0 tok/s (llama.cpp, MAXN SUPER) | ✅ |
+| VLM total response | < 2.5s | 1.92s (llama.cpp, MAXN SUPER) | ✅ |
+| VLM memory usage | < 2GB | 2666MB (llama.cpp node, MAXN SUPER) | 🚧 |
 | Navigation accuracy | < 10cm | TBD | ⏳ |
 | Camera capture FPS | ≥ 30 | 5500-16500 (DeepStream) | ✅ |
 | UART communication | < 100ms RTT | ~50ms avg | ✅ |

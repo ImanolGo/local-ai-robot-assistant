@@ -11,6 +11,11 @@ Usage:
     python scripts/testing/llm/test_llamacpp_moondream.py
     python scripts/testing/llm/test_llamacpp_moondream.py --model /path/model.gguf \
         --mmproj /path/mmproj.gguf --runs 10
+    python scripts/testing/llm/test_llamacpp_moondream.py --no-flash-attn   # A/B
+
+Note: compare against ``test_ollama_moondream.py`` (unique frames by default).
+Ollama's KV-prefix cache makes its ``prompt_eval`` look ~24 ms on repeated
+frames, which is not representative of real robot use.
 """
 
 import argparse
@@ -78,6 +83,19 @@ def main():
     parser.add_argument(
         "--n-gpu-layers", type=int, default=-1, help="GPU layers to offload (-1 = all)"
     )
+    parser.add_argument(
+        "--flash-attn",
+        dest="flash_attn",
+        action="store_true",
+        default=True,
+        help="Enable flash attention (default; major vision e2e win on Orin)",
+    )
+    parser.add_argument(
+        "--no-flash-attn",
+        dest="flash_attn",
+        action="store_false",
+        help="Disable flash attention (for A/B comparison)",
+    )
     parser.add_argument("--prompt", default="Describe this image in detail.", help="Prompt")
     args = parser.parse_args()
 
@@ -95,6 +113,7 @@ def main():
         mmproj_path=args.mmproj,
         n_ctx=args.n_ctx,
         n_gpu_layers=args.n_gpu_layers,
+        flash_attn=args.flash_attn,
     )
     load_time = time.time() - load_start
     if not bridge.is_available():

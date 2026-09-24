@@ -263,6 +263,9 @@ class CommandRouterNode(Node):
         query.include_current_image = True  # Request vision for complex commands
         query.temperature = 0.3
         query.max_tokens = 128
+        # Ask the cognitive core for a structured intent (JSON schema) rather
+        # than free text; ignored by backends without constrained decoding.
+        query.use_optimizations = True
 
         self.query_pub.publish(query)
         self.get_logger().info(f"Forwarded query to cognitive core: '{text[:60]}...'")

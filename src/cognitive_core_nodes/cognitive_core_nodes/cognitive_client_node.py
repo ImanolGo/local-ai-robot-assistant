@@ -159,6 +159,50 @@ class OllamaBridge:
             return {"error": msg}
 
 
+def maybe_fallback_to_ollama(
+    bridge,
+    backend: str,
+    ollama_url: str,
+    model_name: str,
+    timeout: float,
+    logger,
+):
+    """Fall back from an unavailable ``llamacpp`` bridge to Ollama HTTP.
+
+    The in-process backend is the promoted default, but it needs the GGUF blobs
+    and ``llama-cpp-python`` present. If it cannot load, prefer the Ollama
+    daemon over a dead cognitive core. The chosen backend is logged and returned
+    so callers can reflect it in status output.
+
+    Args:
+        bridge: The already-constructed primary bridge.
+        backend: The requested backend name (``"llamacpp"`` or ``"ollama"``).
+        ollama_url: Ollama base URL for the fallback.
+        model_name: Ollama model name for the fallback.
+        timeout: Ollama request timeout.
+        logger: ROS2 logger instance.
+
+    Returns:
+        Tuple ``(bridge, backend)`` — the (possibly replaced) bridge and backend.
+    """
+    if backend != "llamacpp" or bridge.is_available():
+        return bridge, backend
+
+    logger.warn("llamacpp backend unavailable — attempting Ollama HTTP fallback")
+    fallback = OllamaBridge(
+        base_url=ollama_url,
+        model=model_name,
+        timeout=timeout,
+        logger=logger,
+    )
+    if fallback.is_available():
+        logger.warn("Fell back to the Ollama backend.")
+        return fallback, "ollama"
+
+    logger.error("Ollama fallback also unavailable — cognitive core is offline.")
+    return bridge, backend
+
+
 def parse_json_intent(response_text: str) -> Optional[Dict[str, str]]:
     """Parse a structured JSON intent from the VLM response.
 
@@ -217,7 +261,7 @@ class CognitiveClientNode(Node):
         super().__init__("cognitive_client_node")
 
         # --- Parameters ---
-        self.declare_parameter("cognitive_backend", "ollama")
+        self.declare_parameter("cognitive_backend", "llamacpp")
         self.declare_parameter("ollama_url", "http://localhost:11434")
         self.declare_parameter("model_name", "moondream")
         self.declare_parameter("request_timeout", 10.0)
@@ -231,6 +275,7 @@ class CognitiveClientNode(Node):
         self.declare_parameter("llm_mmproj_path", "")
         self.declare_parameter("llm_n_gpu_layers", -1)
         self.declare_parameter("llm_n_ctx", 2048)
+        self.declare_parameter("llm_flash_attn", True)
         self.declare_parameter("structured_output", True)
 
         # Read parameters
@@ -249,6 +294,7 @@ class CognitiveClientNode(Node):
         llm_mmproj_path = self.get_parameter("llm_mmproj_path").value
         llm_n_gpu_layers = self.get_parameter("llm_n_gpu_layers").value
         llm_n_ctx = self.get_parameter("llm_n_ctx").value
+        llm_flash_attn = self.get_parameter("llm_flash_attn").value
         self.structured_output = self.get_parameter("structured_output").value
 
         # --- Cognitive backend bridge (Ollama HTTP vs in-process llama.cpp) ---
@@ -262,6 +308,20 @@ class CognitiveClientNode(Node):
             llm_mmproj_path=llm_mmproj_path,
             llm_n_gpu_layers=llm_n_gpu_layers,
             llm_n_ctx=llm_n_ctx,
+            llm_flash_attn=llm_flash_attn,
+        )
+
+        # If the promoted in-process backend cannot load (missing blobs /
+        # llama-cpp-python), fall back to the Ollama HTTP daemon so the robot
+        # stays operational. The fallback is logged loudly and reflected in
+        # self.backend (and therefore in /cognitive/status).
+        self.bridge, self.backend = maybe_fallback_to_ollama(
+            bridge=self.bridge,
+            backend=self.backend,
+            ollama_url=ollama_url,
+            model_name=model_name,
+            timeout=timeout,
+            logger=self.get_logger(),
         )
 
         # --- CV bridge for image conversion ---
@@ -326,6 +386,7 @@ class CognitiveClientNode(Node):
         llm_mmproj_path: str,
         llm_n_gpu_layers: int,
         llm_n_ctx: int,
+        llm_flash_attn: bool = True,
     ):
         """Instantiate the selected cognitive backend bridge.
 
@@ -341,6 +402,8 @@ class CognitiveClientNode(Node):
             llm_n_gpu_layers: Layers to offload for the llama.cpp backend.
             llm_n_ctx: Context size for the llama.cpp backend (must fit the
                 Moondream image tokens, ~729, plus prompt/output).
+            llm_flash_attn: Enable flash attention for the llama.cpp context
+                (major vision e2e win on Orin).
 
         Returns:
             An object exposing ``is_available()`` and ``generate()``.
@@ -366,6 +429,7 @@ class CognitiveClientNode(Node):
             mmproj_path=mmproj_path,
             n_ctx=llm_n_ctx,
             n_gpu_layers=llm_n_gpu_layers,
+            flash_attn=llm_flash_attn,
             logger=self.get_logger(),
         )
 
@@ -412,6 +476,7 @@ class CognitiveClientNode(Node):
             image_base64=image_b64,
             query_id=str(uuid.uuid4()),
             original_text=text,
+            force_json=self._structured_output_enabled(),
         )
 
     def _on_multimodal_query(self, msg: MultimodalQuery) -> None:
@@ -435,11 +500,18 @@ class CognitiveClientNode(Node):
             query_id=msg.query_id or str(uuid.uuid4()),
             temperature=temperature,
             num_predict=max_tokens,
+            # `use_optimizations` requests a structured intent (e.g. command
+            # router). Verification queries leave it False to get free text.
+            force_json=self._structured_output_enabled() and bool(msg.use_optimizations),
         )
 
     # ------------------------------------------------------------------
     # Core logic
     # ------------------------------------------------------------------
+
+    def _structured_output_enabled(self) -> bool:
+        """Whether the active backend can constrain output to the intent schema."""
+        return bool(self.structured_output and self.backend == "llamacpp")
 
     def _query_bridge(
         self,
@@ -449,6 +521,7 @@ class CognitiveClientNode(Node):
         original_text: str = "",
         temperature: Optional[float] = None,
         num_predict: Optional[int] = None,
+        force_json: bool = False,
     ) -> None:
         """Send a query to the active cognitive backend and publish results.
 
@@ -459,11 +532,11 @@ class CognitiveClientNode(Node):
             original_text: The user's original spoken text.
             temperature: Override sampling temperature.
             num_predict: Override max tokens.
+            force_json: Constrain the output to the intent JSON schema when the
+                active backend supports it. Only set this for command-intent
+                queries — verification prompts expect free text (Yes/No).
         """
         start = time.time()
-
-        # Constrain to the intent JSON schema when the backend supports it.
-        force_json = bool(self.structured_output and self.backend == "llamacpp")
 
         result = self.bridge.generate(
             prompt=prompt,
