@@ -149,8 +149,8 @@ class CommandRouterNode(Node):
     def _on_cognitive_command(self, msg: CognitiveCommand) -> None:
         """Handle parsed commands from the cognitive core.
 
-        This allows the behavior tree / cognitive core to issue motor commands
-        through the same routing infrastructure.
+        This allows the cognitive core to issue motor commands through the same
+        routing infrastructure.
 
         Args:
             msg: Cognitive command with action and target.

@@ -3,8 +3,6 @@ Behavioral architecture launch file.
 
 Starts the command router node (audio transcription -> cognitive core /
 actuation) and the visual verification node (goal-completion checking).
-
-Note: behavior_tree_executor is planned for Phase 7+ and not yet implemented.
 """
 
 from launch_ros.actions import Node

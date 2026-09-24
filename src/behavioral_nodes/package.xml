@@ -2,7 +2,7 @@
 <package format="3">
   <name>behavioral_nodes</name>
   <version>0.1.0</version>
-  <description>Behavioral architecture nodes using BehaviorTree.CPP for decision making and task coordination</description>
+  <description>Behavioral architecture nodes: command router and visual verification loop</description>
 
   <maintainer email="developer@local-ai-robot.com">Local AI Robot Team</maintainer>
   <license>Apache-2.0</license>
@@ -18,14 +18,6 @@
 
   <!-- Custom interfaces -->
   <depend>robot_interfaces</depend>
-
-  <!-- Behavior tree dependencies -->
-  <build_depend>behaviortree_cpp_v3</build_depend>
-  <exec_depend>behaviortree_cpp_v3</exec_depend>
-
-  <!-- Python behavior tree wrapper -->
-  <build_depend>python3-py-trees</build_depend>
-  <exec_depend>python3-py-trees</exec_depend>
 
   <!-- Math and utilities -->
   <build_depend>python3-numpy</build_depend>
