@@ -29,6 +29,14 @@ from gi.repository import Gst  # noqa: E402
 Gst.init(None)
 
 
+def _calibration_array(data: dict, key: str, default) -> np.ndarray:
+    """Extract a calibration array from either ``{"data": [...]}`` or a raw list."""
+    value = data.get(key, default)
+    if isinstance(value, dict):
+        value = value.get("data", default)
+    return np.array(value, dtype=np.float32)
+
+
 class CameraDriver(Node):
     """
     DeepStream-accelerated camera driver for IMX219 camera.
@@ -144,22 +152,22 @@ class CameraDriver(Node):
             self.camera_info.height = calib_data.get("image_height", 1080)
 
             # Camera matrix (K)
-            K = np.array(
-                calib_data.get("camera_matrix", {}).get("data", np.eye(3).flatten())
-            ).flatten()
-            self.camera_info.k = K.tolist()
+            K = _calibration_array(calib_data, "camera_matrix", np.eye(3)).reshape(3, 3)
+            self.camera_info.k = K.flatten().tolist()
 
             # Distortion coefficients (D)
-            D = np.array(
-                calib_data.get("distortion_coefficients", {}).get("data", np.zeros(5))
-            ).flatten()
+            D = _calibration_array(calib_data, "distortion_coefficients", np.zeros(5)).flatten()
             self.camera_info.d = D.tolist()
             self.camera_info.distortion_model = calib_data.get("distortion_model", "plumb_bob")
 
-            # Projection matrix (P)
-            P = np.array(
-                calib_data.get("projection_matrix", {}).get("data", np.zeros(12))
-            ).flatten()
+            # Projection matrix (P) — derive from K when the file omits it
+            if calib_data.get("projection_matrix") is not None:
+                P = _calibration_array(calib_data, "projection_matrix", np.zeros(12)).flatten()
+            else:
+                fx, fy = K[0, 0], K[1, 1]
+                cx, cy = K[0, 2], K[1, 2]
+                P = np.array([[fx, 0.0, cx, 0.0], [0.0, fy, cy, 0.0], [0.0, 0.0, 1.0, 0.0]])
+                P = P.flatten()
             self.camera_info.p = P.tolist()
 
             # Rectification matrix (R)

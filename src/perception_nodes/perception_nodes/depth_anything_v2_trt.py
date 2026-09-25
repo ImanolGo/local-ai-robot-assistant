@@ -58,6 +58,8 @@ class DepthAnythingV2TRT:
         self.inputs = []
         self.outputs = []
         self.bindings = []
+        self.tensor_addresses: Dict[str, int] = {}
+        self._use_v3 = False
         self.stream = None
 
         # Model parameters
@@ -122,6 +124,10 @@ class DepthAnythingV2TRT:
             self.context = self.engine.create_execution_context()
             if self.context is None:
                 raise RuntimeError("Failed to create TensorRT execution context")
+
+            # TensorRT 10 removed execute_async_v2 in favour of the v3 API
+            # (set_tensor_address + execute_async_v3).
+            self._use_v3 = hasattr(self.context, "execute_async_v3")
 
             logger.info(f"TensorRT engine loaded successfully from: {self.engine_path}")
 
@@ -194,6 +200,7 @@ class DepthAnythingV2TRT:
 
                 # Let's trust that iterating 0..num_io_tensors aligns with binding indices 0..N
                 self.bindings.append(int(device_mem))
+                self.tensor_addresses[name] = int(device_mem)
 
                 # Store in appropriate list
                 if is_input(name):
@@ -309,7 +316,14 @@ class DepthAnythingV2TRT:
             cuda.memcpy_htod_async(self.inputs[0]["device"], self.inputs[0]["host"], self.stream)
 
             # Run inference
-            self.context.execute_async_v2(bindings=self.bindings, stream_handle=self.stream.handle)
+            if self._use_v3:
+                for name, address in self.tensor_addresses.items():
+                    self.context.set_tensor_address(name, address)
+                self.context.execute_async_v3(stream_handle=self.stream.handle)
+            else:
+                self.context.execute_async_v2(
+                    bindings=self.bindings, stream_handle=self.stream.handle
+                )
 
             # Copy output data to host
             cuda.memcpy_dtoh_async(self.outputs[0]["host"], self.outputs[0]["device"], self.stream)
