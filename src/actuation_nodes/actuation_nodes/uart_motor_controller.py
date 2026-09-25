@@ -64,6 +64,7 @@ class MotorConfig:
     emergency_stop_enabled: bool = True
     acceleration_limit: float = 0.5
     deceleration_limit: float = 1.0
+    min_wheel_pwm: float = 0.3
 
 
 class UARTMotorController(Node):
@@ -87,6 +88,12 @@ class UARTMotorController(Node):
             0.0  # Track when we last received non-zero motion commands
         )
         self._node_start_time = time.time()  # Track when node started
+
+        # Dead-reckoning odometry state (integrated from commanded wheel speeds)
+        self._odom_x = 0.0
+        self._odom_y = 0.0
+        self._odom_yaw = 0.0
+        self._last_odom_time = time.time()
 
         # Thread safety
         self._serial_lock = threading.Lock()
@@ -162,6 +169,9 @@ class UARTMotorController(Node):
         # Add IMU request timer (reduced since continuous feedback includes IMU)
         self.imu_timer = self.create_timer(0.5, self._imu_timer_callback)  # 2Hz IMU requests
 
+        # Dead-reckoning odometry publisher (20 Hz)
+        self.odom_timer = self.create_timer(0.05, self._odom_timer_callback)
+
         # Enable continuous feedback mode
         if self._serial and self._serial.is_open:
             self._start_response_reader()  # Start reader FIRST
@@ -188,6 +198,9 @@ class UARTMotorController(Node):
         self.declare_parameter("motor.emergency_stop_enabled", True)
         self.declare_parameter("motor.acceleration_limit", 0.5)
         self.declare_parameter("motor.deceleration_limit", 1.0)
+        # Non-zero wheel commands below this normalized value are raised to it,
+        # to clear the DC-motor static-friction deadband (0 disables).
+        self.declare_parameter("motor.min_wheel_pwm", 0.3)
 
     def _load_config(self):
         """Load configuration from parameters."""
@@ -222,6 +235,9 @@ class UARTMotorController(Node):
             .get_parameter_value()
             .double_value,
             deceleration_limit=self.get_parameter("motor.deceleration_limit")
+            .get_parameter_value()
+            .double_value,
+            min_wheel_pwm=self.get_parameter("motor.min_wheel_pwm")
             .get_parameter_value()
             .double_value,
         )
@@ -554,6 +570,47 @@ class UARTMotorController(Node):
             chassis_command = {"T": 130}
             self._send_command(chassis_command)
 
+    @staticmethod
+    def twist_to_wheel_speeds(
+        linear_vel: float,
+        angular_vel: float,
+        wheelbase: float,
+        max_linear_velocity: float,
+        max_speed: float,
+        min_wheel_pwm: float = 0.0,
+    ) -> Tuple[float, float]:
+        """Map linear/angular velocities to normalized wheel speeds.
+
+        Uses differential-drive kinematics and an optional deadband floor so a
+        non-zero wheel command clears the DC-motor static-friction deadband
+        (measured: in-place rotation only starts around 0.3, i.e. ~60% PWM).
+
+        Args:
+            linear_vel: Forward velocity (m/s).
+            angular_vel: Angular velocity (rad/s).
+            wheelbase: Distance between wheels (m).
+            max_linear_velocity: Linear velocity mapping to full wheel speed.
+            max_speed: Normalized wheel command at full speed (e.g. 0.5).
+            min_wheel_pwm: Minimum non-zero normalized wheel command.
+
+        Returns:
+            ``(left_speed, right_speed)`` each within ``[-max_speed, max_speed]``.
+        """
+        v_left = linear_vel - (angular_vel * wheelbase) / 2.0
+        v_right = linear_vel + (angular_vel * wheelbase) / 2.0
+
+        def normalize(velocity: float) -> float:
+            if max_linear_velocity <= 0.0:
+                return 0.0
+            speed = float(
+                np.clip(velocity / max_linear_velocity * max_speed, -max_speed, max_speed)
+            )
+            if 0.0 < abs(speed) < min_wheel_pwm:
+                speed = math.copysign(min_wheel_pwm, speed)
+            return speed
+
+        return normalize(v_left), normalize(v_right)
+
     def _twist_to_wheel_speeds(self, twist: Twist) -> Tuple[float, float]:
         """Convert Twist message to left/right wheel speeds using differential drive kinematics.
 
@@ -563,7 +620,6 @@ class UARTMotorController(Node):
         Returns:
             Tuple of (left_speed, right_speed) in range [-0.5, 0.5]
         """
-        # Limit input velocities
         linear_vel = max(
             -self.motor_config.max_linear_velocity,
             min(self.motor_config.max_linear_velocity, twist.linear.x),
@@ -572,28 +628,81 @@ class UARTMotorController(Node):
             -self.motor_config.max_angular_velocity,
             min(self.motor_config.max_angular_velocity, twist.angular.z),
         )
-
-        # Differential drive kinematics
-        # v_left = v - (w * wheelbase) / 2
-        # v_right = v + (w * wheelbase) / 2
-        v_left = linear_vel - (angular_vel * self.motor_config.wheelbase) / 2.0
-        v_right = linear_vel + (angular_vel * self.motor_config.wheelbase) / 2.0
-
-        # Convert to Wave Rover speed format (-0.5 to +0.5)
-        # Assuming max wheel speed corresponds to max_linear_velocity
-        max_wheel_speed = self.motor_config.max_linear_velocity
-        left_speed = np.clip(
-            v_left / max_wheel_speed * self.motor_config.max_speed,
-            -self.motor_config.max_speed,
+        return self.twist_to_wheel_speeds(
+            linear_vel,
+            angular_vel,
+            self.motor_config.wheelbase,
+            self.motor_config.max_linear_velocity,
             self.motor_config.max_speed,
-        )
-        right_speed = np.clip(
-            v_right / max_wheel_speed * self.motor_config.max_speed,
-            -self.motor_config.max_speed,
-            self.motor_config.max_speed,
+            self.motor_config.min_wheel_pwm,
         )
 
-        return left_speed, right_speed
+    @staticmethod
+    def integrate_odometry(
+        x: float, y: float, yaw: float, v: float, omega: float, dt: float
+    ) -> Tuple[float, float, float]:
+        """Integrate one dead-reckoning step (differential drive, meters/radians).
+
+        Args:
+            x, y, yaw: Previous pose.
+            v: Forward velocity (m/s).
+            omega: Angular velocity (rad/s).
+            dt: Time step (s).
+
+        Returns:
+            Updated ``(x, y, yaw)`` tuple.
+        """
+        x += v * math.cos(yaw) * dt
+        y += v * math.sin(yaw) * dt
+        yaw += omega * dt
+        return x, y, yaw
+
+    def _odom_timer_callback(self) -> None:
+        """Integrate commanded wheel speeds and publish dead-reckoning odometry."""
+        now = time.time()
+        dt = now - self._last_odom_time
+        self._last_odom_time = now
+        if dt <= 0.0:
+            return
+
+        with self._state_lock:
+            left = self._current_wheel_speeds["left"]
+            right = self._current_wheel_speeds["right"]
+            if self._emergency_stop_active:
+                left = 0.0
+                right = 0.0
+
+        # Inverse of _twist_to_wheel_speeds: normalized -> m/s per wheel.
+        scale = self.motor_config.max_linear_velocity / self.motor_config.max_speed
+        v_left = left * scale
+        v_right = right * scale
+        v = 0.5 * (v_left + v_right)
+        omega = (v_right - v_left) / self.motor_config.wheelbase
+
+        self._odom_x, self._odom_y, self._odom_yaw = self.integrate_odometry(
+            self._odom_x, self._odom_y, self._odom_yaw, v, omega, dt
+        )
+        self._publish_odometry(v, omega)
+
+    def _publish_odometry(self, v: float, omega: float) -> None:
+        """Publish the current dead-reckoning pose and twist on ``/odom_raw``."""
+        try:
+            msg = Odometry()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.header.frame_id = "odom"
+            msg.child_frame_id = "base_link"
+
+            msg.pose.pose.position.x = float(self._odom_x)
+            msg.pose.pose.position.y = float(self._odom_y)
+            msg.pose.pose.orientation = self._euler_to_quaternion(
+                0.0, 0.0, math.degrees(self._odom_yaw)
+            )
+
+            msg.twist.twist.linear.x = float(v)
+            msg.twist.twist.angular.z = float(omega)
+            self.odom_raw_pub.publish(msg)
+        except Exception as e:
+            self.get_logger().warn(f"Failed to publish odometry: {e}")
 
     def _send_motor_command(self, left_speed: float, right_speed: float) -> bool:
         """Send motor speed command to Wave Rover."""

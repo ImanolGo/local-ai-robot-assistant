@@ -277,9 +277,12 @@ class CommandRouterNode(Node):
 
     def destroy_node(self) -> None:
         """Cleanup — ensure motors stop."""
-        stop_twist = Twist()
-        self.cmd_vel_pub.publish(stop_twist)
-        self.get_logger().info("Command router shutting down — motors stopped.")
+        try:
+            stop_twist = Twist()
+            self.cmd_vel_pub.publish(stop_twist)
+            self.get_logger().info("Command router shutting down — motors stopped.")
+        except Exception:  # context may already be shutting down
+            pass
         super().destroy_node()
 
 
@@ -297,7 +300,8 @@ def main(args=None):
     finally:
         if "node" in locals():
             node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
