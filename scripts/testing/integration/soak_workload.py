@@ -32,10 +32,11 @@ class SoakWorkload(Node):
         self.command_pub = self.create_publisher(CognitiveCommand, "/cognitive/command", 10)
 
         # Staggered so the single-threaded cognitive core is never saturated.
-        self.create_timer(20.0, self._vision_query)
-        self.create_timer(45.0, self._complex_transcription)
-        self.create_timer(70.0, self._simple_transcription)
-        self.create_timer(100.0, self._verification_trigger)
+        # Intervals are deliberately gentle enough for CPU VLM mode (~20 s/query).
+        self.create_timer(60.0, self._vision_query)
+        self.create_timer(120.0, self._complex_transcription)
+        self.create_timer(90.0, self._simple_transcription)
+        self.create_timer(180.0, self._verification_trigger)
 
         self.get_logger().info("Soak workload generator started")
 

@@ -17,6 +17,11 @@ COGNITIVE_DELAY="${3:-30.0}"
 COGNITIVE_BACKEND="${COGNITIVE_BACKEND:-llamacpp}"
 LLM_N_GPU_LAYERS="${LLM_N_GPU_LAYERS:--1}"
 COGNITIVE_ENABLED="${COGNITIVE_ENABLED:-true}"
+# "none" => run the VLM on CPU (coexists with perception on 8 GB).
+# NOTE: use ${VAR-default} (no colon) so an explicitly empty value is kept.
+COGNITIVE_CUDA_VISIBLE_DEVICES="${COGNITIVE_CUDA_VISIBLE_DEVICES-0}"
+COGNITIVE_REQUEST_TIMEOUT="${COGNITIVE_REQUEST_TIMEOUT:-10.0}"
+VERIFICATION_RESPONSE_TIMEOUT="${VERIFICATION_RESPONSE_TIMEOUT:-8.0}"
 mkdir -p "$OUTDIR"
 
 # NOTE: do not use `set -u`; ROS's setup.bash references unbound variables.
@@ -31,6 +36,9 @@ echo "$COGNITIVE_DELAY" >"$OUTDIR/cognitive_delay_s.txt"
 echo "$COGNITIVE_BACKEND" >"$OUTDIR/cognitive_backend.txt"
 echo "$LLM_N_GPU_LAYERS" >"$OUTDIR/llm_n_gpu_layers.txt"
 echo "$COGNITIVE_ENABLED" >"$OUTDIR/cognitive_enabled.txt"
+echo "$COGNITIVE_CUDA_VISIBLE_DEVICES" >"$OUTDIR/cognitive_cuda_visible_devices.txt"
+echo "$COGNITIVE_REQUEST_TIMEOUT" >"$OUTDIR/cognitive_request_timeout.txt"
+echo "$VERIFICATION_RESPONSE_TIMEOUT" >"$OUTDIR/verification_response_timeout.txt"
 date -Is >"$OUTDIR/start_time.txt"
 
 tegrastats --interval 1000 --logfile "$OUTDIR/tegrastats.log" >/dev/null 2>&1 &
@@ -44,6 +52,9 @@ timeout --signal=INT --kill-after=30 "$DURATION" \
     actuation:=false web_interface:=true "cognitive_start_delay:=$COGNITIVE_DELAY" \
     "cognitive_backend:=$COGNITIVE_BACKEND" "llm_n_gpu_layers:=$LLM_N_GPU_LAYERS" \
     "cognitive:=$COGNITIVE_ENABLED" \
+    "cognitive_cuda_visible_devices:=$COGNITIVE_CUDA_VISIBLE_DEVICES" \
+    "cognitive_request_timeout:=$COGNITIVE_REQUEST_TIMEOUT" \
+    "verification_response_timeout:=$VERIFICATION_RESPONSE_TIMEOUT" \
     >"$OUTDIR/launch.log" 2>&1
 LAUNCH_RC=$?
 

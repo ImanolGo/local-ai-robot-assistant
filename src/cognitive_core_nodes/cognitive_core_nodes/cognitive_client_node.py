@@ -464,6 +464,9 @@ class CognitiveClientNode(Node):
         try:
             self.latest_image = self.cv_bridge.imgmsg_to_cv2(msg, "rgb8")
             self.latest_image_stamp = msg.header.stamp
+            self._image_count = getattr(self, "_image_count", 0) + 1
+            if self._image_count == 1:
+                self.get_logger().info(f"Cached first camera frame shape={self.latest_image.shape}")
         except Exception as e:
             self.get_logger().error(f"Image conversion failed: {e}")
 
@@ -517,6 +520,10 @@ class CognitiveClientNode(Node):
         image_b64 = None
         if msg.include_current_image and self.latest_image is not None:
             image_b64 = self._encode_image(self.latest_image)
+        elif msg.include_current_image:
+            self.get_logger().warn(
+                "Vision requested but no camera frame cached yet; answering text-only."
+            )
 
         temperature = msg.temperature if msg.temperature > 0 else self.temperature
         max_tokens = msg.max_tokens if msg.max_tokens > 0 else self.num_predict
@@ -595,7 +602,8 @@ class CognitiveClientNode(Node):
 
         self.get_logger().info(
             f"Cognitive response in {elapsed:.2f}s "
-            f"(server: {total_duration_ns / 1e9:.2f}s): {response_text[:100]}..."
+            f"(server: {total_duration_ns / 1e9:.2f}s, "
+            f"image={'yes' if image_base64 else 'no'}): {response_text[:100]}..."
         )
 
         # Publish raw response
