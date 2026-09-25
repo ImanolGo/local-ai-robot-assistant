@@ -64,6 +64,7 @@ class MotorConfig:
     emergency_stop_enabled: bool = True
     acceleration_limit: float = 0.5
     deceleration_limit: float = 1.0
+    min_wheel_pwm: float = 0.3
 
 
 class UARTMotorController(Node):
@@ -197,6 +198,9 @@ class UARTMotorController(Node):
         self.declare_parameter("motor.emergency_stop_enabled", True)
         self.declare_parameter("motor.acceleration_limit", 0.5)
         self.declare_parameter("motor.deceleration_limit", 1.0)
+        # Non-zero wheel commands below this normalized value are raised to it,
+        # to clear the DC-motor static-friction deadband (0 disables).
+        self.declare_parameter("motor.min_wheel_pwm", 0.3)
 
     def _load_config(self):
         """Load configuration from parameters."""
@@ -231,6 +235,9 @@ class UARTMotorController(Node):
             .get_parameter_value()
             .double_value,
             deceleration_limit=self.get_parameter("motor.deceleration_limit")
+            .get_parameter_value()
+            .double_value,
+            min_wheel_pwm=self.get_parameter("motor.min_wheel_pwm")
             .get_parameter_value()
             .double_value,
         )
@@ -563,6 +570,47 @@ class UARTMotorController(Node):
             chassis_command = {"T": 130}
             self._send_command(chassis_command)
 
+    @staticmethod
+    def twist_to_wheel_speeds(
+        linear_vel: float,
+        angular_vel: float,
+        wheelbase: float,
+        max_linear_velocity: float,
+        max_speed: float,
+        min_wheel_pwm: float = 0.0,
+    ) -> Tuple[float, float]:
+        """Map linear/angular velocities to normalized wheel speeds.
+
+        Uses differential-drive kinematics and an optional deadband floor so a
+        non-zero wheel command clears the DC-motor static-friction deadband
+        (measured: in-place rotation only starts around 0.3, i.e. ~60% PWM).
+
+        Args:
+            linear_vel: Forward velocity (m/s).
+            angular_vel: Angular velocity (rad/s).
+            wheelbase: Distance between wheels (m).
+            max_linear_velocity: Linear velocity mapping to full wheel speed.
+            max_speed: Normalized wheel command at full speed (e.g. 0.5).
+            min_wheel_pwm: Minimum non-zero normalized wheel command.
+
+        Returns:
+            ``(left_speed, right_speed)`` each within ``[-max_speed, max_speed]``.
+        """
+        v_left = linear_vel - (angular_vel * wheelbase) / 2.0
+        v_right = linear_vel + (angular_vel * wheelbase) / 2.0
+
+        def normalize(velocity: float) -> float:
+            if max_linear_velocity <= 0.0:
+                return 0.0
+            speed = float(
+                np.clip(velocity / max_linear_velocity * max_speed, -max_speed, max_speed)
+            )
+            if 0.0 < abs(speed) < min_wheel_pwm:
+                speed = math.copysign(min_wheel_pwm, speed)
+            return speed
+
+        return normalize(v_left), normalize(v_right)
+
     def _twist_to_wheel_speeds(self, twist: Twist) -> Tuple[float, float]:
         """Convert Twist message to left/right wheel speeds using differential drive kinematics.
 
@@ -572,7 +620,6 @@ class UARTMotorController(Node):
         Returns:
             Tuple of (left_speed, right_speed) in range [-0.5, 0.5]
         """
-        # Limit input velocities
         linear_vel = max(
             -self.motor_config.max_linear_velocity,
             min(self.motor_config.max_linear_velocity, twist.linear.x),
@@ -581,28 +628,14 @@ class UARTMotorController(Node):
             -self.motor_config.max_angular_velocity,
             min(self.motor_config.max_angular_velocity, twist.angular.z),
         )
-
-        # Differential drive kinematics
-        # v_left = v - (w * wheelbase) / 2
-        # v_right = v + (w * wheelbase) / 2
-        v_left = linear_vel - (angular_vel * self.motor_config.wheelbase) / 2.0
-        v_right = linear_vel + (angular_vel * self.motor_config.wheelbase) / 2.0
-
-        # Convert to Wave Rover speed format (-0.5 to +0.5)
-        # Assuming max wheel speed corresponds to max_linear_velocity
-        max_wheel_speed = self.motor_config.max_linear_velocity
-        left_speed = np.clip(
-            v_left / max_wheel_speed * self.motor_config.max_speed,
-            -self.motor_config.max_speed,
+        return self.twist_to_wheel_speeds(
+            linear_vel,
+            angular_vel,
+            self.motor_config.wheelbase,
+            self.motor_config.max_linear_velocity,
             self.motor_config.max_speed,
+            self.motor_config.min_wheel_pwm,
         )
-        right_speed = np.clip(
-            v_right / max_wheel_speed * self.motor_config.max_speed,
-            -self.motor_config.max_speed,
-            self.motor_config.max_speed,
-        )
-
-        return left_speed, right_speed
 
     @staticmethod
     def integrate_odometry(
