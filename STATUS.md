@@ -618,19 +618,20 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 5. **uart_imu_node serial port conflict**: Resolved by removal. The standalone `uart_imu_node` (in the deleted `localization_nodes` package) no longer exists; `uart_motor_controller` is the single owner of `/dev/ttyTHS1` and publishes `/imu/data` from continuous feedback / periodic T=126 queries.
    - Status: ✅ Resolved (standalone node removed, 24 Sep 2026)
 
-6. **Cognitive VLM + perception memory conflict on 8 GB**: with the camera + YOLO + Depth engines resident, GPU Moondream cannot load. In-process llama.cpp fails to allocate its GGUF/context (CUDA OOM); the automatic Ollama fallback fails with `failed to allocate CUDA0 buffer of size 767877120`. A **CPU coexistence mode is now supported**: `cognitive_cuda_visible_devices:=none` + `llm_n_gpu_layers:=0` hides CUDA from the cognitive process only (per-node `additional_env`, so perception keeps its GPU), and all 12 nodes run together without OOM or crash. CPU vision queries return correct answers (~23 s each) once a camera frame is cached.
-   - Status: 🚧 Partially solved (CPU coexistence mode, 25 Sep 2026)
-   - Remaining: frame delivery to the late-joining cognitive subscriber can be intermittent under full load (cold cache → text-only answers); a dedicated low-resolution snapshot path is the next step. Real-time VLM still needs the GPU, which requires shrinking the perception GPU/nvmap footprint (camera buffers/resolution or DLA).
+6. **Cognitive VLM + perception memory conflict on 8 GB**: with the camera + YOLO + Depth engines resident, GPU Moondream cannot load. In-process llama.cpp fails to allocate its GGUF/context (CUDA OOM); the automatic Ollama fallback fails with `failed to allocate CUDA0 buffer of size 767877120`. **CPU coexistence mode** (`cognitive_cuda_visible_devices:=none` + `llm_n_gpu_layers:=0`) hides CUDA from the cognitive process only (per-node `additional_env`, so perception keeps its GPU); all 12 nodes then run together without OOM or crash.
+   - Status: ✅ Resolved for concurrent operation (25 Sep 2026). Frame delivery is now reliable: the image subscription runs in its own callback group under a `MultiThreadedExecutor`, so an in-flight ~20 s CPU inference no longer starves frame caching; a 200 s run had image=yes 6/6 and the visual verification answered `True`. CPU vision is ~20 s/query (correctness path); real-time VLM still needs the GPU, which requires shrinking the perception GPU/nvmap footprint (camera buffers/resolution or DLA).
 
-7. **GPU undistortion falls back to CPU**: `image_undistort_node` logs `No CUDA support` (OpenCV built without CUDA) and runs at ~15 FPS, which throttles downstream detection/depth to ~8–10 FPS.
-   - Status: 🚧 Known; needs a CUDA-enabled OpenCV or a DeepStream undistortion path.
+7. **GPU undistortion falls back to CPU**: `image_undistort_node` logs `No CUDA support` (OpenCV built without CUDA) and runs at ~15–24 FPS on CPU.
+   - Status: 🚧 Environmental (not the pipeline bottleneck). The full-system cap is CPU contention among all nodes (~8–10 FPS detection/depth), not undistortion. A CUDA-enabled OpenCV or a DeepStream undistortion path would offload it.
 
-8. **Ungraceful node shutdown**: on SIGINT several nodes raise `RCLError: failed to shutdown: rcl_shutdown already called` (exit code 1) because `rclpy.shutdown()` is invoked twice.
-   - Status: 🚧 Minor (shutdown only; no runtime impact).
+8. **Ungraceful node shutdown**: several nodes raised `RCLError: failed to shutdown: rcl_shutdown already called` or published on an invalid context on SIGINT.
+   - Status: ✅ Resolved (25 Sep 2026): guarded `rclpy.shutdown()` with `rclpy.ok()` in all active nodes, guarded the command-router stop publish, and bounded the cognitive executor shutdown. A 200 s run produced 0 `rcl_shutdown` errors.
 
 ---
 
 ## Recent Updates
+
+- **25 Sep 2026**: **Remaining reliability issues resolved + architecture v4.1.** (1) Camera-frame delivery to the cognitive node is now reliable: the image subscription uses a dedicated callback group and the node runs a `MultiThreadedExecutor`, so long CPU inferences no longer starve frame caching (200 s run: image=yes 6/6, verification answered `True`). (2) Graceful shutdown: guarded `rclpy.shutdown()` with `rclpy.ok()` across all active nodes, guarded the command-router's final stop publish, and bounded the cognitive executor shutdown. (3) `docs/architecture.md` bumped to v4.1 (CPU coexistence mode, web/monitoring layer, TensorRT 10, CPU-undistort note, measured performance). Known Issues 6–8 updated. Test suite: **93 passed, 2 failed** (pre-existing).
 
 - **25 Sep 2026**: **VLM/perception CPU coexistence mode (Known Issue 6).** Added scoped CUDA control: `cognitive_cuda_visible_devices:=none` hides CUDA from the cognitive process only, via per-node `additional_env` (a global `SetEnvironmentVariable` would have blinded the perception nodes' pycuda/TensorRT — found and fixed). Added `llm_n_gpu_layers`, `cognitive_request_timeout`, and `verification_response_timeout` pass-throughs, and a `cognitive:=true|false` toggle. With `cognitive_cuda_visible_devices:=none llm_n_gpu_layers:=0`, **all 12 nodes run together** for the full duration with no OOM/crash; CPU vision queries return correct answers (~23 s each, `image=yes`) once a frame is cached. Remaining: intermittent frame delivery to the late-joining cognitive subscriber under full load. Test suite: **92 passed, 3 failed**.
 

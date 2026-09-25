@@ -1,30 +1,35 @@
 # Architecture Document: Local, Real-Time Autonomous AI Assistant
-## Version 4.0 - Moondream VLM + Whisper, no-SLAM MVP
+## Version 4.1 - Moondream VLM + Whisper, no-SLAM MVP
 
-> **v4.0 scope note (24 Sep 2026).** SLAM / localization is **out of scope for the
+> **v4.1 scope note (25 Sep 2026).** SLAM / localization is **out of scope for the
 > MVP** and has been removed from this document. The robot uses a **reactive
 > "go to visible object"** behavior built on the existing Tier 1 YOLO + depth
 > output (and the visual-verification loop), with **no map and no RTAB-Map
 > dependency**. Revisit SLAM only if persistent multi-room memory becomes a real
-> requirement. Other v4.0 changes vs 3.1: `MAXN_SUPER` power profile, an
-> in-process `llama.cpp` cognitive backend now promoted to the default (Ollama
-> remains available as a fallback), a visual-verification loop node, and a
-> a monitoring web server (combined status + resource API, HTML dashboard).
+> requirement.
+>
+> v4.1 changes vs 4.0: the in-process `llama.cpp` backend is the promoted default
+> (Ollama remains an automatic fallback) and now has a **CPU coexistence mode** for
+> the 8 GB Orin (§2.5.1); a `visual_verification_node` with a dedicated boolean
+> system prompt; a monitoring web server with a dashboard (`/api/subsystems`,
+> `/api/resources`); TensorRT 10 (`execute_async_v3`) depth inference; sensor-QoS
+> image delivery; and a reusable full-system soak harness. Verified 60-minute soak
+> numbers are recorded in `STATUS.md`.
 
 ## 1. Project Goal
 
 The primary objective is to develop a local, real-time, multimodal AI robot assistant capable of understanding and fulfilling natural language commands with a high degree of agency. This assistant will operate entirely on the NVIDIA Jetson Orin Nano Developer Kit, leveraging a split-cognitive architecture to ensure low latency for navigation and robust reasoning for complex tasks.
 
 ### Core Capabilities:
-- **Modular Multimodal Interaction**: The robot "hears" via **faster-whisper** (ASR), "sees" via camera, and reasons using **Moondream** (VLM) served via **Ollama**.
-- **Two-Tier Real-Time Perception**: Continuous low-level perception (YOLO, depth estimation) runs at 20-30 FPS for reactive navigation, while strategic high-level reasoning operates on-demand via API calls to the local Ollama server.
-- **Client-Server Cognitive Core**: The robot application acts as a client, sending images and text prompts to a local Ollama instance running the efficient Moondream 1.6B model for scene understanding and visual goal verification.
+- **Modular Multimodal Interaction**: The robot "hears" via **faster-whisper** (ASR), "sees" via camera, and reasons using **Moondream** (1.6B VLM) run **in-process via `llama.cpp`** (GPU by default; CPU coexistence mode on the 8 GB Orin), with **Ollama** as an automatic fallback.
+- **Two-Tier Real-Time Perception**: Continuous low-level perception (YOLO, depth estimation) runs at 20-30 FPS for reactive navigation, while strategic high-level reasoning operates on-demand.
+- **In-process (or client-server) Cognitive Core**: The robot application runs the efficient Moondream 1.6B model in-process for scene understanding and visual goal verification; it can also act as a client to a local Ollama instance.
 - **Autonomous Agency**: The robot possesses the business logic to make decisions, plan actions, handle unexpected situations, and verify task completion autonomously.
 - **Local Operation**: All processing occurs on the Jetson Orin Nano, eliminating reliance on cloud services.
 
 ## 2. System Architecture
 
-The robot's architecture is designed as a modular, layered system built upon Robot Operating System 2 (ROS2). The heavy cognitive lifting is decoupled into a local model server (Ollama).
+The robot's architecture is designed as a modular, layered system built upon Robot Operating System 2 (ROS2). Heavy cognitive lifting runs in-process by default, with a local model server (Ollama) as a fallback.
 
 ### 2.1. High-Level Overview
 
@@ -42,14 +47,16 @@ The system consists of six primary layers:
    - **Speech-to-Text (ASR)**: Uses `faster-whisper` to convert audio to text.
    - Text-to-Speech for robot responses.
 
-4. **Tier 2 - Strategic Cognitive Core (llama.cpp default / Ollama client)**: On-demand reasoning (1-3 second latency).
-   - **VLM Server**: Local Ollama instance hosting Moondream (1.6B).
-   - **Reasoning Node**: Python client constructing prompts with base64 images and transcribed text.
-   - Outputs structured intents and visual verification results.
+4. **Tier 2 - Strategic Cognitive Core (in-process `llama.cpp` default / Ollama fallback)**: On-demand reasoning (1-3 second latency on GPU).
+   - **VLM**: Moondream (1.6B) run in-process via `llama.cpp` (GPU by default, CPU coexistence mode when the GPU is saturated by perception).
+   - **Reasoning Node**: captures the latest camera frame (sensor QoS), constructs prompts with base64 images and transcribed text.
+   - Outputs structured intents (GBNF-constrained JSON) and free-text visual verification results.
 
 5. **Behavioral Architecture**: Routes commands (regex + cognitive forward) and runs the visual-verification loop.
 
 6. **Actuation Layer**: Translates high-level commands into low-level motor controls.
+
+7. **Monitoring Layer**: A FastAPI web server exposes health, per-subsystem status (with staleness), host resources/thermals, and an HTML dashboard.
 
 ```mermaid
 graph TD
@@ -65,12 +72,14 @@ graph TD
 
     D --> J[Cognitive Core Client]
     K --> J
-    E --> J
+    E -- sensor QoS --> J
 
-    J -- in-process (default) --> O2[llama.cpp GGUF: Moondream]
+    J -- in-process GPU (default) --> O2[llama.cpp GGUF: Moondream]
+    J -- in-process CPU (coexist) --> O3[llama.cpp CPU]
     J -. HTTP JSON (fallback) .-> O[Ollama Server: Moondream]
-    O2 -- JSON Response --> J
-    O -. JSON Response .-> J
+    O2 -- JSON / text --> J
+    O3 -- JSON / text --> J
+    O -. JSON / text .-> J
 
     J --> L[Command Router / Verification Loop]
     F --> L
@@ -80,6 +89,9 @@ graph TD
 
     J --> P[TTS - Piper]
     P --> Q[USB Speakers]
+
+    J --> R[Web Server / Dashboard]
+    L --> R
 
     subgraph "Tier 1: Continuous"
         F
@@ -92,6 +104,7 @@ graph TD
         J
         O
         O2
+        O3
     end
 ```
 
@@ -144,7 +157,7 @@ python manual_tests/test_audio_capture_playback.py
 
 ### 2.3. Tier 1: Continuous Perception Layer
 (Unchanged from v3.0 - YOLO and Depth operate independently of the LLM/VLM.
-Localization/SLAM is out of scope for the MVP; see the v4.0 scope note above.)
+Localization/SLAM is out of scope for the MVP; see the v4.1 scope note above.)
 
 ### 2.4. Auditory Interface Layer (Revised - Self-Contained Pipeline)
 
@@ -184,9 +197,10 @@ This layer uses a **self-contained audio processing pipeline** that handles all 
      - `/audio/transcription` (TranscriptionResult): Transcribed text with confidence
    - **No Audio Streaming**: All audio processing happens locally; no raw audio published over ROS2.
 
-**2. Text-to-Speech** (`tts_node.py`)
-   - Uses **Piper** (ONNX).
-   - Subscribes to `/audio/tts_request`.
+**2. Text-to-Speech** (`audio_playback_node.py`, Piper integrated)
+   - Uses **Piper** (ONNX), loaded lazily on first request.
+   - Subscribes to `/audio/tts_request` and plays notification sounds driven by
+     `/audio/events`. The old standalone `tts_node.py` is deprecated.
 
 ### 2.5. Tier 2: Cognitive Core (in-process llama.cpp default; Ollama optional)
 
@@ -203,6 +217,26 @@ of the system is agnostic to which runtime is used.
 - **Status**: promoted (24 Sep 2026) — faster honest vision end-to-end
   (1.92 s vs 2.61 s) and lower RSS than Ollama. See `docs/model_performance.md`.
 
+#### 2.5.1 Choosing the Cognitive Device (CPU vs GPU)
+
+The 8 GB Orin cannot hold Moondream (GPU) and the camera + YOLO + Depth TensorRT
+engines in the GPU/nvmap pool at the same time: GPU `llama.cpp` fails to allocate
+its context and the Ollama fallback fails with `failed to allocate CUDA0 buffer`.
+To run the **whole system concurrently**, the cognitive core has a CPU mode:
+
+- `cognitive_cuda_visible_devices:=none` hides CUDA **from the cognitive process
+  only** (per-node `additional_env`, so perception keeps its GPU), and
+  `llm_n_gpu_layers:=0` keeps the LLM on CPU. The `mtmd` clip encoder then also
+  runs on CPU.
+- CPU inference is correct but slow (~20 s per vision query), so
+  `cognitive_request_timeout` and `verification_response_timeout` must be raised.
+  Use the GPU backend when real-time VLM latency matters and perception can yield
+  GPU memory; use CPU mode for concurrent 24/7 operation.
+
+Because VLM inference blocks for seconds, the image subscription lives in its own
+callback group and the node runs a `MultiThreadedExecutor`, so camera-frame
+caching is never starved by an in-flight inference.
+
 #### Backend B — Ollama HTTP (optional)
 - **Software**: **Ollama** (Linux ARM64 version).
 - **Service**: Runs as a background service (`systemd`).
@@ -214,20 +248,24 @@ of the system is agnostic to which runtime is used.
 
 #### Client Node (`cognitive_client_node.py`)
 
-This ROS2 node bridges the robot's state with the Ollama API.
+This ROS2 node bridges the robot's state with the active cognitive backend
+(in-process `llama.cpp` by default, Ollama fallback).
 
 **Inputs**:
-1. **Text**: Transcribed command from Whisper.
-2. **Vision**: On-demand snapshot from Camera (converted to Base64).
-3. **Context**: Current robot state (formatted as text string).
+1. **Text**: Transcribed commands from Whisper (`/audio/transcription`).
+2. **Vision**: the latest camera frame from `/camera/undistorted` (sensor QoS,
+   cached in a dedicated callback group).
+3. **Queries**: direct `MultimodalQuery` requests (e.g. from the command router
+   or the visual-verification node), which may carry a per-query system prompt.
 
 **Process**:
-1. Receives complex command trigger.
-2. Captures image from `/camera/snapshot`.
-3. Encodes image to Base64.
-4. Constructs prompt combining System Context + User Command.
-5. Sends HTTP POST request to Ollama.
-6. Parses JSON response.
+1. Receives a command or query trigger.
+2. Uses the cached frame and encodes it to Base64 (if vision is requested).
+3. Constructs the prompt (node system prompt or per-query override).
+4. Runs in-process `llama.cpp` (or POSTs to Ollama), blocking in a query callback
+   group so image caching continues.
+5. Parses the JSON intent (GBNF-constrained on `llama.cpp`) or returns free text.
+6. Publishes `MultimodalResponse` and, for intents, `CognitiveCommand`.
 
 **Bridge interface** (`OllamaBridge` and `LlamaCppBridge` are interchangeable):
 
@@ -259,10 +297,12 @@ kept as a defensive fallback for the Ollama path.
 }
 ```
 
-#### Performance Targets (measured on-device under MAXN SUPER)
-- **Vision encode (Moondream)**: 24 ms.
-- **Generation Speed**: 49.0 tokens/sec.
-- **Total Turnaround**: ~1.3 seconds.
+#### Performance (measured on-device under MAXN SUPER)
+- **GPU (llama.cpp, no concurrent perception)**: vision e2e ~1.9 s; generation
+  ~49 tok/s; clip encode ~415 ms.
+- **CPU coexistence mode**: vision e2e ~20 s per query (correctness fallback).
+- **Full-system soak (perception + audio + behavior + web, no VLM)**: ~5.6 GB
+  RAM, 65 °C, 0 crashes over 60 min. See `STATUS.md` for the full table.
 
 (Detailed numbers and the 15 W baseline: `docs/model_performance.md`.)
 
@@ -279,7 +319,24 @@ goal-completion loop.
    cognitive core "is goal X achieved?", and retries with ±45° rotation if unsure.
 
 ### 2.7. Actuation Layer
-(Unchanged - UART to Wave Rover).
+(Unchanged - UART to Wave Rover.)
+
+### 2.8. Monitoring Layer (web interface)
+
+A single `web_interface_nodes` node runs FastAPI/uvicorn in a background thread
+while `rclpy` spins on the main thread. It caches lightweight telemetry topics
+and serves:
+
+- `GET /health` — liveness probe.
+- `GET /status` — combined subsystem + host-resource snapshot (flat keys kept for
+  backwards compatibility).
+- `GET /api/subsystems` — per-subsystem status with age and a `stale` flag.
+- `GET /api/resources` — CPU %, load average, memory, disk and Jetson
+  `thermal_zone*` temperatures.
+- `GET /` and `/dashboard` — a dependency-free HTML dashboard that polls `/status`.
+
+Cached topics: `/cognitive/status`, `/verification/status`, `/chassis_state`,
+`/audio/events`, `/perception/events`, `/perception/obstacles`.
 
 ## 3. Operational Flow Examples
 
@@ -332,7 +389,9 @@ T=1.1s: Task marked Complete.
 
 ## 4. Memory Management Strategy
 
-The Jetson Orin Nano has 8GB shared RAM. This architecture uses a "Static Load" strategy for efficient models (Whisper/Moondream) rather than the heavy loading/unloading of Gemma.
+The Jetson Orin Nano has 8GB shared RAM (plus swap). Efficient models
+(Whisper/Moondream) are kept resident ("static load"); the GPU/nvmap pool, not
+general RAM, is the binding constraint once perception engines are loaded.
 
 ### 4.1. Revised RAM Budget
 
@@ -349,13 +408,18 @@ The Jetson Orin Nano has 8GB shared RAM. This architecture uses a "Static Load" 
 
 > Measured reality: the `ollama` process peaks at **~3.0 GB** with Moondream
 > resident (higher than the 2.0 GB service+model estimate above), and idle
-> `available` RAM is ~6 GB. See `docs/phase0_baseline.md` and
-> `docs/model_performance.md`.
+> `available` RAM is ~6 GB. A 60-minute full-system soak (perception + audio +
+> behavior + web, no VLM) averaged **5.57 GB** with a **5.96 GB** peak and 1.66 GB
+> headroom — see `STATUS.md`. The GPU/nvmap pool is exhausted before general RAM,
+> which is why Moondream needs CPU mode when perception is resident (§2.5.1).
 
 **Strategy**:
-1. **Ollama** keeps Moondream loaded (set `keep_alive` to -1 or a long duration in API options).
-2. **Faster-Whisper** is small enough to stay loaded or can be loaded on wake-word detection.
-3. If RAM pressure hits >95%, the system reduces camera resolution/buffers before touching the cognitive core.
+1. The cognitive backend keeps Moondream loaded (`keep_alive=-1` for Ollama) when
+   the GPU allows it; otherwise use the CPU coexistence mode.
+2. **Faster-Whisper** loads on wake-word / first use (lazy) to save RAM.
+3. If RAM pressure hits >95%, reduce camera resolution/buffers before touching the
+   cognitive core.
+4. Don't load all models at once; GPU memory is the scarce resource on 8 GB.
 
 ## 5. Model Optimization Strategy
 
@@ -385,8 +449,9 @@ The Jetson Orin Nano has 8GB shared RAM. This architecture uses a "Static Load" 
 - **Middleware**: ROS2 Humble/Iron.
 - **LLM Server**: **Ollama** (Linux).
 - **ASR**: **faster-whisper** (Python).
-- **VLM**: **Moondream** (via Ollama).
+- **VLM**: **Moondream** (in-process `llama.cpp` default; Ollama fallback).
 - **Vision**: DeepStream / TensorRT.
+- **Web**: FastAPI + uvicorn.
 
 ## 7. Development Best Practices
 
@@ -400,15 +465,30 @@ Moondream is small. Prompts must be direct.
 - **Bad**: "Please analyze this image and tell me if you can see a ball and where it is."
 - **Good**: "Describe this image. JSON output: {'object': 'red ball', 'location': 'center'}."
 
+Two system prompts are used, selected per query via `MultimodalQuery.system_prompt`:
+- **Intent prompt** (command routing): asks for the GBNF/JSON intent schema.
+- **Verification prompt** (`visual_verification_node`): asks for a single word,
+  "Yes or No", and never for JSON — mixing the intent prompt into a verification
+  query makes the model produce unusable JSON.
+
 ## 8. Safety and Recovery
 (Unchanged).
 
 ## 9. Testing Strategy
 
 ### 9.1. Cognitive Benchmarking
-Use the provided python snippet logic to benchmark Moondream specifically on the Jetson.
+Benchmark Moondream on the Jetson with the scripts in `scripts/testing/llm/`.
 - **Metric**: Tokens per second (TPS). Target > 10 TPS.
-- **Metric**: Vision Encode Time. Target < 500ms.
+- **Metric**: Vision Encode Time. Target < 500 ms (GPU).
+- **Methodology**: use a **unique frame per run** — Ollama caches the image KV
+  prefix, so reusing one frame reports a misleadingly low prompt-eval that does
+  not generalize.
+
+### 9.3. Full-System Soak
+`scripts/testing/integration/run_soak.sh` runs the actuation-less system plus a
+synthetic workload and `tegrastats` for a fixed duration (configurable backend,
+CUDA visibility, GPU layers, and per-query timeouts), then collects logs. See
+`STATUS.md` for the recorded 60-minute result.
 
 ### 9.2. ASR Testing
 Test `faster-whisper` with robot motor noise.
@@ -445,6 +525,14 @@ robot_assistant_project/
 ### 11.3. In-process llama.cpp (default), with Ollama as the optional fallback
 **Rationale**: Running Moondream in-process removes the HTTP/JSON/base64 round trip and the separate daemon, and with flash attention plus GPU `mtmd` vision it is the fastest honest vision path on the Orin (1.92 s vs 2.61 s) with lower RSS. The Ollama HTTP path is retained as an automatic fallback and for easier model swapping (e.g., trying `llava-phi3` or `tiny-llava`) without changing code; `cognitive_backend:=ollama` selects it.
 
+### 11.4. Per-process CUDA visibility for VLM/perception coexistence
+**Rationale**: On 8 GB the GPU/nvmap pool cannot hold Moondream and the perception
+engines together. Rather than forcing a global CPU/GPU choice, CUDA visibility is
+scoped to the cognitive process (`additional_env`) so the operator can run the VLM
+on CPU while perception keeps the GPU. A global `SetEnvironmentVariable` was tried
+first and correctly rejected — it blinded `pycuda`/TensorRT in the perception
+nodes.
+
 ## 12. Implementation Roadmap (Adjusted)
 
 ### Phase 3: Audio Pipeline (Weeks 5-6)
@@ -460,7 +548,7 @@ robot_assistant_project/
 
 ### Phase 5: Behavioral Architecture (Weeks 10-12)
 
-> **As built (v4.0)**: BehaviorTree.CPP was **not** adopted. The command router
+> **As built (v4.1)**: BehaviorTree.CPP was **not** adopted. The command router
 > (regex + cognitive forward) plus a dedicated `visual_verification_node` cover
 > this phase. The original BT framing is retained only for context.
 
@@ -501,28 +589,29 @@ robot_assistant_project/
 1.  **Model Swapping**: Create a script to dynamically swap models via the Ollama API (e.g., unload `moondream` and load `llama3-chatqa` for text-only queries if high-resolution reasoning is needed).
 2.  **Context History**: Implement a sliding window of previous conversation turns in the `cognitive_client_node` to give Moondream "short-term memory."
 
-## 13. Performance Targets Summary (Revised for V3.1)
+## 13. Performance Targets Summary (Revised for v4.1)
 
 ### Tier 1 - Continuous Perception
-| Metric | Target | Notes |
-|--------|--------|-------|
-| YOLO Detection | 20+ FPS | DeepStream / TensorRT |
-| Depth Anything V2 | 20+ FPS | TensorRT FP16 |
+| Metric | Target | Current (full soak) | Notes |
+|--------|--------|---------------------|-------|
+| YOLO Detection | 20+ FPS | 8–10 FPS | DeepStream / TensorRT, CPU undistort |
+| Depth Anything V2 | 20+ FPS | ~8.6 FPS (model) | TensorRT FP16, `execute_async_v3` |
 
-### Tier 2 - Strategic Reasoning (Ollama + Whisper)
-| Metric | Target | Notes |
-|--------|--------|-------|
-| ASR Transcription | < 0.5s | Faster-Whisper (`tiny.en` or `base.en`) |
-| Vision Encode | < 0.3s | Base64 encoding + network overhead |
-| **VLM Inference** | **15-20 tok/s** | Moondream (1.6B) on GPU |
-| **Total Response** | **< 2.5s** | From end of speech to behavior trigger |
-| VLM Context | 2048 tokens | Sufficient for image + system prompt |
+### Tier 2 - Strategic Reasoning (llama.cpp + Whisper)
+| Metric | Target | Current | Notes |
+|--------|--------|---------|-------|
+| ASR Transcription | < 0.5s | TBD | Faster-Whisper (`tiny.en`) |
+| VLM Inference (GPU) | 15–20 tok/s | ~55 tok/s | Moondream, llama.cpp + flash attn |
+| VLM total (GPU) | < 2.5s | ~1.9s | vision end-to-end, no concurrent perception |
+| VLM total (CPU coexist) | — | ~20s | correctness fallback when GPU is full |
+| VLM Context | 2048 tokens | 2048 | image (~729) + prompt |
 
 ### End-to-End System
-| Metric | Target | Notes |
-|--------|--------|-------|
-| Peak RAM Usage | < 7.5 GB | Leaving ~500MB headroom for OS |
-| Thermal Stability | < 80°C | During continuous inference loops |
+| Metric | Target | Current | Notes |
+|--------|--------|---------|-------|
+| Peak RAM Usage | < 7.5 GB | 5.96 GB | 60-min soak (no VLM) |
+| Thermal Stability | < 80°C | 65.5°C | max `tj`, 60-min soak |
+| Soak stability | 0 crashes | 0 | 60 min, no leak |
 
 ## 14. Future Enhancements
 
@@ -566,7 +655,7 @@ robot_assistant_project/
 
 ## 17. Conclusion
 
-Architecture Version 3.1 represents a pragmatic pivot from the "all-in-one" Gemma 3n approach to a **modular, service-oriented architecture**. By leveraging **Ollama** to serve the highly efficient **Moondream** model, and **Faster-Whisper** for dedicated speech recognition, this design:
+Architecture Version 4.1 represents a pragmatic pivot from the "all-in-one" Gemma 3n approach to a **modular architecture with an in-process cognitive core**. By running **Moondream** in-process via `llama.cpp` (with **Ollama** as an automatic fallback), and using **Faster-Whisper** for dedicated speech recognition, this design:
 
 1.  **Respects Hardware Limits**: Fits comfortably within the Jetson Orin Nano's 8GB RAM by using optimized quantization and splitting workloads.
 2.  **Improves Modularity**: Allows individual components (ASR, VLM) to be upgraded or swapped without rewriting the core application logic.
