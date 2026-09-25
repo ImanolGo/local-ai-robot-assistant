@@ -15,9 +15,11 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from cognitive_core_nodes.cognitive_client_node import (
+    CognitiveClientNode,
     OllamaBridge,
     maybe_fallback_to_ollama,
     parse_json_intent,
+    resolve_system_prompt,
 )
 from cognitive_core_nodes.llama_cpp_bridge import (
     INTENT_GBNF,
@@ -416,6 +418,59 @@ class TestIntentParsingAcrossBackends(unittest.TestCase):
                     parse_json_intent(llamacpp_result["response"]),
                 )
                 self.assertEqual(parse_json_intent(ollama_result["response"]), expected)
+
+
+class TestQuerySystemPromptOverride(unittest.TestCase):
+    """Per-query system prompt override (used by visual verification)."""
+
+    DEFAULT = "DEFAULT INTENT SYSTEM PROMPT"
+
+    def test_helper_prefers_non_empty_override(self):
+        self.assertEqual(resolve_system_prompt("default", "  custom  "), "custom")
+
+    def test_helper_falls_back_when_blank(self):
+        self.assertEqual(resolve_system_prompt("default", ""), "default")
+        self.assertEqual(resolve_system_prompt("default", None), "default")
+        self.assertEqual(resolve_system_prompt("default", "   "), "default")
+
+    def _make_query_node(self):
+        node = MagicMock()
+        node.system_prompt = self.DEFAULT
+        node.enable_vision = True
+        node.latest_image = None
+        node.temperature = 0.3
+        node.num_predict = 128
+        node._structured_output_enabled.return_value = False
+        return node
+
+    def test_multimodal_query_uses_override(self):
+        from robot_interfaces.msg import MultimodalQuery
+
+        node = self._make_query_node()
+        msg = MultimodalQuery()
+        msg.query_id = "q1"
+        msg.text_query = "Is the goal 'red ball' achieved?"
+        msg.system_prompt = "VERIFICATION PROMPT"
+
+        CognitiveClientNode._on_multimodal_query(node, msg)
+
+        prompt = node._query_bridge.call_args.kwargs["prompt"]
+        self.assertIn("VERIFICATION PROMPT", prompt)
+        self.assertNotIn(self.DEFAULT, prompt)
+
+    def test_multimodal_query_uses_default_without_override(self):
+        from robot_interfaces.msg import MultimodalQuery
+
+        node = self._make_query_node()
+        msg = MultimodalQuery()
+        msg.query_id = "q2"
+        msg.text_query = "Is the goal 'red ball' achieved?"
+        msg.system_prompt = ""
+
+        CognitiveClientNode._on_multimodal_query(node, msg)
+
+        prompt = node._query_bridge.call_args.kwargs["prompt"]
+        self.assertIn(self.DEFAULT, prompt)
 
 
 if __name__ == "__main__":

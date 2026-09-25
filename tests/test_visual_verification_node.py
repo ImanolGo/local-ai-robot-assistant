@@ -10,6 +10,7 @@ import math
 import unittest
 
 from behavioral_nodes.visual_verification_node import (
+    VERIFICATION_SYSTEM_PROMPT,
     build_verification_prompt,
     parse_verification_answer,
     rotation_duration,
@@ -53,6 +54,17 @@ class TestBuildVerificationPrompt(unittest.TestCase):
         self.assertIn("red ball", prompt)
         self.assertIn("Yes", prompt)
         self.assertIn("No", prompt)
+
+
+class TestVerificationSystemPrompt(unittest.TestCase):
+    """Tests for the dedicated (non-JSON) verification system prompt."""
+
+    def test_requests_single_word_boolean(self):
+        self.assertIn("Yes or No", VERIFICATION_SYSTEM_PROMPT)
+        self.assertIn("single word", VERIFICATION_SYSTEM_PROMPT)
+
+    def test_does_not_request_intent_schema(self):
+        self.assertNotIn("respond ONLY with a valid JSON object", VERIFICATION_SYSTEM_PROMPT)
 
 
 class TestRotationDuration(unittest.TestCase):

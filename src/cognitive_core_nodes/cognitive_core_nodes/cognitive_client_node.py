@@ -242,6 +242,20 @@ def parse_json_intent(response_text: str) -> Optional[Dict[str, str]]:
     return None
 
 
+def resolve_system_prompt(default_prompt: str, override: Optional[str]) -> str:
+    """Pick the per-query system prompt override, else the node default.
+
+    Args:
+        default_prompt: The node's configured system prompt.
+        override: A query-supplied system prompt (may be blank).
+
+    Returns:
+        The trimmed override if non-empty, otherwise ``default_prompt``.
+    """
+    override = (override or "").strip()
+    return override or default_prompt
+
+
 class CognitiveClientNode(Node):
     """ROS2 node bridging robot state with the local Ollama VLM server.
 
@@ -482,10 +496,15 @@ class CognitiveClientNode(Node):
     def _on_multimodal_query(self, msg: MultimodalQuery) -> None:
         """Handle a direct multimodal query (e.g. from visual verification).
 
+        The query may supply its own system prompt (``msg.system_prompt``); when
+        blank the node default is used.
+
         Args:
             msg: Multimodal query with text, optional image flag, and processing prefs.
         """
-        prompt = f"{self.system_prompt}\n\n{msg.text_query}"
+        prompt = (
+            f"{resolve_system_prompt(self.system_prompt, msg.system_prompt)}\n\n{msg.text_query}"
+        )
 
         image_b64 = None
         if msg.include_current_image and self.latest_image is not None:
