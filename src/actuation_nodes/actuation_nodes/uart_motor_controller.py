@@ -88,6 +88,12 @@ class UARTMotorController(Node):
         )
         self._node_start_time = time.time()  # Track when node started
 
+        # Dead-reckoning odometry state (integrated from commanded wheel speeds)
+        self._odom_x = 0.0
+        self._odom_y = 0.0
+        self._odom_yaw = 0.0
+        self._last_odom_time = time.time()
+
         # Thread safety
         self._serial_lock = threading.Lock()
         self._state_lock = threading.Lock()
@@ -161,6 +167,9 @@ class UARTMotorController(Node):
 
         # Add IMU request timer (reduced since continuous feedback includes IMU)
         self.imu_timer = self.create_timer(0.5, self._imu_timer_callback)  # 2Hz IMU requests
+
+        # Dead-reckoning odometry publisher (20 Hz)
+        self.odom_timer = self.create_timer(0.05, self._odom_timer_callback)
 
         # Enable continuous feedback mode
         if self._serial and self._serial.is_open:
@@ -594,6 +603,73 @@ class UARTMotorController(Node):
         )
 
         return left_speed, right_speed
+
+    @staticmethod
+    def integrate_odometry(
+        x: float, y: float, yaw: float, v: float, omega: float, dt: float
+    ) -> Tuple[float, float, float]:
+        """Integrate one dead-reckoning step (differential drive, meters/radians).
+
+        Args:
+            x, y, yaw: Previous pose.
+            v: Forward velocity (m/s).
+            omega: Angular velocity (rad/s).
+            dt: Time step (s).
+
+        Returns:
+            Updated ``(x, y, yaw)`` tuple.
+        """
+        x += v * math.cos(yaw) * dt
+        y += v * math.sin(yaw) * dt
+        yaw += omega * dt
+        return x, y, yaw
+
+    def _odom_timer_callback(self) -> None:
+        """Integrate commanded wheel speeds and publish dead-reckoning odometry."""
+        now = time.time()
+        dt = now - self._last_odom_time
+        self._last_odom_time = now
+        if dt <= 0.0:
+            return
+
+        with self._state_lock:
+            left = self._current_wheel_speeds["left"]
+            right = self._current_wheel_speeds["right"]
+            if self._emergency_stop_active:
+                left = 0.0
+                right = 0.0
+
+        # Inverse of _twist_to_wheel_speeds: normalized -> m/s per wheel.
+        scale = self.motor_config.max_linear_velocity / self.motor_config.max_speed
+        v_left = left * scale
+        v_right = right * scale
+        v = 0.5 * (v_left + v_right)
+        omega = (v_right - v_left) / self.motor_config.wheelbase
+
+        self._odom_x, self._odom_y, self._odom_yaw = self.integrate_odometry(
+            self._odom_x, self._odom_y, self._odom_yaw, v, omega, dt
+        )
+        self._publish_odometry(v, omega)
+
+    def _publish_odometry(self, v: float, omega: float) -> None:
+        """Publish the current dead-reckoning pose and twist on ``/odom_raw``."""
+        try:
+            msg = Odometry()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.header.frame_id = "odom"
+            msg.child_frame_id = "base_link"
+
+            msg.pose.pose.position.x = float(self._odom_x)
+            msg.pose.pose.position.y = float(self._odom_y)
+            msg.pose.pose.orientation = self._euler_to_quaternion(
+                0.0, 0.0, math.degrees(self._odom_yaw)
+            )
+
+            msg.twist.twist.linear.x = float(v)
+            msg.twist.twist.angular.z = float(omega)
+            self.odom_raw_pub.publish(msg)
+        except Exception as e:
+            self.get_logger().warn(f"Failed to publish odometry: {e}")
 
     def _send_motor_command(self, left_speed: float, right_speed: float) -> bool:
         """Send motor speed command to Wave Rover."""
