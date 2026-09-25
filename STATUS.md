@@ -433,12 +433,12 @@
   - ✅ No separate tts_node required
   - ✅ No audio data published over ROS2
 
-### 5.4 Integration Testing (Pending)
+### 5.4 Integration Testing (Partial 🚧)
 
-- ⏳ Test complete audio pipeline flow
-- ⏳ Test end-to-end latency
-- ⏳ Test resource usage and performance
-- ⏳ Create integration test scripts
+- ✅ Created the soak harness (`scripts/testing/integration/run_soak.sh` + `soak_workload.py`) with `tegrastats` logging
+- ✅ 60-minute concurrent soak of camera + undistort + YOLO + depth + pointcloud + audio + command router + visual verification + web server (actuation and the VLM omitted — see Known Issue 6). See Recent Updates for metrics.
+- ⏳ Include the cognitive VLM once the 8 GB memory conflict is resolved
+- ⏳ End-to-end wake-word → transcription latency on hardware
 
 ---
 
@@ -618,10 +618,21 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 5. **uart_imu_node serial port conflict**: Resolved by removal. The standalone `uart_imu_node` (in the deleted `localization_nodes` package) no longer exists; `uart_motor_controller` is the single owner of `/dev/ttyTHS1` and publishes `/imu/data` from continuous feedback / periodic T=126 queries.
    - Status: ✅ Resolved (standalone node removed, 24 Sep 2026)
 
+6. **Cognitive VLM + perception do not fit concurrently on 8 GB**: with the camera + YOLO + Depth engines resident, Moondream cannot load. In-process llama.cpp fails to allocate its GGUF/context (CUDA OOM); the automatic Ollama fallback fails with `failed to allocate CUDA0 buffer of size 767877120`. Full-CPU offload (`llm_n_gpu_layers:=0`) loads but the node aborts (SIGABRT) on the first vision query (GPU `mtmd` clip encoder).
+   - Status: 🔍 Diagnosed (60-min soak, 25 Sep 2026)
+   - Mitigation candidates: reduce camera NVMM buffers/resolution, run the `mtmd` clip encoder on CPU, or partial-offload Moondream. Until then, run the soak with `cognitive:=false`.
+
+7. **GPU undistortion falls back to CPU**: `image_undistort_node` logs `No CUDA support` (OpenCV built without CUDA) and runs at ~15 FPS, which throttles downstream detection/depth to ~8–10 FPS.
+   - Status: 🚧 Known; needs a CUDA-enabled OpenCV or a DeepStream undistortion path.
+
+8. **Ungraceful node shutdown**: on SIGINT several nodes raise `RCLError: failed to shutdown: rcl_shutdown already called` (exit code 1) because `rclpy.shutdown()` is invoked twice.
+   - Status: 🚧 Minor (shutdown only; no runtime impact).
+
 ---
 
 ## Recent Updates
 
+- **25 Sep 2026**: **60-minute full-system integration soak (working stack).** Ran camera + CPU-undistort + YOLO + depth + pointcloud + audio + command router + visual verification + web server concurrently for 60 min via `scripts/testing/integration/run_soak.sh` (actuation and VLM omitted — see Known Issue 6). Metrics: RAM avg **5.57 GB** / peak **5.96 GB** (1.66 GB headroom), no leak (plateau after 10 min), swap peak **227 MB**, CPU avg **80%**, `GR3D` active ~68% of samples, `VDD_IN` avg **17.3 W**, max `tj`/`gpu` **65.5 °C** (no throttle), **0 runtime errors** and **0 mid-run crashes** (all 10 process deaths were shutdown-only). YOLO sustained **8.4–10 FPS**, depth **8.6 FPS model / ~4.6 FPS node**; visual verification timed out and gave up after 3 attempts as expected (no VLM). Fixes landed along the way: TensorRT 10 depth inference (`execute_async_v2` → `execute_async_v3`), camera calibration list parsing, cognitive image QoS (it previously received **no** frames), and the Ollama `force_json` fallback `TypeError`. Test suite: **92 passed, 3 failed**.
 - **25 Sep 2026**: **Web interface expanded (Phase 9).** `web_server.py` now exposes `/api/subsystems` (per-subsystem status with staleness) and `/api/resources` (CPU %, load avg, memory, disk, Jetson thermal zones) alongside the existing `/health` + `/status`, caches `/chassis_state`, `/audio/events`, `/perception/events`, and `/perception/obstacles`, and serves a dependency-free HTML dashboard at `/` and `/dashboard`. Verified live over uvicorn on the Orin (thermal zones `cpu-thermal`/`gpu-thermal`/`soc*`/`tj-thermal`, ~7.6 GB RAM). No new runtime deps (polling instead of WebSocket). Test suite: **90 passed, 3 failed** (pre-existing `test_wake_word.py`).
 
 - **24 Sep 2026**: **llama.cpp promoted to the default cognitive backend.** Enabled flash attention on the in-process LLM context (2.34 s → **1.92 s** vision e2e) and corrected the benchmark methodology: the old comparison reused one frame, so Ollama's KV-prefix cache made its prompt-eval look like 24 ms. With a unique frame per run, Ollama is **~2.61 s** vs llama.cpp **1.92 s**, and llama.cpp uses less RAM (2666 MB vs 3022 MB). The node now defaults to `cognitive_backend:=llamacpp` (with `llm_flash_attn:=true`) and **falls back to Ollama automatically** if the in-process model cannot load. The clip encoder was already GPU-offloaded via `mtmd use_gpu=True`; flash attention was the real win. See `docs/model_performance.md`.
@@ -720,7 +731,7 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 
 The v3.1 → v4.0 migration is complete. Remaining / upcoming work:
 
-- **Full-system integration soak** (Phase 5 item 5): object detection + depth + audio + cognitive core + visual verification concurrently for 60 minutes, logging `tegrastats` RSS and thermals.
+- **Full-system integration soak** (Phase 5 item 5): ✅ 60-min soak of the working stack done (25 Sep 2026, metrics in Recent Updates). A VLM-inclusive soak is blocked by the 8 GB GPU-memory conflict (Known Issue 6).
 - **Cognitive backend**: ✅ `llamacpp` promoted to default (flash attention + GPU `mtmd` clip; 1.92 s vs Ollama 2.61 s honest vision e2e). Ollama remains available via `cognitive_backend:=ollama` and as an automatic fallback.
 - **Audio real-time validation** (Phase 5.4): end-to-end wake-word → transcription latency and resource usage on hardware.
 - **Web interface**: ✅ expanded beyond `/health` + `/status` — `/api/subsystems`, `/api/resources`, and an HTML dashboard added. Camera feed / WebSocket / charts remain optional follow-ups.
@@ -750,6 +761,9 @@ The v3.1 → v4.0 migration is complete. Remaining / upcoming work:
 | Parameter integration | Required | Automatic ROS2 | ✅ |
 | RAM usage | < 7.5GB | ~5.5GB (with Moondream) | ✅ |
 | CPU usage | < 90% | 15% (idle) | ✅ |
+| 60-min soak RAM | < 7.5GB | 5.96GB peak / 5.57GB avg (no leak) | ✅ |
+| 60-min soak thermals | < 80°C | 65.5°C max tj/gpu | ✅ |
+| 60-min soak runtime stability | 0 crashes | 0 runtime errors / 0 mid-run crashes | ✅ |
 | TensorRT conversion | Required | Modern API (10.x) | ✅ |
 | Model optimization | FP16 | TensorRT FP16 | ✅ |
 | Memory management | Dynamic | Cache + pool limits | ✅ |

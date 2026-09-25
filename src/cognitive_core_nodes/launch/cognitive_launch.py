@@ -61,6 +61,14 @@ def generate_launch_description():
                 description="Enable flash attention for the llamacpp backend",
             ),
             DeclareLaunchArgument(
+                "llm_n_gpu_layers",
+                default_value="-1",
+                description=(
+                    "GPU layers for the llamacpp backend (-1 = all). Lower it to "
+                    "free GPU memory when perception engines are also resident."
+                ),
+            ),
+            DeclareLaunchArgument(
                 "request_timeout",
                 default_value="10.0",
                 description="Request timeout in seconds",
@@ -97,6 +105,7 @@ def generate_launch_description():
                         "llm_mmproj_path": LaunchConfiguration("llm_mmproj_path"),
                         "llm_n_ctx": LaunchConfiguration("llm_n_ctx"),
                         "llm_flash_attn": LaunchConfiguration("llm_flash_attn"),
+                        "llm_n_gpu_layers": LaunchConfiguration("llm_n_gpu_layers"),
                         "request_timeout": LaunchConfiguration("request_timeout"),
                         "num_ctx": 512,
                         "num_predict": LaunchConfiguration("num_predict"),
