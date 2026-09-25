@@ -33,6 +33,8 @@ import numpy as np
 import rclpy
 import requests
 from cv_bridge import CvBridge
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
@@ -363,24 +365,33 @@ class CognitiveClientNode(Node):
         self.tts_pub = self.create_publisher(String, "/audio/tts_request", 10)
         self.status_pub = self.create_publisher(String, "/cognitive/status", 10)
 
+        # --- Callback groups ---
+        # The image subscription runs in its own group so that long (~20 s CPU)
+        # VLM inferences in the query group cannot starve camera-frame caching.
+        self._image_cb_group = MutuallyExclusiveCallbackGroup()
+        self._query_cb_group = MutuallyExclusiveCallbackGroup()
+
         # --- Subscribers ---
         self.create_subscription(
             TranscriptionResult,
             "/audio/transcription",
             self._on_transcription,
             10,
+            callback_group=self._query_cb_group,
         )
         self.create_subscription(
             Image,
             "/camera/undistorted",
             self._on_image,
             qos_profile_sensor_data,
+            callback_group=self._image_cb_group,
         )
         self.create_subscription(
             MultimodalQuery,
             "/cognitive/multimodal_query",
             self._on_multimodal_query,
             10,
+            callback_group=self._query_cb_group,
         )
 
         # --- Health check timer ---
@@ -727,18 +738,26 @@ class CognitiveClientNode(Node):
 def main(args=None):
     """Main entry point."""
     rclpy.init(args=args)
+    node = None
+    executor = None
 
     try:
         node = CognitiveClientNode()
-        rclpy.spin(node)
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     except Exception as e:
         print(f"Error in cognitive client node: {e}")
     finally:
-        if "node" in locals():
+        if executor is not None:
+            # Bound the wait for an in-flight (~20 s CPU) inference on shutdown.
+            executor.shutdown(timeout_sec=5.0)
+        if node is not None:
             node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
