@@ -542,19 +542,23 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 
 ---
 
-## Phase 9: Web Interface & Monitoring (0% Complete ⏳)
+## Phase 9: Web Interface & Monitoring (50% Complete 🚧)
 
 ### 9.1 Web Server Backend
-- 🚧 Implement `web_server.py` (FastAPI) — minimal `/health` + `/status` done; WebSocket + full API pending
-- ✅ Health/status endpoints verified live (`curl` → 200 JSON)
+- ✅ Implement `web_server.py` (FastAPI) — `/health` + combined `/status` plus `/api/subsystems` and `/api/resources`
+- ✅ Health/status endpoints verified live (`curl` → 200 JSON and HTML)
+- ✅ Caches lightweight telemetry: `/cognitive/status`, `/verification/status`, `/chassis_state`, `/audio/events`, `/perception/events`, `/perception/obstacles` (with per-subsystem staleness)
+- ⏳ WebSocket push feed (deferred; dashboard currently polls every 2 s — `websockets` not installed)
 
-### 9.2 System Monitoring Node
-- ⏳ Implement `system_monitor.py`
-- ⏳ Monitor CPU/GPU/RAM usage
+### 9.2 System Monitoring
+- ✅ Host resources served by `web_server.py`: CPU %, load avg, memory, disk, and Jetson `thermal_zone*` temperatures (no separate `system_monitor.py` node needed)
+- ⏳ GPU utilisation / tegrastats integration
 
 ### 9.3 Frontend Development
-- ⏳ Implement HTML/CSS/JS dashboard
-- ⏳ Integrate camera feed and metrics
+- ✅ Dependency-free HTML/CSS/JS dashboard at `/` and `/dashboard` (system, subsystems + staleness, thermals)
+- ⏳ Camera feed integration
+- ⏳ Historical charts / WebSocket updates
+
 
 ---
 
@@ -607,8 +611,8 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
    - Status: ❌ Descoped
    - Priority: Low (revisit only if persistent multi-room memory becomes a requirement)
 
-4. **Web interface not yet implemented**: web_interface_nodes has no server code.
-   - Status: 🚧 Partial (Phase 9.1) — minimal FastAPI `/health` + `/status` server added and verified; full dashboard/WebSocket pending
+4. **Web interface not yet complete**: camera feed and historical charts pending.
+   - Status: 🚧 Partial (Phase 9) — `/health`, combined `/status`, `/api/subsystems`, `/api/resources`, and an HTML dashboard (system/subsystems/thermals) are implemented and verified live; WebSocket push, camera feed, and charts pending
    - Priority: Low
 
 5. **uart_imu_node serial port conflict**: Resolved by removal. The standalone `uart_imu_node` (in the deleted `localization_nodes` package) no longer exists; `uart_motor_controller` is the single owner of `/dev/ttyTHS1` and publishes `/imu/data` from continuous feedback / periodic T=126 queries.
@@ -617,6 +621,8 @@ becomes a real requirement. See `docs/architecture.md` v4.0 scope note.
 ---
 
 ## Recent Updates
+
+- **25 Sep 2026**: **Web interface expanded (Phase 9).** `web_server.py` now exposes `/api/subsystems` (per-subsystem status with staleness) and `/api/resources` (CPU %, load avg, memory, disk, Jetson thermal zones) alongside the existing `/health` + `/status`, caches `/chassis_state`, `/audio/events`, `/perception/events`, and `/perception/obstacles`, and serves a dependency-free HTML dashboard at `/` and `/dashboard`. Verified live over uvicorn on the Orin (thermal zones `cpu-thermal`/`gpu-thermal`/`soc*`/`tj-thermal`, ~7.6 GB RAM). No new runtime deps (polling instead of WebSocket). Test suite: **90 passed, 3 failed** (pre-existing `test_wake_word.py`).
 
 - **24 Sep 2026**: **llama.cpp promoted to the default cognitive backend.** Enabled flash attention on the in-process LLM context (2.34 s → **1.92 s** vision e2e) and corrected the benchmark methodology: the old comparison reused one frame, so Ollama's KV-prefix cache made its prompt-eval look like 24 ms. With a unique frame per run, Ollama is **~2.61 s** vs llama.cpp **1.92 s**, and llama.cpp uses less RAM (2666 MB vs 3022 MB). The node now defaults to `cognitive_backend:=llamacpp` (with `llm_flash_attn:=true`) and **falls back to Ollama automatically** if the in-process model cannot load. The clip encoder was already GPU-offloaded via `mtmd use_gpu=True`; flash attention was the real win. See `docs/model_performance.md`.
 - **24 Sep 2026**: **Deferred cleanup done** — deleted the descoped `src/localization_nodes/` package (EKF/RTAB-Map/standalone IMU) and its SLAM scripts, dropped the localization/SLAM includes from `full_system_launch.py`, and removed BehaviorTree leftovers (`action_nodes/`, `behaviortree_cpp_v3`/`py-trees` deps, stale `behavior_tree_executor`/`dialogue_manager` entry points). IMU remains on `/imu/data` via the motor controller. Test suite unchanged: **68 passed, 2 failed** (pre-existing `test_wake_word.py`).
@@ -717,7 +723,7 @@ The v3.1 → v4.0 migration is complete. Remaining / upcoming work:
 - **Full-system integration soak** (Phase 5 item 5): object detection + depth + audio + cognitive core + visual verification concurrently for 60 minutes, logging `tegrastats` RSS and thermals.
 - **Cognitive backend**: ✅ `llamacpp` promoted to default (flash attention + GPU `mtmd` clip; 1.92 s vs Ollama 2.61 s honest vision e2e). Ollama remains available via `cognitive_backend:=ollama` and as an automatic fallback.
 - **Audio real-time validation** (Phase 5.4): end-to-end wake-word → transcription latency and resource usage on hardware.
-- **Web interface**: expand beyond `/health` + `/status` only once the rest is stable.
+- **Web interface**: ✅ expanded beyond `/health` + `/status` — `/api/subsystems`, `/api/resources`, and an HTML dashboard added. Camera feed / WebSocket / charts remain optional follow-ups.
 - **SLAM**: out of scope for the MVP; add only if persistent multi-room memory becomes a requirement.
 
 ---

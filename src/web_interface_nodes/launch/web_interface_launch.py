@@ -1,8 +1,8 @@
 """
 Web interface launch file.
 
-Starts the minimal FastAPI health/status server (Plan.md Phase 5 item 4).
-The full dashboard is deferred until the rest of the system is stable.
+Starts the FastAPI monitoring server: `/health`, `/status`, `/api/subsystems`,
+`/api/resources`, and the HTML dashboard at `/` and `/dashboard`.
 
 Usage:
     ros2 launch web_interface_nodes web_interface_launch.py
