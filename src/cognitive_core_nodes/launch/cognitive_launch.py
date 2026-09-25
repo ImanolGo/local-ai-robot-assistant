@@ -15,8 +15,8 @@ Usage:
 from launch_ros.actions import Node
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
-from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration, PythonExpression
 
 
 def generate_launch_description():
@@ -69,6 +69,14 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument(
+                "cuda_visible_devices",
+                default_value="0",
+                description=(
+                    "CUDA devices visible to the cognitive node; 'none' hides CUDA "
+                    "so the VLM runs entirely on CPU when GPU/nvmap is exhausted."
+                ),
+            ),
+            DeclareLaunchArgument(
                 "request_timeout",
                 default_value="10.0",
                 description="Request timeout in seconds",
@@ -88,14 +96,25 @@ def generate_launch_description():
                 default_value="info",
                 description="ROS2 log level",
             ),
-            # Environment variables for CUDA optimization
-            SetEnvironmentVariable("CUDA_VISIBLE_DEVICES", "0"),
-            # Cognitive Client Node (Ollama or llama.cpp bridge)
+            # Cognitive Client Node (Ollama or llama.cpp bridge). CUDA visibility
+            # is scoped to this process only ('none' => empty, CPU inference) so
+            # it can differ from the perception nodes' GPU usage.
             Node(
                 package="cognitive_core_nodes",
                 executable="cognitive_client_node",
                 name="cognitive_client_node",
                 output="screen",
+                additional_env={
+                    "CUDA_VISIBLE_DEVICES": PythonExpression(
+                        [
+                            "'' if '",
+                            LaunchConfiguration("cuda_visible_devices"),
+                            "' == 'none' else '",
+                            LaunchConfiguration("cuda_visible_devices"),
+                            "'",
+                        ]
+                    )
+                },
                 parameters=[
                     {
                         "cognitive_backend": LaunchConfiguration("cognitive_backend"),

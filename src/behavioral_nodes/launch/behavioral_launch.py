@@ -26,10 +26,21 @@ def generate_launch_description():
     )
     enable_verification = LaunchConfiguration("enable_verification")
 
+    verification_response_timeout_arg = DeclareLaunchArgument(
+        "verification_response_timeout",
+        default_value="8.0",
+        description=(
+            "Seconds to wait for a verification answer. Increase when the VLM "
+            "runs on CPU (GPU memory exhausted by perception)."
+        ),
+    )
+    verification_response_timeout = LaunchConfiguration("verification_response_timeout")
+
     return LaunchDescription(
         [
             debug_arg,
             enable_verification_arg,
+            verification_response_timeout_arg,
             Node(
                 package="behavioral_nodes",
                 executable="command_router_node",
@@ -43,6 +54,7 @@ def generate_launch_description():
                 name="visual_verification_node",
                 output="screen",
                 condition=IfCondition(enable_verification),
+                parameters=[{"response_timeout": verification_response_timeout}],
             ),
         ]
     )

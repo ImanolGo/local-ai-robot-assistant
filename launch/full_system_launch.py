@@ -67,6 +67,27 @@ def generate_launch_description():
         description="Whether to start the cognitive core (VLM) node",
     )
 
+    cognitive_request_timeout_arg = DeclareLaunchArgument(
+        "cognitive_request_timeout",
+        default_value="10.0",
+        description="Cognitive backend request timeout (s); raise for CPU VLM mode",
+    )
+
+    cognitive_cuda_visible_devices_arg = DeclareLaunchArgument(
+        "cognitive_cuda_visible_devices",
+        default_value="0",
+        description=(
+            "CUDA devices exposed to the cognitive node. Empty string runs the "
+            "VLM on CPU (coexists with perception when GPU memory is exhausted)."
+        ),
+    )
+
+    verification_response_timeout_arg = DeclareLaunchArgument(
+        "verification_response_timeout",
+        default_value="8.0",
+        description="Visual verification answer timeout (s); raise for CPU VLM mode",
+    )
+
     # Get launch configurations
     web_interface = LaunchConfiguration("web_interface")
     debug = LaunchConfiguration("debug")
@@ -75,6 +96,9 @@ def generate_launch_description():
     cognitive_backend = LaunchConfiguration("cognitive_backend")
     llm_n_gpu_layers = LaunchConfiguration("llm_n_gpu_layers")
     cognitive = LaunchConfiguration("cognitive")
+    cognitive_request_timeout = LaunchConfiguration("cognitive_request_timeout")
+    cognitive_cuda_visible_devices = LaunchConfiguration("cognitive_cuda_visible_devices")
+    verification_response_timeout = LaunchConfiguration("verification_response_timeout")
 
     # Include perception launch
     perception_launch = IncludeLaunchDescription(
@@ -115,7 +139,10 @@ def generate_launch_description():
                 ]
             )
         ),
-        launch_arguments={"debug": debug}.items(),
+        launch_arguments={
+            "debug": debug,
+            "verification_response_timeout": verification_response_timeout,
+        }.items(),
     )
 
     # Include cognitive core launch
@@ -133,6 +160,8 @@ def generate_launch_description():
             "debug": debug,
             "cognitive_backend": cognitive_backend,
             "llm_n_gpu_layers": llm_n_gpu_layers,
+            "request_timeout": cognitive_request_timeout,
+            "cuda_visible_devices": cognitive_cuda_visible_devices,
         }.items(),
     )
 
@@ -197,6 +226,9 @@ def generate_launch_description():
             cognitive_backend_arg,
             llm_n_gpu_layers_arg,
             cognitive_arg,
+            cognitive_request_timeout_arg,
+            cognitive_cuda_visible_devices_arg,
+            verification_response_timeout_arg,
             perception_launch,
             audio_launch,
             behavioral_launch,
