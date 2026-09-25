@@ -34,6 +34,7 @@ import rclpy
 import requests
 from cv_bridge import CvBridge
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
@@ -102,6 +103,7 @@ class OllamaBridge:
         num_ctx: int = 512,
         num_predict: int = 128,
         temperature: float = 0.3,
+        force_json: bool = False,
     ) -> Dict[str, Any]:
         """Send a generate request to Ollama.
 
@@ -111,6 +113,9 @@ class OllamaBridge:
             num_ctx: Context window size.
             num_predict: Maximum tokens to generate.
             temperature: Sampling temperature.
+            force_json: Ask Ollama to emit JSON (``format="json"``) for
+                structured intent queries. Kept for interface parity with
+                :class:`LlamaCppBridge`.
 
         Returns:
             Dict with 'response' text and 'total_duration' in nanoseconds,
@@ -127,6 +132,9 @@ class OllamaBridge:
             },
             "keep_alive": -1,  # Keep model loaded indefinitely (architecture §7.1)
         }
+
+        if force_json:
+            payload["format"] = "json"
 
         if image_base64:
             payload["images"] = [image_base64]
@@ -366,7 +374,7 @@ class CognitiveClientNode(Node):
             Image,
             "/camera/undistorted",
             self._on_image,
-            10,
+            qos_profile_sensor_data,
         )
         self.create_subscription(
             MultimodalQuery,

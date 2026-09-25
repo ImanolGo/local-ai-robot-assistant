@@ -198,6 +198,38 @@ class TestOllamaBridge(unittest.TestCase):
         payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
         self.assertEqual(payload["keep_alive"], -1)
 
+    def test_generate_force_json_sets_ollama_format(self):
+        """force_json maps to Ollama's JSON format (fallback interface parity)."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"response": '{"action": "stop"}'}
+        mock_response.raise_for_status = MagicMock()
+
+        self.bridge.session = MagicMock()
+        self.bridge.session.post.return_value = mock_response
+
+        self.bridge.generate("stop", force_json=True)
+
+        call_kwargs = self.bridge.session.post.call_args
+        payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        self.assertEqual(payload.get("format"), "json")
+
+    def test_generate_without_force_json_omits_format(self):
+        """A plain query must not constrain Ollama to JSON."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"response": "ok"}
+        mock_response.raise_for_status = MagicMock()
+
+        self.bridge.session = MagicMock()
+        self.bridge.session.post.return_value = mock_response
+
+        self.bridge.generate("hello")
+
+        call_kwargs = self.bridge.session.post.call_args
+        payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        self.assertNotIn("format", payload)
+
 
 class TestLlamaCppBridge(unittest.TestCase):
     """Tests for the in-process llama.cpp bridge (llama_cpp mocked)."""
