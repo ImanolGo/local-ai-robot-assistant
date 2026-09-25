@@ -9,7 +9,7 @@
 > requirement. Other v4.0 changes vs 3.1: `MAXN_SUPER` power profile, an
 > in-process `llama.cpp` cognitive backend now promoted to the default (Ollama
 > remains available as a fallback), a visual-verification loop node, and a
-> minimal FastAPI health/status server.
+> a monitoring web server (combined status + resource API, HTML dashboard).
 
 ## 1. Project Goal
 

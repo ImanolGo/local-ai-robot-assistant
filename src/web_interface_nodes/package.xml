@@ -20,10 +20,9 @@
   <depend>robot_interfaces</depend>
 
   <!-- Web framework dependencies -->
-  <build_depend>python3-flask</build_depend>
-  <build_depend>python3-flask-socketio</build_depend>
-  <exec_depend>python3-flask</exec_depend>
-  <exec_depend>python3-flask-socketio</exec_depend>
+  <exec_depend>python3-fastapi</exec_depend>
+  <exec_depend>python3-uvicorn</exec_depend>
+  <exec_depend>python3-psutil</exec_depend>
 
   <!-- Image processing -->
   <build_depend>python3-opencv</build_depend>
