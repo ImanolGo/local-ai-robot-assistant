@@ -24,3 +24,6 @@ uint16 audio_channels
 float32 temperature
 uint16 max_tokens
 bool use_optimizations
+
+# Optional per-query system prompt override (empty = use the node default)
+string system_prompt

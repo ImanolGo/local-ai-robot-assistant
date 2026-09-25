@@ -43,6 +43,15 @@ from robot_interfaces.msg import CognitiveCommand, MultimodalQuery, MultimodalRe
 # Actions that warrant a follow-up verification pass.
 VERIFIABLE_ACTIONS = {"navigate", "search", "approach", "pickup"}
 
+# Dedicated system prompt for verification queries. The command-intent system
+# prompt asks for JSON, which fights the single-word Yes/No answer this node
+# parses; overriding it per-query keeps intent and verification prompts separate.
+VERIFICATION_SYSTEM_PROMPT = (
+    "You are a robot's visual verification module. Given a camera image and a "
+    "yes/no question about whether a goal has been achieved, answer with a "
+    "single word: Yes or No. Do not explain, describe, or output JSON."
+)
+
 _AFFIRMATIVE = re.compile(
     r"\b(yes|yeah|yep|yup|affirmative|correct|indeed|achieved|succeeded|"
     r"i can see|i see|visible|there is a|it is there|found it)\b",
@@ -237,6 +246,7 @@ class VisualVerificationNode(Node):
         query.query_id = str(uuid.uuid4())
         self._active_query_id = query.query_id
         query.text_query = build_verification_prompt(self.goal)
+        query.system_prompt = VERIFICATION_SYSTEM_PROMPT
         query.include_current_image = True
         query.temperature = 0.0
         query.max_tokens = self.verification_max_tokens
